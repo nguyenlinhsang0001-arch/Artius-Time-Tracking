@@ -1,22 +1,22 @@
-# ARTIUS — Quản lý giờ công · v1.5 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v1.6 (bản webapp cho Vercel)
 
-Bản đóng gói của `artius-timesheet_v1_5.jsx` để chạy như một webapp độc lập.
+Bản đóng gói của `artius-timesheet_v1_6.jsx` để chạy như một webapp độc lập.
 Code ứng dụng giống hệt file `.jsx` cùng phiên bản. Phần thêm vào chỉ là lớp vỏ:
 
 | File | Vai trò |
 |---|---|
-| `src/artius-timesheet_v1_5.jsx` | Ứng dụng v1.5 |
+| `src/artius-timesheet_v1_6.jsx` | Ứng dụng v1.6 |
 | `src/storage.js` | Thay `window.storage` của Claude bằng Supabase (dữ liệu chung) + localStorage (tuỳ chọn riêng từng máy) |
 | `src/main.jsx`, `index.html`, `src/index.css` | Điểm khởi động, Tailwind |
 | `supabase/schema.sql` | Tạo bảng `artius_kv` trên Supabase |
 | `.env.example` | Mẫu 2 biến môi trường |
 
-## Mới ở v1.5
+## Mới ở v1.6
 
-- Ghi chú phiên bản ở góc trái, dưới cùng màn hình.
-- Tab Tác vụ (ban quản lý): thêm mới / xoá vai trò. Xoá vai trò thì tác vụ của vai trò đó chuyển về bộ phận của vai trò, nhân sự đang giữ vai trò đó thành không phân vai trò.
-- Bỏ nút "Nạp bộ tác vụ theo vai trò".
-- Không đổi cấu trúc Supabase: dùng lại bảng `artius_kv` đã tạo cho v1.4, dữ liệu v1.4 mở được trong v1.5 (danh sách vai trò mặc định tự nạp lần đầu).
+- Tab Bảng công (ban quản lý) có 2 chế độ: **Ma trận giờ công** (hàng = nhân sự, cột = dự án, theo tháng, có tổng theo người và theo dự án, bấm tên để mở chi tiết) và **Chi tiết nhân viên** (bảng công cũ, xem và sửa từng người).
+- Xuất Excel từ ma trận: sheet Ma trận, Chi tiết, Tình trạng nộp (theo bộ lọc đang chọn).
+- Loại nghỉ (Vắng mặt) thêm / đổi tên / xoá ở tab Tác vụ.
+- Không đổi cấu trúc Supabase, dữ liệu v1.5 mở được trong v1.6.
 
 ## 1. Supabase
 
