@@ -1,14 +1,17 @@
 /* ============================================================
    Lớp thay thế window.storage cho bản webapp (Vercel)
 
-   App v1.4 gọi window.storage.get / set / delete / list — API này chỉ có trong
-   artifact của Claude. File này dựng lại đúng API đó để App không phải sửa dòng nào:
+   App gọi window.storage.get / set / delete / list — API này chỉ có trong
+   artifact của Claude. File này dựng lại đúng API đó trên Supabase:
      · shared = true  -> bảng `artius_kv` trên Supabase (cả công ty dùng chung)
      · shared = false -> localStorage của trình duyệt (riêng từng máy: "tôi là ai",
                          các tuỳ chọn ẩn/hiện)
 
    QUAN TRỌNG: file này phải được import TRƯỚC App trong main.jsx, vì App kiểm tra
    `window.storage` ngay lúc nạp module (hằng STORAGE_OK).
+
+   v1.7: client giữ phiên đăng nhập (Supabase Auth). Bảng `artius_kv` chỉ mở cho tài khoản
+   đã đăng nhập và chưa bị khoá, nên mọi lệnh đọc/ghi ở đây tự mang token của người dùng.
    ============================================================ */
 import { createClient } from "@supabase/supabase-js";
 
@@ -19,8 +22,14 @@ const LOCAL_NS = "artius:private:";
 
 export const STORAGE_CONFIGURED = !!(URL && KEY);
 
+// Dùng chung cho storage (bên dưới) và auth.js
+export const supabase = STORAGE_CONFIGURED
+  ? createClient(URL, KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: "artius:auth" },
+    })
+  : null;
+
 if (STORAGE_CONFIGURED) {
-  const supabase = createClient(URL, KEY, { auth: { persistSession: false } });
 
   // Ký tự % và _ là ký tự đại diện của LIKE, phải thoát trước khi tìm theo tiền tố
   const escapeLike = (s) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
