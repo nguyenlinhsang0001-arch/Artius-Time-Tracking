@@ -8,7 +8,7 @@ import {
   Clock, Users, FolderKanban, LayoutDashboard, Download, Plus, Trash2, Save,
   AlertTriangle, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, LogOut, Settings,
   CheckCircle2, Loader2, ListChecks, Lock, RotateCcw, Pencil, Check, X, CalendarDays,
-  Copy, Unlock, Search, Flag, Zap, ClipboardList, MoreHorizontal,
+  Copy, Unlock, Search, Flag, Zap, ClipboardList, MoreHorizontal, Grid3x3, User,
 } from "lucide-react";
 
 /* ============================================================
@@ -57,7 +57,7 @@ import {
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v1.5";
+const APP_VERSION = "v1.6";
 const CONFIG_KEY = "artius:config:v1";
 const TS_PREFIX = "artius:ts:";
 const ME_KEY = "artius:me";
@@ -2076,11 +2076,184 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
 }
 
 /* ============================ BẢNG CÔNG NHÂN SỰ (QUẢN LÝ) ============================ */
+/* --------- v1.6: ma trận giờ công — hàng = nhân sự, cột = dự án, theo tháng ---------
+   Đọc thẳng từ dữ liệu đã nằm trong bộ nhớ (dbTs), không tốn lệnh lưu trữ.
+   Giờ vắng mặt gom vào một cột riêng "Vắng mặt", không tính vào giờ dự án. */
+function HoursMatrix({ cfg, ym, flash, onPickEmp }) {
+  const [q, setQ] = useState("");
+  const [fDept, setFDept] = useState("all");
+  const [hideEmpty, setHideEmpty] = useState(false);
+
+  const from = `${ym}-01`;
+  const to = fmt(lastOfMonth(parseD(from)));
+  const projById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
+  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
+  const projLabel = (id) => { if (id === NO_PROJECT) return "Vắng mặt"; const x = projById.get(id); return x ? (x.code ? `[${x.code}] ${x.name}` : x.name) : "(dự án đã xoá)"; };
+  const projShort = (id) => { if (id === NO_PROJECT) return "Vắng mặt"; const x = projById.get(id); return x ? (x.code ? `${x.code} ${x.name}` : x.name) : "(đã xoá)"; };
+  const taskLabel = (id) => { const t = taskById.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
+
+  // Toàn bộ dòng giờ của tháng, gom theo (nhân sự, dự án)
+  const base = useMemo(() => {
+    const detail = [];
+    for (const ymk of ymsBetween(from, to)) for (const e of cfg.employees) {
+      const d = dbTs(e.id, ymk);
+      if (!d?.rows) continue;
+      for (const r of d.rows) for (const [date, h] of Object.entries(r.days || {})) {
+        if (!h || date < from || date > to) continue;
+        const pid = isLeaveTask(r.taskId) ? NO_PROJECT : r.projectId;
+        detail.push({ empId: e.id, date, hours: Number(h), projectId: pid, phaseId: r.phaseId || DEFAULT_PHASE, taskId: r.taskId, note: r.note || "" });
+      }
+    }
+    return detail;
+  }, [cfg.employees, from, to]);
+
+  const emps = cfg.employees.filter((e) => {
+    if (fDept !== "all" && e.dept !== fDept) return false;
+    const kw = q.trim().toLowerCase();
+    return !kw || `${e.name} ${e.code || ""} ${e.dept} ${e.role || ""}`.toLowerCase().includes(kw);
+  });
+
+  const view = useMemo(() => {
+    const ids = new Set(emps.map((e) => e.id));
+    const cell = new Map();            // empId -> Map(projectId -> giờ)
+    const projTot = new Map();
+    const empTot = new Map();
+    for (const d of base) {
+      if (!ids.has(d.empId)) continue;
+      if (!cell.has(d.empId)) cell.set(d.empId, new Map());
+      const m = cell.get(d.empId); m.set(d.projectId, (m.get(d.projectId) || 0) + d.hours);
+      projTot.set(d.projectId, (projTot.get(d.projectId) || 0) + d.hours);
+      empTot.set(d.empId, (empTot.get(d.empId) || 0) + d.hours);
+    }
+    // cột dự án xếp theo giờ giảm dần, "Vắng mặt" luôn ở cuối
+    const cols = [...projTot.keys()].filter((k) => k !== NO_PROJECT).sort((a, b) => projTot.get(b) - projTot.get(a));
+    const hasLeave = projTot.has(NO_PROJECT);
+    let max = 0; for (const m of cell.values()) for (const [k, v] of m) if (k !== NO_PROJECT && v > max) max = v;
+    const grand = [...projTot.values()].reduce((a, b) => a + b, 0);
+    return { cell, projTot, empTot, cols, hasLeave, max, grand };
+  }, [base, emps.map((e) => e.id).join(",")]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const shown = hideEmpty ? emps.filter((e) => (view.empTot.get(e.id) || 0) > 0) : emps;
+  const allCols = [...view.cols, ...(view.hasLeave ? [NO_PROJECT] : [])];
+  const n1 = (v) => (Math.round(v * 10) / 10).toString();
+  const empsNoHours = emps.filter((e) => !(view.empTot.get(e.id) || 0)).length;
+
+  const exportXlsx = () => {
+    const wb = XLSX.utils.book_new();
+    const mtx = shown.map((e) => {
+      const row = { "Mã": e.code || "", "Nhân sự": e.name, "Bộ phận": e.dept, "Vai trò": e.role || "" };
+      const m = view.cell.get(e.id);
+      for (const c of allCols) row[projLabel(c)] = m?.get(c) || 0;
+      row["Tổng giờ"] = view.empTot.get(e.id) || 0;
+      return row;
+    });
+    const tot = { "Mã": "", "Nhân sự": "TỔNG", "Bộ phận": "", "Vai trò": "" };
+    for (const c of allCols) tot[projLabel(c)] = view.projTot.get(c) || 0;
+    tot["Tổng giờ"] = shown.reduce((a, e) => a + (view.empTot.get(e.id) || 0), 0);
+    mtx.push(tot);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(mtx), "Ma trận");
+    const ids = new Set(shown.map((e) => e.id));
+    const empMap = new Map(cfg.employees.map((e) => [e.id, e]));
+    const detail = base.filter((d) => ids.has(d.empId))
+      .sort((a, b) => (empMap.get(a.empId)?.name || "").localeCompare(empMap.get(b.empId)?.name || "") || a.date.localeCompare(b.date))
+      .map((d) => {
+        const e = empMap.get(d.empId);
+        return { "Mã": e?.code || "", "Nhân sự": e?.name || "(đã xoá)", "Bộ phận": e?.dept || "", "Ngày": d.date, "Thứ": DOW[(parseD(d.date).getDay() + 6) % 7],
+          "Dự án": projLabel(d.projectId), "Giai đoạn": d.projectId === NO_PROJECT ? "" : phaseLabel(d.phaseId), "Hạng mục": taskLabel(d.taskId), "Ghi chú": d.note || "", "Giờ": d.hours };
+      });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), "Chi tiết");
+    const need = mondaysOfMonth(ym);
+    const st = shown.map((e) => { const w = dbTs(e.id, ym)?.weeks; const miss = need.filter((m) => !w?.[m]); return { "Nhân sự": e.name, "Số tuần cần nộp": need.length, "Đã nộp": need.length - miss.length, "Thiếu": miss.length, "Tuần thiếu": miss.map(dLabel).join(", ") }; });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(st), "Tình trạng nộp");
+    const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const a = document.createElement("a"); a.href = url; a.download = `ARTIUS_ma-tran-gio-cong_${ym}.xlsx`; a.click();
+    URL.revokeObjectURL(url);
+    flash("Đã xuất file Excel.");
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-900">
+      <div className="flex flex-col gap-2 border-b border-slate-800 p-3 md:flex-row md:items-center md:gap-3 md:p-4">
+        <div className="relative min-w-0 md:w-64">
+          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm nhân sự" className={`pl-9 ${inputCls}`} />
+        </div>
+        <select value={fDept} onChange={(e) => setFDept(e.target.value)} className={`md:w-48 ${selectCls}`}>
+          <option value="all">Mọi bộ phận</option>
+          {DEPTS.map((d) => <option key={d}>{d}</option>)}
+        </select>
+        <label className="flex shrink-0 items-center gap-2 text-xs text-slate-400">
+          <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} className="accent-teal-500" />
+          Ẩn người chưa có giờ
+        </label>
+        <button onClick={exportXlsx} disabled={shown.length === 0} className={`md:ml-auto ${btnPrimary} disabled:opacity-40`}><Download size={15} /> Xuất Excel</button>
+      </div>
+
+      <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 px-3 py-2 text-xs text-slate-500 md:px-4">
+        <span>{ymLabel(ym)}</span>
+        <span>Tổng <span className="font-mono text-slate-200">{n1(view.grand)}</span> giờ</span>
+        <span>{view.cols.length} dự án</span>
+        {empsNoHours > 0 && <span className="text-amber-400">{empsNoHours} người chưa có giờ</span>}
+      </div>
+
+      {shown.length === 0 || allCols.length === 0 ? (
+        <p className="px-4 pb-4 text-sm text-slate-500">{shown.length === 0 ? "Không có nhân sự nào khớp bộ lọc." : "Tháng này chưa có giờ công nào được chấm."}</p>
+      ) : (
+        <div className="overflow-x-auto pb-1">
+          <table className="min-w-full border-separate border-spacing-0 text-sm">
+            <thead>
+              <tr>
+                <th className="sticky left-0 z-10 min-w-[200px] border-b border-slate-800 bg-slate-900 px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-slate-500 md:px-4">Nhân sự</th>
+                {allCols.map((c) => (
+                  <th key={c} title={projLabel(c)} className={`min-w-[110px] max-w-[160px] border-b border-slate-800 px-2 py-2 text-right text-[11px] font-medium ${c === NO_PROJECT ? "text-sky-400" : "text-slate-400"}`}>
+                    <div className="truncate">{projShort(c)}</div>
+                  </th>
+                ))}
+                <th className="min-w-[80px] border-b border-slate-800 px-3 py-2 text-right text-[11px] font-medium uppercase tracking-wider text-slate-500 md:px-4">Tổng</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((e) => {
+                const m = view.cell.get(e.id); const tot = view.empTot.get(e.id) || 0;
+                return (
+                  <tr key={e.id} className="group">
+                    <td className="sticky left-0 z-10 border-b border-slate-800/70 bg-slate-900 px-3 py-1.5 md:px-4">
+                      <button onClick={() => onPickEmp(e.id)} title="Xem và sửa bảng công chi tiết" className="block w-full text-left">
+                        <span className="block truncate font-medium text-slate-100 group-hover:text-teal-300">{e.name}</span>
+                        <span className="block truncate text-[11px] text-slate-500">{e.dept}{e.role ? ` · ${e.role}` : ""}</span>
+                      </button>
+                    </td>
+                    {allCols.map((c) => {
+                      const v = m?.get(c) || 0;
+                      const bg = v && c !== NO_PROJECT && view.max ? { backgroundColor: `rgba(20,184,166,${0.08 + 0.4 * (v / view.max)})` } : v ? { backgroundColor: "rgba(56,189,248,0.12)" } : undefined;
+                      return <td key={c} style={bg} className={`border-b border-slate-800/70 px-2 py-1.5 text-right font-mono text-xs ${v ? "text-slate-100" : "text-slate-700"}`}>{v ? n1(v) : "·"}</td>;
+                    })}
+                    <td className={`border-b border-slate-800/70 px-3 py-1.5 text-right font-mono text-xs font-medium md:px-4 ${tot ? "text-teal-300" : "text-amber-500"}`}>{tot ? n1(tot) : "0"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td className="sticky left-0 z-10 bg-slate-900 px-3 py-2 text-xs font-medium uppercase tracking-wider text-slate-400 md:px-4">Tổng</td>
+                {allCols.map((c) => <td key={c} className="px-2 py-2 text-right font-mono text-xs font-medium text-slate-200">{n1(view.projTot.get(c) || 0)}</td>)}
+                <td className="px-3 py-2 text-right font-mono text-xs font-semibold text-teal-300 md:px-4">{n1(shown.reduce((a, e) => a + (view.empTot.get(e.id) || 0), 0))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminTimesheet({ cfg, flash, onDirtyChange }) {
   const [empId, setEmpId] = useState(cfg.employees[0]?.id || "");
   const [q, setQ] = useState("");
   const [ym, setYm] = useState(ymOf(fmt(new Date())));
   const [openStatus, setOpenStatus] = useState(true);   // bảng tình trạng nộp: mở/thu gọn
+  const [mode, setMode] = useState("matrix");              // v1.6: "matrix" tổng quát | "detail" từng nhân sự
 
   const shiftYm = (v, n) => { const [y, m] = v.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
   const empName = (id) => cfg.employees.find((e) => e.id === id)?.name || "(đã xoá)";
@@ -2111,6 +2284,15 @@ function AdminTimesheet({ cfg, flash, onDirtyChange }) {
 
   return (
     <div className="space-y-3 md:space-y-4">
+      <div className="inline-flex rounded-lg border border-slate-800 bg-slate-900 p-1">
+        {[["matrix", "Ma trận giờ công", Grid3x3], ["detail", "Chi tiết nhân viên", User]].map(([k, label, Ico]) => (
+          <button key={k} onClick={() => setMode(k)}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm ${mode === k ? "bg-teal-600 text-white" : "text-slate-400 hover:text-slate-200"}`}>
+            <Ico size={14} /> {label}
+          </button>
+        ))}
+      </div>
+
       {/* Tình trạng nộp lên đầu: nhìn ai còn thiếu rồi bấm thẳng vào để mở bảng công của người đó */}
       <div className="rounded-xl border border-slate-800 bg-slate-900">
         <button onClick={() => setOpenStatus((o) => !o)}
@@ -2139,7 +2321,7 @@ function AdminTimesheet({ cfg, flash, onDirtyChange }) {
             ) : (
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {missing.map((m) => (
-                  <button key={m.empId} onClick={() => setEmpId(m.empId)}
+                  <button key={m.empId} onClick={() => { setEmpId(m.empId); setMode("detail"); }}
                     className={`rounded-lg border border-l-4 bg-slate-950 px-3 py-2 text-left text-sm hover:border-slate-600
                       ${m.empId === empId ? "border-teal-700 border-l-teal-500" : "border-slate-800 border-l-amber-500"}`}>
                     <div className="font-medium text-slate-100">{empName(m.empId)}</div>
@@ -2152,8 +2334,10 @@ function AdminTimesheet({ cfg, flash, onDirtyChange }) {
         )}
       </div>
 
+      {mode === "matrix" && <HoursMatrix key={ym} cfg={cfg} ym={ym} flash={flash} onPickEmp={(id) => { setEmpId(id); setMode("detail"); }} />}
+
       {/* Chọn nhân sự để xem và sửa bảng công */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
+      {mode === "detail" && <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
           <div className="relative min-w-0" style={{ flexBasis: "30%", flexGrow: 1 }}>
             <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
@@ -2172,10 +2356,10 @@ function AdminTimesheet({ cfg, flash, onDirtyChange }) {
         <p className="mt-3 border-t border-slate-800 pt-3 text-xs text-slate-500">
           Ở đây bạn sửa được cả tuần đã gửi mà không cần mở khoá. Mọi thay đổi ghi thẳng vào bảng công của nhân sự — nên báo cho họ biết khi bạn sửa số liệu.
         </p>
-      </div>
+      </div>}
 
       {/* key theo empId để reset toàn bộ state khi đổi người, tránh dính dữ liệu của người trước */}
-      {emp && <EmployeeArea key={emp.id} cfg={cfg} empId={emp.id} flash={flash} admin onDirtyChange={onDirtyChange} />}
+      {mode === "detail" && emp && <EmployeeArea key={emp.id} cfg={cfg} empId={emp.id} flash={flash} admin onDirtyChange={onDirtyChange} />}
     </div>
   );
 }
