@@ -466,12 +466,13 @@ const sortByGroup = (list = []) => {
 const emptyConfig = () => ({
   employees: [], projects: [], tasks: DEFAULT_TASKS, adminPin: "", deadlineDay: 5,
   hours: { ...DEFAULT_HOURS }, holidays: [], roles: DEFAULT_ROLES.map((r) => ({ ...r })),
+  leaveTypes: DEFAULT_LEAVE_TYPES.map((t) => ({ ...t })),
 });
 
 /* Vắng mặt giờ là tác vụ chọn được ngay trong ô Tác vụ, không còn panel riêng.
    Chọn "Phép năm" rồi nhập 8 giờ vào ngày đó là xong — giờ vắng tính vào giờ chuẩn của ngày
    nên không bị báo thiếu, nhưng KHÔNG tính vào giờ dự án và không tính OT. */
-const LEAVE_TYPES = [
+const DEFAULT_LEAVE_TYPES = [
   { id: "annual", label: "Phép năm", short: "P", cls: "border-sky-800 bg-sky-950 text-sky-300" },
   { id: "sick", label: "Nghỉ ốm", short: "Ố", cls: "border-violet-800 bg-violet-950 text-violet-300" },
   { id: "unpaid", label: "Nghỉ không lương", short: "KL", cls: "border-slate-700 bg-slate-800 text-slate-300" },
@@ -480,7 +481,26 @@ const LEAVE_TYPES = [
 ];
 const LEAVE_TASK_PREFIX = "LV_";
 const NO_PROJECT = "__none__";
-const LEAVE_TASKS = LEAVE_TYPES.map((t) => ({ id: `${LEAVE_TASK_PREFIX}${t.id}`, name: t.label, group: "Vắng mặt", depts: [], roles: [] }));
+/* LEAVE_TYPES / LEAVE_TASKS là bản sống: App chép cfg.leaveTypes vào đây ở mỗi lần render (syncLeave),
+   quản lý thêm / sửa / xoá loại nghỉ ở tab Tác vụ. */
+const LEAVE_PALETTE = [
+  "border-sky-800 bg-sky-950 text-sky-300", "border-violet-800 bg-violet-950 text-violet-300",
+  "border-slate-700 bg-slate-800 text-slate-300", "border-rose-800 bg-rose-950 text-rose-300",
+  "border-teal-800 bg-teal-950 text-teal-300", "border-amber-800 bg-amber-950 text-amber-300",
+  "border-emerald-800 bg-emerald-950 text-emerald-300", "border-fuchsia-800 bg-fuchsia-950 text-fuchsia-300",
+];
+const leaveShort = (label) => {
+  const w = String(label || "").trim().split(/\s+/).filter(Boolean);
+  return (w.length > 1 ? w.slice(0, 2).map((x) => x[0]).join("") : (w[0] || "?").slice(0, 2)).toUpperCase();
+};
+const LEAVE_TYPES = DEFAULT_LEAVE_TYPES.map((t) => ({ ...t }));
+const LEAVE_TASKS = [];
+const syncLeave = (list) => {
+  const src = Array.isArray(list) ? list : DEFAULT_LEAVE_TYPES;
+  LEAVE_TYPES.splice(0, LEAVE_TYPES.length, ...src);
+  LEAVE_TASKS.splice(0, LEAVE_TASKS.length, ...src.map((t) => ({ id: `${LEAVE_TASK_PREFIX}${t.id}`, name: t.label, group: "Vắng mặt", depts: [], roles: [] })));
+};
+syncLeave(null);
 const isLeaveTask = (id) => typeof id === "string" && id.startsWith(LEAVE_TASK_PREFIX);
 const leaveTypeOfTask = (id) => (isLeaveTask(id) ? id.slice(LEAVE_TASK_PREFIX.length) : null);
 const leaveInfo = (id) => LEAVE_TYPES.find((x) => x.id === id) || null;
@@ -864,7 +884,9 @@ export default function App() {
         c.holidays = Array.isArray(c.holidays) ? c.holidays : [];
         // dữ liệu v1.4 trở về trước chưa có danh sách vai trò thì lấy 5 vai trò mặc định
         c.roles = Array.isArray(c.roles) ? c.roles : DEFAULT_ROLES.map((r) => ({ ...r }));
+        c.leaveTypes = Array.isArray(c.leaveTypes) && c.leaveTypes.length ? c.leaveTypes : DEFAULT_LEAVE_TYPES.map((t) => ({ ...t }));
         syncRoles(c.roles);
+        syncLeave(c.leaveTypes);
         setCfg(c);
         const saved = await sget(ME_KEY, false);
         if (saved?.type === "emp" && c.employees.some((e) => e.id === saved.empId)) setMe(saved);
@@ -880,6 +902,7 @@ export default function App() {
     return ok;
   }, [flash]);
 
+  syncLeave(cfg?.leaveTypes);
   syncRoles(cfg?.roles);   // đồng bộ trước khi các màn con render (cfg còn null lúc app vừa mở)
 
   const signIn = async (identity) => {
@@ -1195,7 +1218,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   const activeProjects = cfg.projects.filter((p) => p.active);
   // Chỉ hiện hạng mục thuộc bộ phận của nhân sự — bớt danh sách dài và tránh chấm nhầm việc của bộ phận khác
   const myTasks = useMemo(() => tasksForDept(cfg.tasks, emp?.dept, emp?.role), [cfg.tasks, emp?.dept, emp?.role]);
-  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks]);
+  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
   const projName = (id) => cfg.projects.find((p) => p.id === id)?.name || "(dự án đã xoá)";
   // Tên kèm mã, dùng ở chỗ cần nhận diện nhanh bằng mã số
   const projFull = (id) => { const p = cfg.projects.find((x) => x.id === id); return p ? `${p.code ? `[${p.code}] ` : ""}${p.name}` : "(dự án đã xoá)"; };
@@ -2451,7 +2474,7 @@ function EmployeeDashboard({ cfg, empId }) {
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const projMapById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
-  const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks]);
+  const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
   const projLabel = (id) => { if (id === NO_PROJECT) return "— Vắng mặt —"; const p = projMapById.get(id); return p ? (p.code ? `[${p.code}] ${p.name}` : p.name) : "(dự án đã xoá)"; };
   const taskLabel = (id) => { const t = taskMap.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
 
@@ -2737,7 +2760,7 @@ function Dashboard({ cfg, flash }) {
   // Dựng Map một lần thay vì .find() trong vòng lặp — trước đây là O(n²) khi xuất Excel
   const empMap = useMemo(() => new Map(cfg.employees.map((e) => [e.id, e])), [cfg.employees]);
   const projMapById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
-  const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks]);
+  const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
   const empName = (id) => empMap.get(id)?.name || "(đã xoá)";
   const empDept = (id) => empMap.get(id)?.dept || "";
   const projLabel = (id) => { if (id === NO_PROJECT) return "— Vắng mặt —"; const p = projMapById.get(id); return p ? (p.code ? `[${p.code}] ${p.name}` : p.name) : "(dự án đã xoá)"; };
@@ -3591,7 +3614,12 @@ function Tasks({ cfg, saveCfg, flash }) {
   const [roleName, setRoleName] = useState("");
   const [roleDept, setRoleDept] = useState(DEPTS[0]);
   const [pendingRoleDel, setPendingRoleDel] = useState(null);
+  const [leaveName, setLeaveName] = useState("");
+  const [leaveEditId, setLeaveEditId] = useState(null);
+  const [leaveEditName, setLeaveEditName] = useState("");
+  const [pendingLeaveDel, setPendingLeaveDel] = useState(null);
   const roles = cfg.roles || [];
+  const leaves = cfg.leaveTypes || [];
 
   /* Một "ô" là một chủ sở hữu tác vụ: một vai trò, hoặc dùng chung.
      Khoá dạng "r:ARC" / "shared" để một select duy nhất chuyển tác vụ đi đâu cũng được. */
@@ -3662,6 +3690,27 @@ function Tasks({ cfg, saveCfg, flash }) {
       employees: cfg.employees.map((e) => (e.role === r.id ? { ...e, role: "" } : e)),
     });
     flash("Đã xoá vai trò.");
+  };
+  const addLeave = async () => {
+    const name = leaveName.trim();
+    if (!name) return flash("Nhập tên loại nghỉ.", "err");
+    if (leaves.some((x) => x.label.toLowerCase() === name.toLowerCase())) return flash("Loại nghỉ này đã có.", "err");
+    const id = "x" + Date.now().toString(36);
+    const ok = await saveCfg({ ...cfg, leaveTypes: [...leaves, { id, label: name, short: leaveShort(name), cls: LEAVE_PALETTE[leaves.length % LEAVE_PALETTE.length] }] });
+    if (ok !== false) { setLeaveName(""); flash("Đã thêm loại nghỉ."); }
+  };
+  const commitLeave = async () => {
+    const name = leaveEditName.trim();
+    if (!name) return flash("Tên loại nghỉ không được để trống.", "err");
+    if (leaves.some((x) => x.id !== leaveEditId && x.label.toLowerCase() === name.toLowerCase())) return flash("Loại nghỉ này đã có.", "err");
+    const ok = await saveCfg({ ...cfg, leaveTypes: leaves.map((x) => (x.id === leaveEditId ? { ...x, label: name, short: leaveShort(name) } : x)) });
+    if (ok !== false) { setLeaveEditId(null); flash("Đã đổi tên loại nghỉ."); }
+  };
+  const confirmDelLeave = async () => {
+    const t = pendingLeaveDel; setPendingLeaveDel(null);
+    if (!t) return;
+    await saveCfg({ ...cfg, leaveTypes: leaves.filter((x) => x.id !== t.id) });
+    flash("Đã xoá loại nghỉ.");
   };
   const delRoleTaskCount = pendingRoleDel ? cfg.tasks.filter((t) => taskRoles(t).length === 1 && taskRoles(t)[0] === pendingRoleDel.id).length : 0;
   const delRoleEmpCount = pendingRoleDel ? cfg.employees.filter((e) => e.role === pendingRoleDel.id).length : 0;
@@ -3746,6 +3795,41 @@ function Tasks({ cfg, saveCfg, flash }) {
         )}
       </div>
 
+      <div className="rounded-xl border border-slate-800 bg-slate-900 p-3 md:p-4">
+        <div className="mb-3 flex items-baseline justify-between gap-2">
+          <h3 className="text-sm font-medium text-slate-100">Vắng mặt</h3>
+          <span className="shrink-0 font-mono text-xs text-slate-600">{leaves.length}</span>
+        </div>
+        <div className="flex gap-2">
+          <input value={leaveName} onChange={(e) => setLeaveName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addLeave()}
+            placeholder="Thêm loại nghỉ rồi Enter" className={`min-w-0 flex-1 ${inputCls}`} />
+          <button onClick={addLeave} className={`${iconBtn} shrink-0`}><Plus size={15} /></button>
+        </div>
+        {leaves.length > 0 && (
+          <div className="mt-2 divide-y divide-slate-800">
+            {leaves.map((x) => (
+              <div key={x.id} className="py-2 text-sm">
+                {leaveEditId === x.id ? (
+                  <div className="flex gap-2">
+                    <input value={leaveEditName} onChange={(e) => setLeaveEditName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && commitLeave()} className={`min-w-0 flex-1 ${inputCls}`} />
+                    <button onClick={commitLeave} className={`${iconBtn} shrink-0 border-teal-800 text-teal-400`}><Check size={15} /></button>
+                    <button onClick={() => setLeaveEditId(null)} className={`${iconBtn} shrink-0`}><X size={15} /></button>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="min-w-0 text-slate-200">{x.label}</span>
+                    <div className="flex shrink-0 gap-1.5">
+                      <button onClick={() => { setLeaveEditId(x.id); setLeaveEditName(x.label); }} className={iconBtn}><Pencil size={13} /></button>
+                      <button onClick={() => setPendingLeaveDel(x)} className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={13} /></button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="px-1 text-xs uppercase tracking-widest text-slate-500">Theo vai trò</div>
       <div className="grid gap-3 md:grid-cols-2 md:gap-4">{boxes.filter((b) => b.kind === "role").map(renderBox)}</div>
 
@@ -3758,6 +3842,15 @@ function Tasks({ cfg, saveCfg, flash }) {
         confirmLabel="Xoá vai trò và tác vụ"
         onConfirm={confirmDelRole}
         onCancel={() => setPendingRoleDel(null)}
+      />
+
+      <ConfirmDialog
+        open={!!pendingLeaveDel}
+        title={`Xoá loại nghỉ ${pendingLeaveDel?.label || ""}?`}
+        desc="Nhân sự sẽ không chọn được loại nghỉ này nữa. Giờ đã chấm vẫn giữ nguyên, báo cáo sẽ hiển thị là (tác vụ đã xoá)."
+        confirmLabel="Xoá loại nghỉ"
+        onConfirm={confirmDelLeave}
+        onCancel={() => setPendingLeaveDel(null)}
       />
 
       <ConfirmDialog
