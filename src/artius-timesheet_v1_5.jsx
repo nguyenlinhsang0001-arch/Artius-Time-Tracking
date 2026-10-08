@@ -22,6 +22,7 @@ import {
    · Ghi chú phiên bản ở góc trái, dưới cùng màn hình
    · Tab Tác vụ (ban quản lý): thêm mới / xoá vai trò. Danh sách vai trò nằm trong cấu hình dùng chung
    · Bỏ nút "Nạp bộ tác vụ theo vai trò" (bộ 25 tác vụ chuẩn)
+   · Tab Tác vụ chỉ còn tên vai trò / bộ phận và danh sách tác vụ; bỏ các dòng ghi chú nhỏ
 
    Mới ở v1.4
    · Toàn bộ dữ liệu nằm trong MỘT khoá lưu trữ. Đọc 1 lần lúc mở app, sau đó mọi thao tác
@@ -3609,9 +3610,9 @@ function Tasks({ cfg, saveCfg, flash }) {
      Khoá dạng "r:ARC" / "d:Xưởng" / "shared" để một select duy nhất chuyển tác vụ đi đâu cũng được. */
   const SHARED = "shared";
   const boxes = [
-    ...roles.map((r) => ({ key: `r:${r.id}`, kind: "role", id: r.id, title: `${r.id} · ${r.name}`, sub: `Vai trò trong bộ phận ${r.dept}` })),
-    ...DEPTS.map((d) => ({ key: `d:${d}`, kind: "dept", id: d, title: d, sub: "Cả bộ phận đều thấy" })),
-    { key: SHARED, kind: "shared", id: "", title: "Dùng chung", sub: "Mọi người đều thấy" },
+    ...roles.map((r) => ({ key: `r:${r.id}`, kind: "role", id: r.id, title: `${r.id} · ${r.name}` })),
+    ...DEPTS.map((d) => ({ key: `d:${d}`, kind: "dept", id: d, title: d })),
+    { key: SHARED, kind: "shared", id: "", title: "Dùng chung" },
   ];
   const ownerOf = (t) => {
     const rs = taskRoles(t);
@@ -3689,7 +3690,6 @@ function Tasks({ cfg, saveCfg, flash }) {
         <div className="mb-3 flex items-baseline justify-between gap-2">
           <div className="min-w-0">
             <h3 className={`truncate text-sm font-medium ${b.kind === "shared" ? "text-slate-400" : "text-slate-100"}`}>{b.title}</h3>
-            <p className="truncate text-[11px] text-slate-600">{b.sub}</p>
           </div>
           <span className="shrink-0 font-mono text-xs text-slate-600">{list.length}</span>
         </div>
@@ -3701,9 +3701,7 @@ function Tasks({ cfg, saveCfg, flash }) {
           <button onClick={() => add(b.key)} className={`${iconBtn} shrink-0`}><Plus size={15} /></button>
         </div>
 
-        {list.length === 0 ? (
-          <p className="mt-3 text-xs text-slate-600">Chưa có tác vụ nào.</p>
-        ) : (
+        {list.length > 0 && (
           <div className="mt-2 divide-y divide-slate-800">
             {list.map((t) => (
               <div key={t.id} className="py-2 text-sm">
@@ -3725,7 +3723,6 @@ function Tasks({ cfg, saveCfg, flash }) {
                         {t.code && <span className="shrink-0 font-mono text-[10px] text-teal-500">{t.code}</span>}
                         <span className="min-w-0 text-slate-200">{t.name}</span>
                       </div>
-                      {t.desc && <p className="mt-0.5 text-[11px] leading-snug text-slate-600">{t.desc}</p>}
                     </div>
                     <div className="flex shrink-0 gap-1.5">
                       <button onClick={() => startEdit(t)} className={iconBtn}><Pencil size={13} /></button>
@@ -3771,12 +3768,6 @@ function Tasks({ cfg, saveCfg, flash }) {
 
       <div className="px-1 pt-2 text-xs uppercase tracking-widest text-slate-500">Theo bộ phận</div>
       <div className="grid gap-3 md:grid-cols-2 md:gap-4">{boxes.filter((b) => b.kind !== "role").map(renderBox)}</div>
-
-      <p className="px-1 text-xs text-slate-500">
-        Nhân sự có vai trò thì chỉ thấy tác vụ của vai trò đó, cộng thêm tác vụ dùng chung — không thấy tác vụ chung của bộ phận.
-        Nhân sự chưa phân vai trò thì thấy tác vụ của bộ phận mình. Ban giám đốc thấy tất cả.
-        Muốn chuyển một tác vụ sang ô khác thì bấm biểu tượng bút rồi đổi trong ô chọn bên dưới.
-      </p>
 
       <ConfirmDialog
         open={!!pendingRoleDel}
