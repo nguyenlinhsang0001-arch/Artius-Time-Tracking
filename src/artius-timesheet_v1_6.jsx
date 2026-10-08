@@ -3814,6 +3814,11 @@ function Tasks({ cfg, saveCfg, flash }) {
   const [leaveEditId, setLeaveEditId] = useState(null);
   const [leaveEditName, setLeaveEditName] = useState("");
   const [pendingLeaveDel, setPendingLeaveDel] = useState(null);
+  const [openMap, setOpenMap] = useState({});          // key -> mở/thu gọn; mặc định: vai trò thu gọn, "Dùng chung" mở
+  const [closedDepts, setClosedDepts] = useState({});  // phòng ban nào đang thu gọn (mặc định mở)
+  const [roleEdit, setRoleEdit] = useState(null);      // mã vai trò đang sửa
+  const [roleEditName, setRoleEditName] = useState("");
+  const [roleEditDept, setRoleEditDept] = useState("");
   const [deptName, setDeptName] = useState("");
   const [deptEdit, setDeptEdit] = useState(null);       // tên phòng ban đang sửa
   const [deptEditName, setDeptEditName] = useState("");
@@ -3892,6 +3897,21 @@ function Tasks({ cfg, saveCfg, flash }) {
     });
     flash("Đã xoá vai trò.");
   };
+  const isOpen = (key) => (key in openMap ? openMap[key] : key === "shared");
+  const toggleBox = (key) => setOpenMap((m) => ({ ...m, [key]: !isOpen(key) }));
+  const toggleDept = (d) => setClosedDepts((m) => ({ ...m, [d]: !m[d] }));
+  /* Sửa vai trò: đổi tên và/hoặc chuyển phòng ban. Mã giữ cố định vì nhân sự và tác vụ tham chiếu theo mã. */
+  const commitRole = async () => {
+    const name = roleEditName.trim();
+    if (!name) return flash("Tên vai trò không được để trống.", "err");
+    const ok = await saveCfg({
+      ...cfg,
+      roles: roles.map((r) => (r.id === roleEdit ? { ...r, name, dept: roleEditDept } : r)),
+      tasks: cfg.tasks.map((t) => (taskRoles(t).length === 1 && taskRoles(t)[0] === roleEdit ? { ...t, group: roleEditDept } : t)),
+    });
+    if (ok !== false) { setRoleEdit(null); flash("Đã cập nhật vai trò."); }
+  };
+
   const addDept = async () => {
     const name = deptName.trim();
     if (!name) return flash("Nhập tên phòng ban.", "err");
@@ -3950,21 +3970,22 @@ function Tasks({ cfg, saveCfg, flash }) {
     const list = listOf(b.key);
     return (
       <div key={b.key} className="rounded-xl border border-slate-800 bg-slate-900 p-3 md:p-4">
-        <div className="mb-3 flex items-baseline justify-between gap-2">
-          <div className="min-w-0">
+        <button onClick={() => toggleBox(b.key)} className={`flex w-full items-center justify-between gap-2 text-left ${isOpen(b.key) ? "mb-3" : ""}`}>
+          <span className="flex min-w-0 items-center gap-1.5">
+            {isOpen(b.key) ? <ChevronDown size={15} className="shrink-0 text-slate-500" /> : <ChevronRight size={15} className="shrink-0 text-slate-500" />}
             <h3 className={`truncate text-sm font-medium ${b.kind === "shared" ? "text-slate-400" : "text-slate-100"}`}>{b.title}</h3>
-          </div>
+          </span>
           <span className="shrink-0 font-mono text-xs text-slate-600">{list.length}</span>
-        </div>
+        </button>
 
-        <div className="flex gap-2">
+        {isOpen(b.key) && <div className="flex gap-2">
           <input value={drafts[b.key] || ""} onChange={(e) => setDraft(b.key, e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && add(b.key)}
             placeholder="Thêm tác vụ rồi Enter" className={`min-w-0 flex-1 ${inputCls}`} />
           <button onClick={() => add(b.key)} className={`${iconBtn} shrink-0`}><Plus size={15} /></button>
-        </div>
+        </div>}
 
-        {list.length > 0 && (
+        {isOpen(b.key) && list.length > 0 && (
           <div className="mt-2 divide-y divide-slate-800">
             {list.map((t) => (
               <div key={t.id} className="py-2 text-sm">
@@ -4044,9 +4065,20 @@ function Tasks({ cfg, saveCfg, flash }) {
         </div>
         {roles.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {roles.map((r) => (
-              <span key={r.id} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-950 py-1 pl-2.5 pr-1 text-xs text-slate-300">
+            {roles.map((r) => roleEdit === r.id ? (
+              <span key={r.id} className="inline-flex flex-wrap items-center gap-1.5">
+                <span className="font-mono text-xs text-teal-300">{r.id}</span>
+                <input autoFocus value={roleEditName} onChange={(e) => setRoleEditName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && commitRole()} className={`w-48 ${inputCls}`} />
+                <select value={roleEditDept} onChange={(e) => setRoleEditDept(e.target.value)} className={`w-44 ${selectCls}`}>
+                  {DEPTS.map((d) => <option key={d}>{d}</option>)}
+                </select>
+                <button onClick={commitRole} className={`${iconBtn} border-teal-800 text-teal-400`}><Check size={15} /></button>
+                <button onClick={() => setRoleEdit(null)} className={iconBtn}><X size={15} /></button>
+              </span>
+            ) : (
+              <span key={r.id} className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950 py-1 pl-2.5 pr-1 text-xs text-slate-300">
                 <span className="font-mono text-teal-300">{r.id}</span>{r.name}
+                <button onClick={() => { setRoleEdit(r.id); setRoleEditName(r.name); setRoleEditDept(r.dept || DEPTS[0]); }} title="Sửa vai trò" className="rounded p-1 text-slate-500 hover:text-teal-300"><Pencil size={12} /></button>
                 <button onClick={() => setPendingRoleDel(r)} title="Xoá vai trò" className="rounded p-1 text-slate-500 hover:text-rose-400"><Trash2 size={12} /></button>
               </span>
             ))}
@@ -4090,7 +4122,28 @@ function Tasks({ cfg, saveCfg, flash }) {
       </div>
 
       <div className="px-1 text-xs uppercase tracking-widest text-slate-500">Theo vai trò</div>
-      <div className="grid gap-3 md:grid-cols-2 md:gap-4">{boxes.filter((b) => b.kind === "role").map(renderBox)}</div>
+      {(() => {
+        const roleBoxes = boxes.filter((b) => b.kind === "role");
+        const groups = [...depts, "__other__"].map((d) => ({
+          dept: d,
+          label: d === "__other__" ? "Chưa phân phòng ban" : d,
+          items: roleBoxes.filter((b) => { const rd = roleInfo(b.id)?.dept; return d === "__other__" ? !depts.includes(rd) : rd === d; }),
+        })).filter((g) => g.items.length > 0);
+        return groups.map((g) => {
+          const open = !closedDepts[g.dept];
+          const taskCount = g.items.reduce((n, b) => n + listOf(b.key).length, 0);
+          return (
+            <div key={g.dept} className="space-y-2">
+              <button onClick={() => toggleDept(g.dept)} className="flex w-full items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-left hover:border-slate-700">
+                {open ? <ChevronDown size={15} className="text-slate-500" /> : <ChevronRight size={15} className="text-slate-500" />}
+                <span className="text-sm font-medium text-slate-200">{g.label}</span>
+                <span className="text-xs text-slate-500">{g.items.length} vai trò · {taskCount} tác vụ</span>
+              </button>
+              {open && <div className="grid items-start gap-3 md:grid-cols-2 md:gap-4">{g.items.map(renderBox)}</div>}
+            </div>
+          );
+        });
+      })()}
 
       <div className="grid gap-3 md:grid-cols-2 md:gap-4">{boxes.filter((b) => b.kind === "shared").map(renderBox)}</div>
 
