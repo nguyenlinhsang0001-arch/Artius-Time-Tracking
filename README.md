@@ -1,15 +1,22 @@
-# ARTIUS — Quản lý giờ công · v1.4 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v1.5 (bản webapp cho Vercel)
 
-Bản đóng gói của `artius-timesheet_v1_4.jsx` để chạy như một webapp độc lập.
-Code ứng dụng giữ nguyên 100% so với bản artifact. Phần thêm vào chỉ là lớp vỏ:
+Bản đóng gói của `artius-timesheet_v1_5.jsx` để chạy như một webapp độc lập.
+Code ứng dụng giống hệt file `.jsx` cùng phiên bản. Phần thêm vào chỉ là lớp vỏ:
 
 | File | Vai trò |
 |---|---|
-| `src/artius-timesheet_v1_4.jsx` | Ứng dụng v1.4, không sửa |
+| `src/artius-timesheet_v1_5.jsx` | Ứng dụng v1.5 |
 | `src/storage.js` | Thay `window.storage` của Claude bằng Supabase (dữ liệu chung) + localStorage (tuỳ chọn riêng từng máy) |
 | `src/main.jsx`, `index.html`, `src/index.css` | Điểm khởi động, Tailwind |
 | `supabase/schema.sql` | Tạo bảng `artius_kv` trên Supabase |
 | `.env.example` | Mẫu 2 biến môi trường |
+
+## Mới ở v1.5
+
+- Ghi chú phiên bản ở góc trái, dưới cùng màn hình.
+- Tab Tác vụ (ban quản lý): thêm mới / xoá vai trò. Xoá vai trò thì tác vụ của vai trò đó chuyển về bộ phận của vai trò, nhân sự đang giữ vai trò đó thành không phân vai trò.
+- Bỏ nút "Nạp bộ tác vụ theo vai trò".
+- Không đổi cấu trúc Supabase: dùng lại bảng `artius_kv` đã tạo cho v1.4, dữ liệu v1.4 mở được trong v1.5 (danh sách vai trò mặc định tự nạp lần đầu).
 
 ## 1. Supabase
 
@@ -46,7 +53,7 @@ npm run dev
 
 ## Lưu ý bảo mật
 
-v1.4 chưa có đăng nhập tài khoản; mã PIN quản lý chỉ chặn ở giao diện. Trình duyệt
+v1.5 chưa có đăng nhập tài khoản; mã PIN quản lý chỉ chặn ở giao diện. Trình duyệt
 truy cập Supabase bằng anon key, nên **ai có đường link webapp đều có thể đọc/ghi dữ liệu
 giờ công**. Chỉ chia sẻ link trong nội bộ. Tài khoản và phân quyền thật là việc của
 một bản nâng cấp sau.
