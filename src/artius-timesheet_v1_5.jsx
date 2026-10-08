@@ -22,7 +22,9 @@ import {
    · Ghi chú phiên bản ở góc trái, dưới cùng màn hình
    · Tab Tác vụ (ban quản lý): thêm mới / xoá vai trò. Danh sách vai trò nằm trong cấu hình dùng chung
    · Bỏ nút "Nạp bộ tác vụ theo vai trò" (bộ 25 tác vụ chuẩn)
-   · Tab Tác vụ chỉ còn tên vai trò / bộ phận và danh sách tác vụ; bỏ các dòng ghi chú nhỏ
+   · Tab Tác vụ chỉ còn ô vai trò, ô dùng chung và danh sách tác vụ; bỏ các dòng ghi chú nhỏ
+   · Bỏ tác vụ theo bộ phận: tác vụ chỉ gắn vai trò hoặc dùng chung. Tác vụ cấp bộ phận có sẵn
+     trong dữ liệu bị xoá khi nạp. Xoá một vai trò thì xoá luôn tác vụ của vai trò đó
 
    Mới ở v1.4
    · Toàn bộ dữ liệu nằm trong MỘT khoá lưu trữ. Đọc 1 lần lúc mở app, sau đó mọi thao tác
@@ -380,22 +382,6 @@ const useIsMobile = () => {
 
 /* ---------- catalog mặc định ---------- */
 const DEFAULT_TASKS = [
-  { id: "t01", name: "Khảo sát hiện trạng / đo đạc", group: "Thiết kế", depts: ["Thiết kế"] },
-  { id: "t02", name: "Thiết kế concept", group: "Thiết kế", depts: ["Thiết kế"] },
-  { id: "t03", name: "Chọn mẫu vật liệu (material selection)", group: "Thiết kế", depts: ["Thiết kế"] },
-  { id: "t04", name: "Dựng hình 3D", group: "Thiết kế", depts: ["Thiết kế"] },
-  { id: "t05", name: "Render / hậu kỳ hình ảnh", group: "Thiết kế", depts: ["Thiết kế"] },
-  { id: "t06", name: "Triển khai bản vẽ SD", group: "Thiết kế", depts: ["Thiết kế"] },
-  { id: "t07", name: "Triển khai bản vẽ DD", group: "Thiết kế", depts: ["Thiết kế"] },
-  { id: "t08", name: "Triển khai bản vẽ CD", group: "Thiết kế", depts: ["Thiết kế"] },
-  { id: "t09", name: "Shop drawing", group: "Xưởng", depts: ["Xưởng"] },
-  { id: "t10", name: "Lập trình CNC / chuẩn bị sản xuất", group: "Xưởng", depts: ["Xưởng"] },
-  { id: "t11", name: "Sản xuất tại xưởng", group: "Xưởng", depts: ["Xưởng"] },
-  { id: "t12", name: "Giám sát thi công tại công trường", group: "Thi công", depts: ["Thi công"] },
-  { id: "t13", name: "Lắp đặt / hoàn thiện", group: "Thi công", depts: ["Thi công"] },
-  { id: "t14", name: "Xử lý hiện trường / RFI", group: "Thi công", depts: ["Thi công"] },
-  { id: "t15", name: "Bóc tách khối lượng / BOQ", group: "BOQ", depts: ["BOQ"] },
-  { id: "t16", name: "Lập dự toán / báo giá", group: "BOQ", depts: ["BOQ"] },
   { id: "t17", name: "Họp & trình bày khách hàng", group: "Chung", depts: [] },
   { id: "t18", name: "Nghiệm thu / bàn giao", group: "Chung", depts: [] },
   { id: "t19", name: "Chỉnh sửa theo yêu cầu (revision)", group: "Chung", depts: [] },
@@ -431,14 +417,14 @@ const taskDepts = (t) => {
   return GROUP_DEPTS[t.group] || [];
 };
 const taskRoles = (t) => (Array.isArray(t.roles) ? t.roles : []);
-/* Thứ tự xét: tác vụ gắn vai trò thì chỉ đúng vai trò đó thấy; không gắn vai trò thì xét bộ phận;
-   không gắn gì cả là tác vụ dùng chung, ai cũng thấy. */
+/* Từ v1.5 không còn tác vụ cấp bộ phận: tác vụ hoặc gắn vai trò, hoặc dùng chung. */
+const isDeptTask = (t) => taskRoles(t).length === 0 && taskDepts(t).length > 0;
+/* Thứ tự xét: tác vụ gắn vai trò thì chỉ đúng vai trò đó thấy; không gắn vai trò là tác vụ dùng chung, ai cũng thấy. */
 const taskVisibleTo = (t, dept, role) => {
   if (!dept || DEPTS_SEE_ALL.includes(dept)) return true;
   const rs = taskRoles(t);
   if (rs.length) return !!role && rs.includes(role);
-  const ds = taskDepts(t);
-  return ds.length === 0 || ds.includes(dept);
+  return true;
 };
 const tasksForDept = (tasks = [], dept, role) => tasks.filter((t) => taskVisibleTo(t, dept, role));
 // nhãn hiển thị: có mã thì đưa mã lên trước cho dễ đối chiếu với bảng vai trò
@@ -872,6 +858,7 @@ export default function App() {
         const db = await loadDB();          // 1 lệnh duy nhất cho toàn bộ dữ liệu
         let c = db.config || emptyConfig();
         c.tasks = c.tasks?.length ? c.tasks : DEFAULT_TASKS;
+        c.tasks = c.tasks.filter((t) => !isDeptTask(t));   // v1.5: bỏ tác vụ cấp bộ phận có sẵn
         c.deadlineDay = c.deadlineDay || 5;
         c.hours = { ...DEFAULT_HOURS, ...(c.hours || {}) };  // dữ liệu cũ chưa có mục này thì lấy mặc định
         c.holidays = Array.isArray(c.holidays) ? c.holidays : [];
@@ -916,7 +903,7 @@ export default function App() {
        ["emp", "Nhân sự", Users], ["task", "Tác vụ", ListChecks], ["set", "Thiết lập", Settings]]
     : me ? [["ts", "Chấm công", Clock], ["edash", "Dashboard", LayoutDashboard], ["eset", "Cài đặt", Settings]] : [];
 
-  const pageTitle = { dash: "Dashboard giờ công", sheet: "Bảng công nhân sự", proj: "Dự án", emp: "Nhân sự", task: "Tác vụ công việc theo bộ phận", set: "Thiết lập", ts: "", edash: "Dashboard cá nhân", eset: "Cài đặt cá nhân" }[tab];
+  const pageTitle = { dash: "Dashboard giờ công", sheet: "Bảng công nhân sự", proj: "Dự án", emp: "Nhân sự", task: "Tác vụ công việc theo vai trò", set: "Thiết lập", ts: "", edash: "Dashboard cá nhân", eset: "Cài đặt cá nhân" }[tab];
 
   return (
     <div className="flex min-h-screen w-full bg-slate-950 text-slate-100">
@@ -1708,7 +1695,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
           <div>
             {emp?.role
               ? <>Vai trò <b>{roleLabel(emp.role)}</b> chưa được gán tác vụ nào.</>
-              : <>Bộ phận <b>{emp?.dept}</b> chưa được gán tác vụ nào.</>}
+              : <>Bạn chưa được phân vai trò và chưa có tác vụ dùng chung nào.</>}
             {" "}Nhờ quản lý vào tab Tác vụ bổ sung, hoặc kiểm tra lại vai trò của bạn ở tab Nhân sự.
           </div>
         </div>
@@ -3606,26 +3593,21 @@ function Tasks({ cfg, saveCfg, flash }) {
   const [pendingRoleDel, setPendingRoleDel] = useState(null);
   const roles = cfg.roles || [];
 
-  /* Một "ô" là một chủ sở hữu tác vụ: vai trò (trong bộ phận Thiết kế), bộ phận, hoặc dùng chung.
-     Khoá dạng "r:ARC" / "d:Xưởng" / "shared" để một select duy nhất chuyển tác vụ đi đâu cũng được. */
+  /* Một "ô" là một chủ sở hữu tác vụ: một vai trò, hoặc dùng chung.
+     Khoá dạng "r:ARC" / "shared" để một select duy nhất chuyển tác vụ đi đâu cũng được. */
   const SHARED = "shared";
   const boxes = [
     ...roles.map((r) => ({ key: `r:${r.id}`, kind: "role", id: r.id, title: `${r.id} · ${r.name}` })),
-    ...DEPTS.map((d) => ({ key: `d:${d}`, kind: "dept", id: d, title: d })),
     { key: SHARED, kind: "shared", id: "", title: "Dùng chung" },
   ];
   const ownerOf = (t) => {
     const rs = taskRoles(t);
-    if (rs.length) return `r:${rs[0]}`;
-    const ds = taskDepts(t);
-    return ds.length ? `d:${ds[0]}` : SHARED;
+    return rs.length ? `r:${rs[0]}` : SHARED;
   };
   const patchFor = (key) => {
     if (key === SHARED) return { roles: [], depts: [], group: "Chung" };
-    const [kind, id] = [key.slice(0, 1), key.slice(2)];
-    return kind === "r"
-      ? { roles: [id], depts: [], group: roleInfo(id)?.dept || "Thiết kế" }
-      : { roles: [], depts: [id], group: id };
+    const id = key.slice(2);
+    return { roles: [id], depts: [], group: roleInfo(id)?.dept || "Thiết kế" };
   };
   const listOf = (key) => cfg.tasks.filter((t) => ownerOf(t) === key);
 
@@ -3663,24 +3645,25 @@ function Tasks({ cfg, saveCfg, flash }) {
     if (ok !== false) { setRoleCode(""); setRoleName(""); flash("Đã thêm vai trò."); }
   };
 
-  /* Xoá vai trò không làm mất dữ liệu nào: tác vụ của vai trò đó chuyển về bộ phận của vai trò,
-     nhân sự đang giữ vai trò đó thành "không phân vai trò" (nên thấy tác vụ của bộ phận mình). */
+  /* Xoá vai trò thì xoá luôn tác vụ của vai trò đó (không còn tác vụ cấp bộ phận để chuyển về).
+     Nhân sự đang giữ vai trò đó thành "không phân vai trò", chỉ thấy tác vụ dùng chung.
+     Giờ công đã chấm vẫn giữ nguyên, báo cáo hiển thị là (tác vụ đã xoá). */
   const confirmDelRole = async () => {
     const r = pendingRoleDel; setPendingRoleDel(null);
     if (!r) return;
     await saveCfg({
       ...cfg,
       roles: roles.filter((x) => x.id !== r.id),
-      tasks: cfg.tasks.map((t) => {
-        if (!taskRoles(t).includes(r.id)) return t;
+      tasks: cfg.tasks.flatMap((t) => {
+        if (!taskRoles(t).includes(r.id)) return [t];
         const left = taskRoles(t).filter((x) => x !== r.id);
-        return left.length ? { ...t, roles: left } : { ...t, roles: [], depts: [r.dept], group: r.dept };
+        return left.length ? [{ ...t, roles: left }] : [];
       }),
       employees: cfg.employees.map((e) => (e.role === r.id ? { ...e, role: "" } : e)),
     });
     flash("Đã xoá vai trò.");
   };
-  const delRoleTaskCount = pendingRoleDel ? cfg.tasks.filter((t) => taskRoles(t).includes(pendingRoleDel.id)).length : 0;
+  const delRoleTaskCount = pendingRoleDel ? cfg.tasks.filter((t) => taskRoles(t).length === 1 && taskRoles(t)[0] === pendingRoleDel.id).length : 0;
   const delRoleEmpCount = pendingRoleDel ? cfg.employees.filter((e) => e.role === pendingRoleDel.id).length : 0;
 
   const renderBox = (b) => {
@@ -3766,14 +3749,13 @@ function Tasks({ cfg, saveCfg, flash }) {
       <div className="px-1 text-xs uppercase tracking-widest text-slate-500">Theo vai trò</div>
       <div className="grid gap-3 md:grid-cols-2 md:gap-4">{boxes.filter((b) => b.kind === "role").map(renderBox)}</div>
 
-      <div className="px-1 pt-2 text-xs uppercase tracking-widest text-slate-500">Theo bộ phận</div>
-      <div className="grid gap-3 md:grid-cols-2 md:gap-4">{boxes.filter((b) => b.kind !== "role").map(renderBox)}</div>
+      <div className="grid gap-3 md:grid-cols-2 md:gap-4">{boxes.filter((b) => b.kind === "shared").map(renderBox)}</div>
 
       <ConfirmDialog
         open={!!pendingRoleDel}
         title={`Xoá vai trò ${pendingRoleDel ? roleLabel(pendingRoleDel.id) : ""}?`}
-        desc={`${delRoleTaskCount} tác vụ của vai trò này sẽ chuyển về bộ phận ${pendingRoleDel?.dept || ""}; ${delRoleEmpCount} nhân sự đang giữ vai trò này sẽ thành không phân vai trò. Giờ công đã chấm không bị ảnh hưởng.`}
-        confirmLabel="Xoá vai trò"
+        desc={`${delRoleTaskCount} tác vụ của vai trò này sẽ bị xoá; ${delRoleEmpCount} nhân sự đang giữ vai trò này sẽ thành không phân vai trò (chỉ thấy tác vụ dùng chung). Giờ công đã chấm vẫn giữ, tác vụ bị xoá hiển thị là (tác vụ đã xoá).`}
+        confirmLabel="Xoá vai trò và tác vụ"
         onConfirm={confirmDelRole}
         onCancel={() => setPendingRoleDel(null)}
       />
