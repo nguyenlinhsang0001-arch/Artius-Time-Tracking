@@ -26,6 +26,12 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dữ liệu chỉ được tải SAU khi đăng nhập. Tải hỏng thì dừng ở màn báo lỗi, không vào app
      với dữ liệu rỗng (tránh ghi đè dữ liệu thật)
 
+   Cập nhật 09/10/2026 (vẫn là v1.7) — tab Tác vụ
+   · Chia 3 tab con: Tác vụ | Phòng ban & vai trò | Vắng mặt
+   · Tab Tác vụ: cột trái là vai trò gom theo phòng ban (có ô tìm và số tác vụ), cột phải là tác vụ của vai trò đang chọn
+   · Phòng ban và vai trò: bấm vào để sửa tên tại chỗ, chỉ còn nút thùng rác
+   · Vai trò: bấm đúp vào mã để sửa mã (nhân sự và tác vụ đang dùng mã cũ đổi theo); kéo thả sang dòng phòng ban khác để chuyển phòng ban
+
    Mới ở v1.5
    · Ghi chú phiên bản ở góc trái, dưới cùng màn hình
    · Tab Tác vụ (ban quản lý): thêm mới / xoá vai trò. Danh sách vai trò nằm trong cấu hình dùng chung
@@ -4078,6 +4084,9 @@ function EmployeeProjectTracker({ cfg, saveCfg, flash }) {
 
 /* ============================ HẠNG MỤC ============================ */
 function Tasks({ cfg, saveCfg, flash }) {
+  const [sub, setSub] = useState("task");               // tab con: task | org | leave
+  const [sel, setSel] = useState("");                   // ô tác vụ đang chọn: "r:<mã vai trò>" hoặc "shared"
+  const [q, setQ] = useState("");                       // ô tìm vai trò
   const [drafts, setDrafts] = useState({});
   const [editId, setEditId] = useState(null);
   const [editName, setEditName] = useState("");
@@ -4092,8 +4101,15 @@ function Tasks({ cfg, saveCfg, flash }) {
   const [leaveEditName, setLeaveEditName] = useState("");
   const [pendingLeaveDel, setPendingLeaveDel] = useState(null);
   const [deptName, setDeptName] = useState("");
-  const [deptEdit, setDeptEdit] = useState(null);       // tên phòng ban đang sửa
-  const [deptEditName, setDeptEditName] = useState("");
+  /* Sửa tại chỗ ở tab Phòng ban & vai trò: { kind: "dept" | "role" | "code", key, value }.
+     Giữ thêm một bản trong ref để Enter và sự kiện rời ô (blur) không lưu hai lần. */
+  const [edit, setEditState] = useState(null);
+  const editRef = useRef(null);
+  const setEdit = (v) => { editRef.current = v; setEditState(v); };
+  const [drag, setDrag] = useState(null);               // vai trò đang được kéo: { id, x, y, w }
+  const [overDept, setOverDept] = useState(null);       // dòng phòng ban đang được nhắm để thả
+  const press = useRef(null);
+  const lastCodeTap = useRef({ id: "", at: 0 });
   const depts = cfg.depts || DEFAULT_DEPTS;
   const LOCKED_DEPT = DEPTS_SEE_ALL[0];                 // Ban giám đốc: cố định
   const roles = cfg.roles || [];
@@ -4116,6 +4132,10 @@ function Tasks({ cfg, saveCfg, flash }) {
     return { roles: [id], depts: [], group: roleInfo(id)?.dept || "Thiết kế" };
   };
   const listOf = (key) => cfg.tasks.filter((t) => ownerOf(t) === key);
+  // phòng ban theo thứ tự khai báo; vai trò mang tên phòng ban lạ (dữ liệu cũ) xếp cuối để không bị mất dấu
+  const deptOrder = [...depts, ...roles.map((r) => r.dept).filter((d, i, a) => !depts.includes(d) && a.indexOf(d) === i)];
+  const cur = boxes.some((b) => b.key === sel) ? sel : boxes[0].key;   // vai trò đang chọn bị xoá thì về ô đầu
+  const curRole = cur === SHARED ? null : roles.find((r) => `r:${r.id}` === cur);
 
   const setDraft = (k, v) => setDrafts((x) => ({ ...x, [k]: v }));
 
@@ -4141,11 +4161,13 @@ function Tasks({ cfg, saveCfg, flash }) {
     flash("Đã xoá tác vụ.");
   };
 
+  const ROLE_CODE_RE = /^[A-Z0-9_-]{1,8}$/;
+  const ROLE_CODE_MSG = "Mã vai trò chỉ gồm chữ không dấu, số, - hoặc _, tối đa 8 ký tự.";
   const addRole = async () => {
     const id = roleCode.trim().toUpperCase();
     const name = roleName.trim();
     if (!id || !name) return flash("Nhập mã và tên vai trò.", "err");
-    if (!/^[A-Z0-9_-]{1,8}$/.test(id)) return flash("Mã vai trò chỉ gồm chữ không dấu, số, - hoặc _, tối đa 8 ký tự.", "err");
+    if (!ROLE_CODE_RE.test(id)) return flash(ROLE_CODE_MSG, "err");
     if (roles.some((r) => r.id === id)) return flash("Mã vai trò này đã có.", "err");
     const ok = await saveCfg({ ...cfg, roles: [...roles, { id, name, dept: depts.includes(roleDept) ? roleDept : depts[0] }] });
     if (ok !== false) { setRoleCode(""); setRoleName(""); flash("Đã thêm vai trò."); }
@@ -4176,21 +4198,6 @@ function Tasks({ cfg, saveCfg, flash }) {
     const ok = await saveCfg({ ...cfg, depts: [...depts, name] });
     if (ok !== false) { setDeptName(""); flash("Đã thêm phòng ban."); }
   };
-  /* Đổi tên: nhân sự, vai trò và nhóm tác vụ đang mang tên cũ đổi theo để dữ liệu không lệch. */
-  const commitDept = async () => {
-    const old = deptEdit; const name = deptEditName.trim();
-    if (!name) return flash("Tên phòng ban không được để trống.", "err");
-    if (name !== old && depts.some((d) => d.toLowerCase() === name.toLowerCase())) return flash("Phòng ban này đã có.", "err");
-    if (name === old) return setDeptEdit(null);
-    const ok = await saveCfg({
-      ...cfg,
-      depts: depts.map((d) => (d === old ? name : d)),
-      employees: cfg.employees.map((e) => (e.dept === old ? { ...e, dept: name } : e)),
-      roles: roles.map((r) => (r.dept === old ? { ...r, dept: name } : r)),
-      tasks: cfg.tasks.map((t) => ({ ...t, group: t.group === old ? name : t.group, depts: Array.isArray(t.depts) ? t.depts.map((d) => (d === old ? name : d)) : t.depts })),
-    });
-    if (ok !== false) { setDeptEdit(null); flash("Đã đổi tên phòng ban."); }
-  };
   const delDept = async (d) => {
     const ne = cfg.employees.filter((e) => e.dept === d).length;
     const nr = roles.filter((r) => r.dept === d).length;
@@ -4198,6 +4205,111 @@ function Tasks({ cfg, saveCfg, flash }) {
     await saveCfg({ ...cfg, depts: depts.filter((x) => x !== d) });
     flash("Đã xoá phòng ban.");
   };
+
+  /* ---- sửa tại chỗ: mỗi hàm trả về thông điệp lỗi, hoặc cấu hình mới cần lưu, hoặc null nếu không đổi gì ---- */
+  /* Đổi tên phòng ban: nhân sự, vai trò và nhóm tác vụ đang mang tên cũ đổi theo để dữ liệu không lệch. */
+  const renameDept = (old, raw) => {
+    const name = raw.trim();
+    if (!name) return "Tên phòng ban không được để trống.";
+    if (name === old) return null;
+    if (depts.some((d) => d !== old && d.toLowerCase() === name.toLowerCase())) return "Phòng ban này đã có.";
+    return {
+      ...cfg,
+      depts: depts.map((d) => (d === old ? name : d)),
+      employees: cfg.employees.map((e) => (e.dept === old ? { ...e, dept: name } : e)),
+      roles: roles.map((r) => (r.dept === old ? { ...r, dept: name } : r)),
+      tasks: cfg.tasks.map((t) => ({ ...t, group: t.group === old ? name : t.group, depts: Array.isArray(t.depts) ? t.depts.map((d) => (d === old ? name : d)) : t.depts })),
+    };
+  };
+  const renameRole = (id, raw) => {
+    const name = raw.trim();
+    if (!name) return "Tên vai trò không được để trống.";
+    if (roles.find((r) => r.id === id)?.name === name) return null;
+    return { ...cfg, roles: roles.map((r) => (r.id === id ? { ...r, name } : r)) };
+  };
+  /* Đổi mã vai trò: nhân sự và tác vụ tham chiếu vai trò bằng mã, nên phải đổi theo ở cả hai nơi. */
+  const recodeRole = (old, raw) => {
+    const id = raw.trim().toUpperCase();
+    if (!id) return "Mã vai trò không được để trống.";
+    if (id === old) return null;
+    if (!ROLE_CODE_RE.test(id)) return ROLE_CODE_MSG;
+    if (roles.some((r) => r.id === id)) return "Mã vai trò này đã có.";
+    return {
+      ...cfg,
+      roles: roles.map((r) => (r.id === old ? { ...r, id } : r)),
+      tasks: cfg.tasks.map((t) => (taskRoles(t).includes(old) ? { ...t, roles: taskRoles(t).map((x) => (x === old ? id : x)) } : t)),
+      employees: cfg.employees.map((e) => (e.role === old ? { ...e, role: id } : e)),
+    };
+  };
+  /* Enter: sai thì báo lỗi và ở lại ô đang sửa. Rời ô (blur): hợp lệ thì lưu, sai thì giữ giá trị cũ. */
+  const commitEdit = async (fromBlur) => {
+    const e = editRef.current;
+    if (!e) return;
+    const next = e.kind === "dept" ? renameDept(e.key, e.value) : e.kind === "role" ? renameRole(e.key, e.value) : recodeRole(e.key, e.value);
+    if (typeof next === "string") {
+      if (fromBlur) setEdit(null);
+      if (!fromBlur || e.value.trim()) flash(next, "err");
+      return;
+    }
+    setEdit(null);
+    if (!next) return;
+    const ok = await saveCfg(next);
+    if (ok !== false && e.kind === "code" && cur === `r:${e.key}`) setSel(`r:${e.value.trim().toUpperCase()}`);
+  };
+  const editInput = (cls, extra = {}) => (
+    <input autoFocus value={edit.value} onFocus={(x) => x.target.select()}
+      onChange={(x) => setEdit({ ...edit, value: x.target.value })}
+      onKeyDown={(x) => { if (x.key === "Enter") commitEdit(false); if (x.key === "Escape") setEdit(null); }}
+      onBlur={() => commitEdit(true)}
+      className={`h-7 rounded border border-teal-700 bg-slate-900 px-2 text-xs text-slate-100 focus:outline-none ${cls}`} {...extra} />
+  );
+
+  /* Chuyển vai trò sang phòng ban khác: nhóm của các tác vụ thuộc vai trò đó đổi theo. */
+  const moveRole = async (id, dept) => {
+    const r = roles.find((x) => x.id === id);
+    if (!r || r.dept === dept) return;
+    const ok = await saveCfg({
+      ...cfg,
+      roles: roles.map((x) => (x.id === id ? { ...x, dept } : x)),
+      tasks: cfg.tasks.map((t) => (taskRoles(t)[0] === id ? { ...t, group: dept } : t)),
+    });
+    if (ok !== false) flash(`Đã chuyển ${id} sang ${dept}.`);
+  };
+  /* Một lần nhấn trên chip vai trò: nhích quá 6px là kéo (chỉ bằng chuột), không nhích là bấm.
+     Bấm vào tên -> sửa tên. Bấm đúp vào mã -> sửa mã. */
+  const deptAt = (x, y) => document.elementFromPoint(x, y)?.closest("[data-dept-row]")?.getAttribute("data-dept-row") || null;
+  const onChipDown = (ev, r) => {
+    if (ev.button !== 0 || ev.target.closest("button")) return;
+    const box = ev.currentTarget.getBoundingClientRect();
+    const p = { id: r.id, onCode: !!ev.target.closest("[data-role-code]"), mouse: ev.pointerType !== "touch", x0: ev.clientX, y0: ev.clientY, dx: ev.clientX - box.left, dy: ev.clientY - box.top, w: box.width, moved: false };
+    press.current = p;
+    const move = (e) => {
+      if (!p.moved) {
+        if (!p.mouse || Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < 6) return;
+        p.moved = true;
+      }
+      setDrag({ id: p.id, x: e.clientX - p.dx, y: e.clientY - p.dy, w: p.w });
+      setOverDept(deptAt(e.clientX, e.clientY));
+    };
+    const stop = (e, cancelled) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      press.current = null; setDrag(null); setOverDept(null);
+      if (cancelled) return;
+      if (p.moved) { const d = deptAt(e.clientX, e.clientY); if (d) moveRole(p.id, d); return; }
+      if (!p.onCode) { setEdit({ kind: "role", key: r.id, value: r.name }); return; }
+      const now = Date.now(), last = lastCodeTap.current;
+      if (last.id === r.id && now - last.at < 400) { lastCodeTap.current = { id: "", at: 0 }; setEdit({ kind: "code", key: r.id, value: r.id }); }
+      else lastCodeTap.current = { id: r.id, at: now };
+    };
+    const up = (e) => stop(e, false);
+    const cancel = (e) => stop(e, true);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+  };
+  const dragRole = drag ? roles.find((r) => r.id === drag.id) : null;
 
   const addLeave = async () => {
     const name = leaveName.trim();
@@ -4223,123 +4335,218 @@ function Tasks({ cfg, saveCfg, flash }) {
   const delRoleTaskCount = pendingRoleDel ? cfg.tasks.filter((t) => taskRoles(t).length === 1 && taskRoles(t)[0] === pendingRoleDel.id).length : 0;
   const delRoleEmpCount = pendingRoleDel ? cfg.employees.filter((e) => e.role === pendingRoleDel.id).length : 0;
 
-  const renderBox = (b) => {
-    const list = listOf(b.key);
+  const panelCls = "rounded-xl border border-slate-800 bg-slate-900";
+  const chipCls = "inline-flex min-h-[36px] max-w-full items-center gap-1.5 rounded-md border border-slate-700 bg-slate-950 py-1 pl-3 pr-1 text-sm text-slate-300";
+  const miniDel = "rounded p-1.5 text-slate-500 hover:bg-slate-800 hover:text-rose-400";
+  // nút vuông 44px đứng cạnh ô nhập (iconBtn cao 36px nên lệch hàng với ô nhập 44px)
+  const sqBtn = "flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-100";
+
+  /* ---------------- tab con Tác vụ: trái = vai trò gom theo phòng ban, phải = tác vụ của vai trò đang chọn ---------------- */
+  const kw = norm(q.trim());
+  const roleHit = (r) => !kw || norm(`${r.id} ${r.name} ${r.dept}`).includes(kw);
+  const roleGroups = deptOrder.map((d) => ({ dept: d, list: roles.filter((r) => r.dept === d && roleHit(r)) })).filter((g) => g.list.length);
+  const showShared = !kw || norm("dùng chung").includes(kw);
+  const roleBtn = (key, code, name) => {
+    const n = listOf(key).length;
+    const on = cur === key;
     return (
-      <div key={b.key} className="rounded-xl border border-slate-800 bg-slate-900 p-3 md:p-4">
-        <div className="mb-3 flex items-baseline justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className={`truncate text-sm font-medium ${b.kind === "shared" ? "text-slate-400" : "text-slate-100"}`}>{b.title}</h3>
+      <button key={key} onClick={() => { setSel(key); setEditId(null); }}
+        className={`relative flex min-h-[40px] w-full items-center gap-2 rounded-md pl-3.5 pr-2.5 text-left text-sm ${on ? "bg-slate-800 text-slate-100" : "text-slate-300 hover:bg-slate-800"}`}>
+        {on && <span className="absolute bottom-2.5 left-0 top-2.5 w-0.5 rounded-full bg-teal-400" />}
+        <span className="w-12 shrink-0 font-mono text-xs text-teal-400">{code}</span>
+        <span className="min-w-0 flex-1 truncate">{name}</span>
+        <span className={`shrink-0 font-mono text-xs ${n ? "text-slate-400" : "text-slate-600"}`}>{n}</span>
+      </button>
+    );
+  };
+  const groupHead = (label, n) => (
+    <div className="sticky top-0 z-10 mt-3 flex items-center justify-between gap-2 rounded-md border border-slate-700 bg-[#1a2740] px-2.5 py-2 text-xs uppercase tracking-wider text-slate-100 first:mt-0">
+      <span className="min-w-0 truncate">{label}</span>
+      {n != null && <span className="shrink-0 font-mono tracking-normal text-slate-400">{n}</span>}
+    </div>
+  );
+  const curList = listOf(cur);
+  const taskTab = (
+    <div className="grid items-start gap-3 md:grid-cols-[300px_minmax(0,1fr)] md:gap-4">
+      <div className={`hidden p-3 md:block ${panelCls}`}>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm vai trò" className={inputCls} />
+        <div className="mt-2 flex max-h-[68vh] flex-col gap-0.5 overflow-y-auto">
+          {roleGroups.map((g) => (
+            <React.Fragment key={g.dept}>
+              {groupHead(g.dept, g.list.length)}
+              {g.list.map((r) => roleBtn(`r:${r.id}`, r.id, r.name))}
+            </React.Fragment>
+          ))}
+          {showShared && <>{groupHead("Mọi vai trò", null)}{roleBtn(SHARED, "", "Dùng chung")}</>}
+          {!roleGroups.length && !showShared && <div className="px-2 py-4 text-sm text-slate-500">Không có vai trò khớp.</div>}
+        </div>
+      </div>
+
+      <div className={`min-w-0 ${panelCls}`}>
+        <div className="flex items-center gap-2.5 border-b border-slate-800 px-3 py-3 md:px-4">
+          <h3 className="min-w-0 truncate text-sm font-medium text-slate-100">
+            {curRole ? <><span className="font-mono text-xs text-teal-400">{curRole.id}</span> · {curRole.name}</> : "Dùng chung"}
+          </h3>
+          <span className="shrink-0 text-xs text-slate-500">{curRole ? curRole.dept : "Mọi vai trò"}</span>
+          <span className="ml-auto shrink-0 font-mono text-xs text-slate-500">{curList.length}</span>
+        </div>
+        <div className="p-3 md:p-4">
+          {/* mobile: cột vai trò thu thành một ô chọn */}
+          <select value={cur} onChange={(e) => { setSel(e.target.value); setEditId(null); }} className={`mb-3 md:hidden ${selectCls}`}>
+            {deptOrder.map((d) => {
+              const rs = roles.filter((r) => r.dept === d);
+              return rs.length ? (
+                <optgroup key={d} label={d}>
+                  {rs.map((r) => <option key={r.id} value={`r:${r.id}`}>{r.id} · {r.name} ({listOf(`r:${r.id}`).length})</option>)}
+                </optgroup>
+              ) : null;
+            })}
+            <option value={SHARED}>Dùng chung ({listOf(SHARED).length})</option>
+          </select>
+          <div className="flex gap-2">
+            <input value={drafts[cur] || ""} onChange={(e) => setDraft(cur, e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && add(cur)}
+              placeholder="Thêm tác vụ rồi Enter" className={`min-w-0 flex-1 ${inputCls}`} />
+            <button onClick={() => add(cur)} className={`${sqBtn}`}><Plus size={15} /></button>
           </div>
-          <span className="shrink-0 font-mono text-xs text-slate-600">{list.length}</span>
-        </div>
 
-        <div className="flex gap-2">
-          <input value={drafts[b.key] || ""} onChange={(e) => setDraft(b.key, e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && add(b.key)}
-            placeholder="Thêm tác vụ rồi Enter" className={`min-w-0 flex-1 ${inputCls}`} />
-          <button onClick={() => add(b.key)} className={`${iconBtn} shrink-0`}><Plus size={15} /></button>
-        </div>
-
-        {list.length > 0 && (
-          <div className="mt-2 divide-y divide-slate-800">
-            {list.map((t) => (
-              <div key={t.id} className="py-2 text-sm">
-                {editId === t.id ? (
-                  <div className="space-y-2">
-                    <input value={editName} onChange={(e) => setEditName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && commit()} className={inputCls} />
-                    <div className="flex gap-2">
-                      <select value={editOwner} onChange={(e) => setEditOwner(e.target.value)} className={`min-w-0 flex-1 ${selectCls}`}>
-                        {boxes.map((x) => <option key={x.key} value={x.key}>{x.title}</option>)}
-                      </select>
-                      <button onClick={commit} className={`${iconBtn} shrink-0 border-teal-800 text-teal-400`}><Check size={15} /></button>
-                      <button onClick={() => setEditId(null)} className={`${iconBtn} shrink-0`}><X size={15} /></button>
+          {curList.length === 0 ? <div className="px-1 pt-4 text-sm text-slate-500">Chưa có tác vụ.</div> : (
+            <div className="mt-2 divide-y divide-slate-800">
+              {curList.map((t) => (
+                <div key={t.id} className="py-2 text-sm">
+                  {editId === t.id ? (
+                    <div className="flex flex-col gap-2 md:flex-row">
+                      <input autoFocus value={editName} onChange={(e) => setEditName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditId(null); }} className={`min-w-0 md:flex-1 ${inputCls}`} />
+                      <div className="flex gap-2">
+                        <select value={editOwner} onChange={(e) => setEditOwner(e.target.value)} className={`min-w-0 flex-1 md:w-56 md:flex-none ${selectCls}`}>
+                          {boxes.map((x) => <option key={x.key} value={x.key}>{x.title}</option>)}
+                        </select>
+                        <button onClick={commit} className={`${sqBtn} border-teal-800 text-teal-400`}><Check size={15} /></button>
+                        <button onClick={() => setEditId(null)} className={`${sqBtn}`}><X size={15} /></button>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-baseline gap-1.5">
+                  ) : (
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-baseline gap-1.5">
                         {t.code && <span className="shrink-0 font-mono text-[10px] text-teal-500">{t.code}</span>}
                         <span className="min-w-0 text-slate-200">{t.name}</span>
                       </div>
+                      <div className="flex shrink-0 gap-1.5">
+                        <button onClick={() => startEdit(t)} className={iconBtn}><Pencil size={13} /></button>
+                        <button onClick={() => setPendingDel(t)} className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={13} /></button>
+                      </div>
                     </div>
-                    <div className="flex shrink-0 gap-1.5">
-                      <button onClick={() => startEdit(t)} className={iconBtn}><Pencil size={13} /></button>
-                      <button onClick={() => setPendingDel(t)} className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={13} /></button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-    );
-  };
+    </div>
+  );
 
-  return (
+  /* ---------------- tab con Phòng ban & vai trò ---------------- */
+  const orgTab = (
     <div className="space-y-3 md:space-y-4">
-      <div className="rounded-xl border border-slate-800 bg-slate-900 p-3 md:p-4">
-        <div className="mb-3 text-sm font-medium text-slate-100">Phòng ban</div>
-        <div className="flex gap-2">
-          <input value={deptName} onChange={(e) => setDeptName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addDept()}
-            placeholder="Thêm phòng ban rồi Enter" className={`min-w-0 flex-1 ${inputCls}`} />
-          <button onClick={addDept} className={`${iconBtn} shrink-0`}><Plus size={15} /></button>
+      <div className={panelCls}>
+        <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-3 py-3 md:px-4">
+          <h3 className="text-sm font-medium text-slate-100">Phòng ban</h3>
+          <span className="shrink-0 font-mono text-xs text-slate-500">{depts.length}</span>
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {depts.map((d) => deptEdit === d ? (
-            <span key={d} className="inline-flex items-center gap-1.5">
-              <input autoFocus value={deptEditName} onChange={(e) => setDeptEditName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && commitDept()} className={`w-48 ${inputCls}`} />
-              <button onClick={commitDept} className={`${iconBtn} border-teal-800 text-teal-400`}><Check size={15} /></button>
-              <button onClick={() => setDeptEdit(null)} className={iconBtn}><X size={15} /></button>
-            </span>
-          ) : (
-            <span key={d} className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950 py-1 pl-2.5 pr-1 text-xs text-slate-300">
-              {d}
-              {d === LOCKED_DEPT
-                ? <span title="Cố định: quyết định quyền xem toàn bộ tác vụ" className="p-1 text-slate-600"><Lock size={12} /></span>
-                : <>
-                    <button onClick={() => { setDeptEdit(d); setDeptEditName(d); }} title="Đổi tên" className="rounded p-1 text-slate-500 hover:text-teal-300"><Pencil size={12} /></button>
-                    <button onClick={() => delDept(d)} title="Xoá phòng ban" className="rounded p-1 text-slate-500 hover:text-rose-400"><Trash2 size={12} /></button>
-                  </>}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-slate-800 bg-slate-900 p-3 md:p-4">
-        <div className="flex flex-col gap-2 md:flex-row">
-          <input value={roleCode} onChange={(e) => setRoleCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addRole()}
-            placeholder="Mã vai trò, ví dụ MEP" maxLength={8} className={`font-mono md:w-44 ${inputCls}`} />
-          <input value={roleName} onChange={(e) => setRoleName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addRole()}
-            placeholder="Tên vai trò" className={`min-w-0 md:flex-1 ${inputCls}`} />
-          <select value={roleDept} onChange={(e) => setRoleDept(e.target.value)} className={`md:w-48 ${selectCls}`}>
-            {DEPTS.map((d) => <option key={d}>{d}</option>)}
-          </select>
-          <button onClick={addRole} className={`shrink-0 whitespace-nowrap ${btnPrimary}`}><Plus size={14} /> Thêm vai trò</button>
-        </div>
-        {roles.length > 0 && (
+        <div className="p-3 md:p-4">
+          <div className="flex gap-2">
+            <input value={deptName} onChange={(e) => setDeptName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addDept()}
+              placeholder="Thêm phòng ban rồi Enter" className={`min-w-0 flex-1 ${inputCls}`} />
+            <button onClick={addDept} className={`${sqBtn}`}><Plus size={15} /></button>
+          </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            {roles.map((r) => (
-              <span key={r.id} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-950 py-1 pl-2.5 pr-1 text-xs text-slate-300">
-                <span className="font-mono text-teal-300">{r.id}</span>{r.name}
-                <button onClick={() => setPendingRoleDel(r)} title="Xoá vai trò" className="rounded p-1 text-slate-500 hover:text-rose-400"><Trash2 size={12} /></button>
+            {depts.map((d) => edit?.kind === "dept" && edit.key === d ? (
+              <span key={d} className={`${chipCls} border-teal-800 pl-1`}>{editInput("w-48 max-w-[60vw]")}</span>
+            ) : d === LOCKED_DEPT ? (
+              <span key={d} className={chipCls}>{d}<span title="Cố định: quyết định quyền xem toàn bộ tác vụ" className="p-1.5 text-slate-600"><Lock size={13} /></span></span>
+            ) : (
+              <span key={d} onClick={(e) => { if (!e.target.closest("button")) setEdit({ kind: "dept", key: d, value: d }); }}
+                className={`${chipCls} cursor-text hover:border-slate-500`}>
+                {d}
+                <button onClick={() => delDept(d)} title="Xoá phòng ban" className={miniDel}><Trash2 size={13} /></button>
               </span>
             ))}
           </div>
-        )}
+        </div>
       </div>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-900 p-3 md:p-4">
-        <div className="mb-3 flex items-baseline justify-between gap-2">
-          <h3 className="text-sm font-medium text-slate-100">Vắng mặt</h3>
-          <span className="shrink-0 font-mono text-xs text-slate-600">{leaves.length}</span>
+      <div className={panelCls}>
+        <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-3 py-3 md:px-4">
+          <h3 className="text-sm font-medium text-slate-100">Vai trò</h3>
+          <span className="shrink-0 font-mono text-xs text-slate-500">{roles.length}</span>
         </div>
+        <div className="p-3 md:p-4">
+          <div className="flex flex-col gap-2 md:flex-row">
+            <input value={roleCode} onChange={(e) => setRoleCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addRole()}
+              placeholder="Mã, ví dụ MEP" maxLength={8} className={`font-mono md:w-40 ${inputCls}`} />
+            <input value={roleName} onChange={(e) => setRoleName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addRole()}
+              placeholder="Tên vai trò" className={`min-w-0 md:flex-1 ${inputCls}`} />
+            <select value={roleDept} onChange={(e) => setRoleDept(e.target.value)} className={`md:w-56 ${selectCls}`}>
+              {DEPTS.map((d) => <option key={d}>{d}</option>)}
+            </select>
+            <button onClick={addRole} className={`shrink-0 whitespace-nowrap ${btnPrimary}`}><Plus size={14} /> Thêm vai trò</button>
+          </div>
+
+          {/* mỗi phòng ban một dòng, kể cả phòng ban chưa có vai trò — để có chỗ thả vai trò vào */}
+          <div className="mt-3 divide-y divide-slate-800">
+            {deptOrder.map((d) => (
+              <div key={d} data-dept-row={d}
+                className={`grid gap-1.5 rounded-md px-2 py-2.5 md:grid-cols-[180px_minmax(0,1fr)] md:gap-3 ${overDept === d ? "bg-teal-950 ring-1 ring-inset ring-teal-800" : ""}`}>
+                <div className="text-xs uppercase tracking-wider text-slate-400 md:pt-2.5">{d}</div>
+                <div className="flex min-h-[36px] flex-wrap gap-2">
+                  {roles.filter((r) => r.dept === d).map((r) => edit?.kind === "role" && edit.key === r.id ? (
+                    <span key={r.id} className={`${chipCls} border-teal-800`}>
+                      <span className="font-mono text-xs text-teal-400">{r.id}</span>{editInput("w-44 max-w-[50vw]")}
+                    </span>
+                  ) : edit?.kind === "code" && edit.key === r.id ? (
+                    <span key={r.id} className={`${chipCls} border-teal-800 pl-1 pr-3`}>
+                      {editInput("w-24 font-mono uppercase text-teal-400", { maxLength: 8 })}{r.name}
+                    </span>
+                  ) : (
+                    <span key={r.id} onPointerDown={(e) => onChipDown(e, r)}
+                      className={`${chipCls} cursor-grab select-none hover:border-slate-500 ${drag?.id === r.id ? "opacity-30" : ""}`}>
+                      <span data-role-code className="font-mono text-xs text-teal-400">{r.id}</span>
+                      <span className="min-w-0">{r.name}</span>
+                      <button onClick={() => setPendingRoleDel(r)} title="Xoá vai trò" className={miniDel}><Trash2 size={13} /></button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* bóng của vai trò đang kéo, bám theo con trỏ */}
+      {drag && dragRole && (
+        <span style={{ left: drag.x, top: drag.y, width: drag.w }}
+          className={`${chipCls} pointer-events-none fixed z-50 cursor-grabbing border-teal-400 shadow-2xl`}>
+          <span className="font-mono text-xs text-teal-400">{dragRole.id}</span>
+          <span className="min-w-0 truncate">{dragRole.name}</span>
+        </span>
+      )}
+    </div>
+  );
+
+  /* ---------------- tab con Vắng mặt ---------------- */
+  const leaveTab = (
+    <div className={panelCls}>
+      <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-3 py-3 md:px-4">
+        <h3 className="text-sm font-medium text-slate-100">Vắng mặt</h3>
+        <span className="shrink-0 font-mono text-xs text-slate-500">{leaves.length}</span>
+      </div>
+      <div className="p-3 md:p-4">
         <div className="flex gap-2">
           <input value={leaveName} onChange={(e) => setLeaveName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addLeave()}
             placeholder="Thêm loại nghỉ rồi Enter" className={`min-w-0 flex-1 ${inputCls}`} />
-          <button onClick={addLeave} className={`${iconBtn} shrink-0`}><Plus size={15} /></button>
+          <button onClick={addLeave} className={`${sqBtn}`}><Plus size={15} /></button>
         </div>
         {leaves.length > 0 && (
           <div className="mt-2 divide-y divide-slate-800">
@@ -4347,12 +4554,13 @@ function Tasks({ cfg, saveCfg, flash }) {
               <div key={x.id} className="py-2 text-sm">
                 {leaveEditId === x.id ? (
                   <div className="flex gap-2">
-                    <input value={leaveEditName} onChange={(e) => setLeaveEditName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && commitLeave()} className={`min-w-0 flex-1 ${inputCls}`} />
-                    <button onClick={commitLeave} className={`${iconBtn} shrink-0 border-teal-800 text-teal-400`}><Check size={15} /></button>
-                    <button onClick={() => setLeaveEditId(null)} className={`${iconBtn} shrink-0`}><X size={15} /></button>
+                    <input autoFocus value={leaveEditName} onChange={(e) => setLeaveEditName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") commitLeave(); if (e.key === "Escape") setLeaveEditId(null); }} className={`min-w-0 flex-1 ${inputCls}`} />
+                    <button onClick={commitLeave} className={`${sqBtn} border-teal-800 text-teal-400`}><Check size={15} /></button>
+                    <button onClick={() => setLeaveEditId(null)} className={`${sqBtn}`}><X size={15} /></button>
                   </div>
                 ) : (
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="min-w-0 text-slate-200">{x.label}</span>
                     <div className="flex shrink-0 gap-1.5">
                       <button onClick={() => { setLeaveEditId(x.id); setLeaveEditName(x.label); }} className={iconBtn}><Pencil size={13} /></button>
@@ -4365,11 +4573,19 @@ function Tasks({ cfg, saveCfg, flash }) {
           </div>
         )}
       </div>
+    </div>
+  );
 
-      <div className="px-1 text-xs uppercase tracking-widest text-slate-500">Theo vai trò</div>
-      <div className="grid gap-3 md:grid-cols-2 md:gap-4">{boxes.filter((b) => b.kind === "role").map(renderBox)}</div>
+  return (
+    <div className={`space-y-3 md:space-y-4 ${drag ? "cursor-grabbing select-none" : ""}`}>
+      <div className="inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-1">
+        {[["task", "Tác vụ"], ["org", "Phòng ban & vai trò"], ["leave", "Vắng mặt"]].map(([k, l]) => (
+          <button key={k} onClick={() => { setSub(k); setEdit(null); setEditId(null); setLeaveEditId(null); }}
+            className={`h-9 whitespace-nowrap rounded-md px-4 text-sm ${sub === k ? "bg-slate-800 font-medium text-white" : "text-slate-400 hover:text-slate-200"}`}>{l}</button>
+        ))}
+      </div>
 
-      <div className="grid gap-3 md:grid-cols-2 md:gap-4">{boxes.filter((b) => b.kind === "shared").map(renderBox)}</div>
+      {sub === "task" ? taskTab : sub === "org" ? orgTab : leaveTab}
 
       <ConfirmDialog
         open={!!pendingRoleDel}
