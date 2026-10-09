@@ -26,6 +26,14 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dữ liệu chỉ được tải SAU khi đăng nhập. Tải hỏng thì dừng ở màn báo lỗi, không vào app
      với dữ liệu rỗng (tránh ghi đè dữ liệu thật)
 
+   Cập nhật 09/10/2026 (vẫn là v1.7) — tab Nhân sự
+   · Chia 2 tab con: Nhân sự | Tài khoản quản lý
+   · Một bảng duy nhất gom theo phòng ban, có ô tìm, lọc theo phòng ban và trạng thái tài khoản;
+     "Dự án đang tham gia" là một cột (bỏ bảng theo dõi riêng)
+   · Thêm / sửa qua khung nhập: tên đăng nhập tự gợi ý theo họ tên, mật khẩu sinh sẵn,
+     vai trò lọc theo phòng ban, có "Lưu và thêm tiếp"
+   · Mỗi dòng có nút chép tài khoản; nút Xuất tài khoản ra Excel theo bộ lọc đang chọn
+
    Cập nhật 09/10/2026 (vẫn là v1.7) — tab Tác vụ
    · Chia 3 tab con: Tác vụ | Phòng ban & vai trò | Vắng mặt
    · Tab Tác vụ: cột trái là vai trò gom theo phòng ban (có ô tìm và số tác vụ), cột phải là tác vụ của vai trò đang chọn
@@ -3574,17 +3582,45 @@ function PasswordCell({ value, shown, onToggle }) {
   );
 }
 
+/* Tên đăng nhập gợi ý từ họ tên: "Đỗ Thị Thảo" -> thao.dt ; trùng thì thêm số 2, 3… */
+const suggestUsername = (name, taken) => {
+  const w = norm(name).replace(/[^a-z0-9 ]/g, "").split(/\s+/).filter(Boolean);
+  if (!w.length) return "";
+  const base = w.length > 1 ? `${w[w.length - 1]}.${w.slice(0, -1).map((x) => x[0]).join("")}` : w[0];
+  let u = base.length < 3 ? `${base}01` : base;
+  for (let i = 2; taken.has(u); i++) u = `${base}${i}`;
+  return u.slice(0, 30);
+};
+/* Mật khẩu ngẫu nhiên 8 ký tự, bỏ các ký tự dễ nhầm (0/o, 1/l/i) */
+const genPassword = () => {
+  const a = "abcdefghjkmnpqrstuvwxyz23456789";
+  const buf = new Uint32Array(8);
+  (typeof crypto !== "undefined" && crypto.getRandomValues) ? crypto.getRandomValues(buf) : buf.forEach((_, i) => { buf[i] = Math.floor(Math.random() * 4294967296); });
+  return Array.from(buf, (n) => a[n % a.length]).join("");
+};
+const copyText = async (text) => {
+  try { await navigator.clipboard.writeText(text); return true; } catch { /* trình duyệt chặn clipboard API: thử cách cũ */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch { return false; }
+};
+
 function Employees({ cfg, saveCfg, flash }) {
-  const [code, setCode] = useState(""); const [name, setName] = useState(""); const [dept, setDept] = useState(DEPTS[0]);
-  const [role, setRole] = useState("");
-  const [newUser, setNewUser] = useState(""); const [newPass, setNewPass] = useState(""); const [newAdmin, setNewAdmin] = useState(false);
-  const [editId, setEditId] = useState(null);
-  const [draft, setDraft] = useState({});
+  const [sub, setSub] = useState("emp");              // tab con: emp | admin
+  const [q, setQ] = useState("");
+  const [fDept, setFDept] = useState("");
+  const [fStatus, setFStatus] = useState("");         // "" | none | active | locked
   const [accounts, setAccounts] = useState(null);     // null = đang tải / tải hỏng
   const [shown, setShown] = useState({});             // id tài khoản đang hiện mật khẩu
   const [busy, setBusy] = useState(false);
-  const [looseEdit, setLooseEdit] = useState(null);   // tài khoản không gắn nhân sự đang sửa
-  const [looseDraft, setLooseDraft] = useState({});
+  /* Khung thêm / sửa: { kind: "emp" | "admin", empId, accId, hadAcc, autoUser, f: {...} } */
+  const [dlg, setDlg] = useState(null);
+  const [pendingDel, setPendingDel] = useState(null); // nhân sự chờ xác nhận xoá
   const [pendingAcc, setPendingAcc] = useState(null); // tài khoản không gắn nhân sự chờ xác nhận xoá
 
   useEffect(() => {
@@ -3607,11 +3643,41 @@ function Employees({ cfg, saveCfg, flash }) {
     return [...rest, a].sort((x, y) => x.username.localeCompare(y.username));
   });
   const toggleShown = (id) => setShown((m) => ({ ...m, [id]: !m[id] }));
+  const takenUsernames = (exceptAccId) => new Set((accounts || []).filter((a) => a.id !== exceptAccId).map((a) => a.username));
+
+  /* Dự án đang tham gia: dự án nhân sự đã chấm ít nhất 1 giờ trong tháng này (tự động theo giờ công) */
+  const now = new Date();
+  const thisYm = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+  const empIdsKey = cfg.employees.map((e) => e.id).join(",");
+  const projByEmp = useMemo(() => {
+    const label = new Map(cfg.projects.map((p) => [p.id, p.code ? `[${p.code}] ${p.name}` : p.name]));
+    const map = new Map();
+    for (const e of cfg.employees) {
+      const pids = new Set();
+      for (const r of dbTs(e.id, thisYm)?.rows || []) {
+        if (label.has(r.projectId) && Object.values(r.days || {}).some((v) => v > 0)) pids.add(r.projectId);
+      }
+      map.set(e.id, [...pids].map((id) => label.get(id)));
+    }
+    return map;
+  }, [empIdsKey, cfg.projects, thisYm]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ---- lọc và gom nhóm ---- */
+  const statusOf = (e) => { const a = accByEmp.get(e.id); return !a ? "none" : a.disabled ? "locked" : "active"; };
+  const kw = norm(q.trim());
+  const visible = cfg.employees.filter((e) => {
+    if (fDept && e.dept !== fDept) return false;
+    if (fStatus && statusOf(e) !== fStatus) return false;
+    return !kw || norm(`${e.code || ""} ${e.name} ${accByEmp.get(e.id)?.username || ""} ${e.role || ""} ${roleInfo(e.role)?.name || ""}`).includes(kw);
+  });
+  // phòng ban theo thứ tự khai báo; nhân sự mang tên phòng ban lạ (dữ liệu cũ) xếp cuối để không bị mất dấu
+  const deptOrder = [...DEPTS, ...cfg.employees.map((e) => e.dept).filter((d, i, a) => !DEPTS.includes(d) && a.indexOf(d) === i)];
+  const groups = deptOrder.map((d) => ({ dept: d, list: visible.filter((e) => e.dept === d) })).filter((g) => g.list.length);
 
   /* Tạo hoặc cập nhật tài khoản. Trả về true nếu xong hoặc không có gì để làm. */
   const pushAccount = async (empId, acc, d) => {
     const u = normUsername(d.username), p = d.password || "", adm = !!d.isAdmin;
-    if (!acc && !u && !p) return true;
+    if (!acc && !u) return true;
     if (acc && acc.username === u && acc.password === p && acc.isAdmin === adm) return true;
     try {
       const r = await accountsApi("save", { id: acc?.id, empId, username: u, password: p, isAdmin: adm });
@@ -3620,38 +3686,62 @@ function Employees({ cfg, saveCfg, flash }) {
     } catch (e) { flash(e.message, "err"); return false; }
   };
 
-  const add = async () => {
-    if (busy) return;
-    if (!name.trim()) return flash("Nhập tên nhân sự.", "err");
-    const acc = { username: newUser, password: newPass, isAdmin: newAdmin };
-    const err = accountError(null, acc);
-    if (err) return flash(err, "err");
-    setBusy(true);
-    const id = uid("e");
-    const ok = await saveCfg({ ...cfg, employees: [...cfg.employees, { id, code: code.trim(), name: name.trim(), dept, role }] });
-    if (ok) {
-      const accOk = await pushAccount(id, null, acc);
-      setCode(""); setName("");
-      if (accOk) { setNewUser(""); setNewPass(""); setNewAdmin(false); flash("Đã thêm nhân sự."); }
-    }
-    setBusy(false);
-  };
-  const startEdit = (e) => {
+  /* ---- khung thêm / sửa ---- */
+  const openAdd = () => setDlg({ kind: "emp", empId: null, accId: null, hadAcc: false, autoUser: true,
+    f: { code: "", name: "", dept: fDept || DEPTS[0], role: "", username: "", password: genPassword(), isAdmin: false } });
+  const openEdit = (e) => {
     const a = accByEmp.get(e.id);
-    setEditId(e.id);
-    setDraft({ code: e.code || "", name: e.name, dept: e.dept, role: e.role || "", username: a?.username || "", password: a?.password || "", isAdmin: !!a?.isAdmin });
+    setDlg({ kind: "emp", empId: e.id, accId: a?.id || null, hadAcc: !!a, autoUser: !a,
+      f: { code: e.code || "", name: e.name, dept: e.dept, role: e.role || "", username: a?.username || "", password: a?.password || "", isAdmin: !!a?.isAdmin } });
   };
-  const commit = async () => {
-    if (busy) return;
-    if (!draft.name.trim()) return flash("Tên nhân sự không được để trống.", "err");
-    const acc = accByEmp.get(editId) || null;
-    const err = accountError(acc, draft);
+  const openAddAdmin = () => setDlg({ kind: "admin", empId: null, accId: null, hadAcc: false, autoUser: false, f: { username: "", password: genPassword(), isAdmin: true } });
+  const openEditAdmin = (a) => setDlg({ kind: "admin", empId: a.empId || null, accId: a.id, hadAcc: true, autoUser: false, f: { username: a.username, password: a.password, isAdmin: a.isAdmin } });
+  const setF = (patch, extra = {}) => setDlg((d) => (d ? { ...d, ...extra, f: { ...d.f, ...patch } } : d));
+  // gõ họ tên thì tên đăng nhập tự gợi ý, cho tới khi người dùng tự sửa ô tên đăng nhập
+  const onNameChange = (v) => setDlg((d) => (d ? { ...d, f: { ...d.f, name: v, ...(d.autoUser ? { username: suggestUsername(v, takenUsernames(d.accId)) } : {}) } } : d));
+  // đổi phòng ban thì bỏ vai trò không thuộc phòng ban mới
+  const onDeptChange = (v) => setDlg((d) => (d ? { ...d, f: { ...d.f, dept: v, role: roleInfo(d.f.role)?.dept === v ? d.f.role : "" } } : d));
+
+  const saveDlg = async (more) => {
+    if (busy || !dlg) return;
+    const { f } = dlg;
+    const acc = dlg.accId ? (accounts || []).find((a) => a.id === dlg.accId) || null : null;
+    if (dlg.kind === "emp") {
+      const name = f.name.trim(), code = f.code.trim();
+      if (!name) return flash("Nhập tên nhân sự.", "err");
+      if (code && cfg.employees.some((e) => e.id !== dlg.empId && (e.code || "").toLowerCase() === code.toLowerCase())) return flash("Mã NV này đã có.", "err");
+      // để trống tên đăng nhập = chưa tạo tài khoản (chỉ được phép khi người này chưa có tài khoản)
+      const wantsAcc = !!acc || !!normUsername(f.username);
+      const err = wantsAcc ? accountError(acc, f) : null;
+      if (err) return flash(err, "err");
+      setBusy(true);
+      const id = dlg.empId || uid("e");
+      const row = { code, name, dept: f.dept, role: f.role || "" };
+      const ok = await saveCfg({ ...cfg, employees: dlg.empId ? cfg.employees.map((e) => (e.id === id ? { ...e, ...row } : e)) : [...cfg.employees, { id, ...row }] });
+      const accOk = ok !== false && (!wantsAcc || (await pushAccount(id, acc, f)));
+      setBusy(false);
+      if (ok === false) return;
+      // nhân sự đã lưu nhưng tài khoản lỗi: chuyển khung sang chế độ sửa người đó để sửa tiếp phần tài khoản
+      if (!accOk) return setDlg({ ...dlg, empId: id });
+      flash(dlg.empId ? "Đã cập nhật nhân sự." : "Đã thêm nhân sự.");
+      if (more) setDlg({ kind: "emp", empId: null, accId: null, hadAcc: false, autoUser: true, f: { code: "", name: "", dept: f.dept, role: "", username: "", password: genPassword(), isAdmin: false } });
+      else setDlg(null);
+      return;
+    }
+    const err = accountError(acc, f);
     if (err) return flash(err, "err");
     setBusy(true);
-    const ok = await saveCfg({ ...cfg, employees: cfg.employees.map((e) => (e.id === editId ? { ...e, code: draft.code.trim(), name: draft.name.trim(), dept: draft.dept, role: draft.role || "" } : e)) });
-    if (ok && (await pushAccount(editId, acc, draft))) { setEditId(null); flash("Đã cập nhật nhân sự."); }
+    const done = await pushAccount(dlg.empId, acc, { ...f, isAdmin: acc ? acc.isAdmin : true });
     setBusy(false);
+    if (done) { setDlg(null); flash(acc ? "Đã cập nhật tài khoản." : "Đã thêm tài khoản."); }
   };
+  useEffect(() => {
+    if (!dlg) return;
+    const h = (e) => { if (e.key === "Escape") setDlg(null); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [!!dlg]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* Khoá / mở khoá: người bị khoá không đăng nhập được, giờ công đã chấm giữ nguyên */
   const toggleLock = async (a) => {
     if (busy) return;
@@ -3663,8 +3753,10 @@ function Employees({ cfg, saveCfg, flash }) {
     } catch (e) { flash(e.message, "err"); }
     setBusy(false);
   };
-  const [pendingDel, setPendingDel] = useState(null); // nhân sự chờ xác nhận xoá
-  const del = (id) => setPendingDel(cfg.employees.find((e) => e.id === id) || null);
+  const copyAccount = async (a, name) => {
+    const ok = await copyText(`${name ? `${name}\n` : ""}Tên đăng nhập: ${a.username}\nMật khẩu: ${a.password}`);
+    flash(ok ? `Đã chép tài khoản ${a.username}.` : "Trình duyệt không cho chép. Bấm con mắt để xem mật khẩu.", ok ? "ok" : "err");
+  };
   const confirmDel = async () => {
     const e = pendingDel; setPendingDel(null);
     if (!e) return;
@@ -3677,18 +3769,6 @@ function Employees({ cfg, saveCfg, flash }) {
     await saveCfg({ ...cfg, employees: cfg.employees.filter((x) => x.id !== e.id) });
     flash("Đã xoá nhân sự.");
   };
-
-  const startLoose = (a) => { setLooseEdit(a.id); setLooseDraft({ username: a.username, password: a.password, isAdmin: a.isAdmin }); };
-  const commitLoose = async () => {
-    if (busy) return;
-    const a = loose.find((x) => x.id === looseEdit);
-    if (!a) return setLooseEdit(null);
-    const err = accountError(a, looseDraft);
-    if (err) return flash(err, "err");
-    setBusy(true);
-    if (await pushAccount(a.empId, a, looseDraft)) { setLooseEdit(null); flash("Đã cập nhật tài khoản."); }
-    setBusy(false);
-  };
   const confirmDelAcc = async () => {
     const a = pendingAcc; setPendingAcc(null);
     if (!a) return;
@@ -3696,25 +3776,212 @@ function Employees({ cfg, saveCfg, flash }) {
     catch (err) { flash(err.message, "err"); }
   };
 
+  /* Xuất danh sách tài khoản (theo bộ lọc đang chọn) ra Excel để phát cho nhân viên */
+  const exportAccounts = () => {
+    const rows = visible.filter((e) => accByEmp.has(e.id)).map((e) => {
+      const a = accByEmp.get(e.id);
+      return { "Mã NV": e.code || "", "Họ và tên": e.name, "Phòng ban": e.dept, "Vai trò": e.role ? roleLabel(e.role) : "", "Tên đăng nhập": a.username, "Mật khẩu": a.password, "Trạng thái": a.disabled ? "Đã khoá" : "Đang dùng" };
+    });
+    if (!rows.length) return flash("Không có tài khoản nào trong danh sách đang lọc.", "err");
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [{ wch: 10 }, { wch: 28 }, { wch: 22 }, { wch: 28 }, { wch: 20 }, { wch: 16 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Tài khoản");
+    XLSX.writeFile(wb, `ARTIUS_tai-khoan_${fmt(new Date())}.xlsx`);
+    flash(`Đã xuất ${rows.length} tài khoản.`);
+  };
+
+  const panelCls = "rounded-xl border border-slate-800 bg-slate-900";
+  const COLS = "md:grid md:grid-cols-[84px_minmax(150px,230px)_190px_170px_120px_minmax(160px,1fr)_156px] md:items-center md:gap-3";
   const adminBadge = <span className="rounded border border-teal-800 bg-teal-950 px-1.5 py-0.5 text-[10px] text-teal-300">Quản lý</span>;
   const lockedBadge = <span className="rounded border border-rose-900 bg-rose-950 px-1.5 py-0.5 text-[10px] text-rose-300">Đã khoá</span>;
-  const userInput = (val, set) => (
-    <input value={val} onChange={(x) => set(x.target.value)} placeholder="Tên đăng nhập" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" className={`font-mono ${inputCls}`} />
+  const none = <span className="text-slate-600">—</span>;
+  const accBtns = (a, name) => (
+    <>
+      <button onClick={() => copyAccount(a, name)} title="Chép tài khoản" className={iconBtn}><Copy size={14} /></button>
+      <button onClick={() => toggleLock(a)} title={a.disabled ? "Mở khoá" : "Khoá tài khoản"} className={`${iconBtn} ${a.disabled ? "border-rose-900 text-rose-400" : ""}`}>{a.disabled ? <Unlock size={14} /> : <Lock size={14} />}</button>
+    </>
   );
-  const passInput = (val, set) => (
-    <input value={val} onChange={(x) => set(x.target.value)} placeholder="Mật khẩu" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" className={`font-mono ${inputCls}`} />
+  const sqBtn = "flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-100";
+
+  /* ---------------- tab con Nhân sự ---------------- */
+  const empRow = (e) => {
+    const a = accByEmp.get(e.id);
+    const projs = projByEmp.get(e.id) || [];
+    const dim = a?.disabled ? "text-slate-500" : "";
+    const roleEl = e.role ? <span className="rounded border border-slate-700 px-1.5 py-0.5 font-mono text-[10px] text-teal-300">{roleLabel(e.role) || e.role}</span> : null;
+    const projEl = projs.map((p) => <span key={p} className="rounded border border-teal-800 bg-teal-950 px-1.5 py-0.5 text-[11px] text-teal-300">{p}</span>);
+    const btns = (
+      <div className="flex shrink-0 justify-end gap-1">
+        {a && accBtns(a, e.name)}
+        <button onClick={() => openEdit(e)} title="Sửa" className={iconBtn}><Pencil size={14} /></button>
+        <button onClick={() => setPendingDel(e)} title="Xoá" className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={14} /></button>
+      </div>
+    );
+    return (
+      <div key={e.id} className="border-b border-slate-800 px-3 py-2 text-sm hover:bg-slate-800/40 md:px-3.5">
+        {/* desktop: một dòng 7 cột */}
+        <div className={`hidden min-h-[36px] ${COLS}`}>
+          <div className={`font-mono text-xs ${dim || "text-slate-400"}`}>{e.code || "—"}</div>
+          <div className={`min-w-0 break-words ${dim || "text-slate-100"}`}>{e.name}</div>
+          <div className="min-w-0">{roleEl || none}</div>
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            {a ? <><span className="break-all font-mono text-xs text-slate-300">{a.username}</span>{a.isAdmin && adminBadge}{a.disabled && lockedBadge}</> : <span className="text-slate-600">Chưa có</span>}
+          </div>
+          <div><PasswordCell value={a?.password} shown={!!shown[a?.id]} onToggle={() => toggleShown(a.id)} /></div>
+          <div className="flex min-w-0 flex-wrap gap-1.5">{projs.length ? projEl : none}</div>
+          {btns}
+        </div>
+        {/* mobile: thẻ */}
+        <div className="md:hidden">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              {e.code && <div className="font-mono text-[11px] text-slate-500">{e.code}</div>}
+              <div className={`break-words ${dim || "text-slate-100"}`}>{e.name}</div>
+            </div>
+            {btns}
+          </div>
+          {(roleEl || projs.length > 0) && <div className="mt-1.5 flex flex-wrap gap-1.5">{roleEl}{projEl}</div>}
+          {a && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="break-all font-mono text-xs text-slate-300">{a.username}</span>
+              <PasswordCell value={a.password} shown={!!shown[a.id]} onToggle={() => toggleShown(a.id)} />
+              {a.isAdmin && adminBadge}{a.disabled && lockedBadge}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+  const empTab = (
+    <div className={panelCls}>
+      <div className="grid grid-cols-2 gap-2 p-3 xl:grid-cols-[minmax(200px,1fr)_200px_200px_auto_auto]">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm theo tên, mã, tên đăng nhập" className={`col-span-2 xl:col-span-1 ${inputCls}`} />
+        <select value={fDept} onChange={(e) => setFDept(e.target.value)} className={selectCls}>
+          <option value="">Mọi phòng ban</option>
+          {deptOrder.map((d) => <option key={d}>{d}</option>)}
+        </select>
+        <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className={selectCls}>
+          <option value="">Mọi tài khoản</option>
+          <option value="none">Chưa có tài khoản</option>
+          <option value="active">Đang dùng</option>
+          <option value="locked">Đã khoá</option>
+        </select>
+        <button onClick={exportAccounts} className={`whitespace-nowrap ${btnGhost}`}><Download size={14} /> Xuất tài khoản</button>
+        <button onClick={openAdd} className={`whitespace-nowrap ${btnPrimary}`}><Plus size={14} /> Thêm nhân sự</button>
+      </div>
+      <div className="px-3.5 pb-2.5 text-xs text-slate-500">
+        {visible.length === cfg.employees.length ? `${visible.length} nhân sự` : `${visible.length} / ${cfg.employees.length} nhân sự`}
+      </div>
+      <div className={`hidden border-y border-slate-800 px-3.5 py-2 text-[11px] uppercase tracking-wider text-slate-500 ${COLS}`}>
+        <div>Mã NV</div><div>Họ và tên</div><div>Vai trò</div><div>Tên đăng nhập</div><div>Mật khẩu</div><div>Dự án đang tham gia</div><div></div>
+      </div>
+      {cfg.employees.length === 0 ? <div className="px-4 py-7 text-center text-sm text-slate-500">Chưa có nhân sự.</div>
+        : groups.length === 0 ? <div className="px-4 py-7 text-center text-sm text-slate-500">Không có nhân sự khớp bộ lọc.</div>
+        : groups.map((g) => (
+          <React.Fragment key={g.dept}>
+            <div className="sticky top-0 z-10 mx-2 mb-0.5 mt-2.5 flex items-center justify-between gap-2 rounded-md border border-slate-700 bg-[#1a2740] px-2.5 py-2 text-xs uppercase tracking-wider text-slate-100">
+              <span className="min-w-0 truncate">{g.dept}</span>
+              <span className="shrink-0 font-mono tracking-normal text-slate-400">{g.list.length}</span>
+            </div>
+            {g.list.map(empRow)}
+          </React.Fragment>
+        ))}
+    </div>
   );
-  const adminCheck = (val, set) => (
-    <label className="flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap text-sm text-slate-300">
-      <input type="checkbox" checked={!!val} onChange={(x) => set(x.target.checked)} className="h-4 w-4 accent-teal-500" /> Quản lý
-    </label>
+
+  /* ---------------- tab con Tài khoản quản lý: tài khoản không gắn nhân sự ---------------- */
+  const adminTab = (
+    <div className={panelCls}>
+      <div className="flex justify-end p-3">
+        <button onClick={openAddAdmin} className={`whitespace-nowrap ${btnPrimary}`}><Plus size={14} /> Thêm tài khoản</button>
+      </div>
+      {loose.length === 0 ? <div className="border-t border-slate-800 px-4 py-7 text-center text-sm text-slate-500">Chưa có tài khoản nào không gắn nhân sự.</div>
+        : loose.map((a) => (
+          <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 px-3.5 py-2.5 text-sm">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="break-all font-mono text-slate-100">{a.username}</span>
+              <PasswordCell value={a.password} shown={!!shown[a.id]} onToggle={() => toggleShown(a.id)} />
+              {a.isAdmin && adminBadge}{a.disabled && lockedBadge}
+            </div>
+            <div className="flex shrink-0 gap-1">
+              {accBtns(a, "")}
+              <button onClick={() => openEditAdmin(a)} title="Sửa" className={iconBtn}><Pencil size={14} /></button>
+              <button onClick={() => setPendingAcc(a)} title="Xoá" className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={14} /></button>
+            </div>
+          </div>
+        ))}
+    </div>
   );
-  const lockBtn = (a) => (
-    <button onClick={() => toggleLock(a)} className={`${iconBtn} ${a.disabled ? "border-rose-900 text-rose-400" : ""}`}>{a.disabled ? <Unlock size={14} /> : <Lock size={14} />}</button>
+
+  /* ---------------- khung thêm / sửa ---------------- */
+  const onEnter = (e) => { if (e.key === "Enter") saveDlg(false); };
+  const f = dlg?.f;
+  const dlgTitle = !dlg ? "" : dlg.kind === "emp" ? (dlg.empId ? "Sửa nhân sự" : "Thêm nhân sự") : (dlg.accId ? "Sửa tài khoản" : "Thêm tài khoản quản lý");
+  const formDlg = dlg && (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 pt-[8vh]" onMouseDown={(e) => { if (e.target === e.currentTarget) setDlg(null); }}>
+      <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+          <h4 className="text-sm font-semibold text-slate-50">{dlgTitle}</h4>
+          <button onClick={() => setDlg(null)} className={iconBtn}><X size={15} /></button>
+        </div>
+        <div className="space-y-2.5 p-4">
+          {dlg.kind === "emp" && (
+            <>
+              <div className="grid gap-2.5 md:grid-cols-[130px_minmax(0,1fr)]">
+                <input autoFocus={!dlg.empId} value={f.code} onChange={(e) => setF({ code: e.target.value })} onKeyDown={onEnter} placeholder="Mã NV" className={`font-mono ${inputCls}`} />
+                <input autoFocus={!!dlg.empId} value={f.name} onChange={(e) => onNameChange(e.target.value)} onKeyDown={onEnter} placeholder="Họ và tên" className={inputCls} />
+              </div>
+              <div className="grid gap-2.5 md:grid-cols-2">
+                <select value={f.dept} onChange={(e) => onDeptChange(e.target.value)} className={selectCls}>
+                  {deptOrder.map((d) => <option key={d}>{d}</option>)}
+                </select>
+                {/* chỉ hiện vai trò của phòng ban đã chọn (và vai trò đang gán, nếu thuộc phòng ban khác) */}
+                <select value={f.role} onChange={(e) => setF({ role: e.target.value })} className={selectCls}>
+                  <option value="">— Không phân vai trò —</option>
+                  {ROLES.filter((r) => r.dept === f.dept || r.id === f.role).map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
+                </select>
+              </div>
+            </>
+          )}
+          <div className="grid gap-2.5 md:grid-cols-2">
+            <input autoFocus={dlg.kind === "admin"} value={f.username} onChange={(e) => setF({ username: e.target.value }, { autoUser: false })} onKeyDown={onEnter}
+              placeholder="Tên đăng nhập" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" className={`font-mono ${inputCls}`} />
+            <div className="flex gap-2">
+              <input value={f.password} onChange={(e) => setF({ password: e.target.value })} onKeyDown={onEnter}
+                placeholder="Mật khẩu" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" className={`min-w-0 flex-1 font-mono ${inputCls}`} />
+              <button onClick={() => setF({ password: genPassword() })} title="Sinh mật khẩu" className={sqBtn}><RotateCcw size={15} /></button>
+            </div>
+          </div>
+          {dlg.kind === "emp" && (
+            <label className="flex min-h-[32px] w-max cursor-pointer items-center gap-2 text-sm text-slate-300">
+              <input type="checkbox" checked={!!f.isAdmin} onChange={(e) => setF({ isAdmin: e.target.checked })} className="h-4 w-4 accent-teal-500" /> Quản lý
+            </label>
+          )}
+        </div>
+        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-800 px-4 py-3">
+          <button onClick={() => setDlg(null)} className={btnGhost}>Huỷ</button>
+          {dlg.kind === "emp" && !dlg.empId && <button onClick={() => saveDlg(true)} disabled={busy} className={`${btnGhost} disabled:opacity-50`}>Lưu và thêm tiếp</button>}
+          <button onClick={() => saveDlg(false)} disabled={busy} className={`${btnPrimary} disabled:opacity-50`}>{busy ? <Loader2 className="animate-spin" size={15} /> : <Check size={15} />} Lưu</button>
+        </div>
+      </div>
+    </div>
   );
 
   return (
     <div className="space-y-3 md:space-y-4">
+      <div className="inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-1">
+        {[["emp", "Nhân sự", cfg.employees.length], ["admin", "Tài khoản quản lý", loose.length]].map(([k, l, n]) => (
+          <button key={k} onClick={() => setSub(k)}
+            className={`h-9 whitespace-nowrap rounded-md px-4 text-sm ${sub === k ? "bg-slate-800 font-medium text-white" : "text-slate-400 hover:text-slate-200"}`}>
+            {l}<span className="ml-1.5 font-mono text-xs text-slate-500">{n}</span>
+          </button>
+        ))}
+      </div>
+
+      {sub === "emp" ? empTab : adminTab}
+      {formDlg}
+
       <ConfirmDialog
         open={!!pendingDel}
         title={`Xoá nhân sự ${pendingDel?.name || ""}?`}
@@ -3731,353 +3998,7 @@ function Employees({ cfg, saveCfg, flash }) {
         onConfirm={confirmDelAcc}
         onCancel={() => setPendingAcc(null)}
       />
-      <Panel title="Nhân sự">
-      <div className="mb-5 space-y-2">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center">
-          {/* Mã NV: chiều rộng cố định, ngắn gọn — đứng trước ô Họ và tên. Trên mobile tự kéo full-width nhờ flex-col mặc định, không cần w-full riêng (tránh đè lên md:w-28) */}
-          <div className="md:w-28">
-            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Mã NV" className={`font-mono ${inputCls}`} />
-          </div>
-          {/* khung fluid: co giãn theo chiều rộng màn hình — Họ và tên 65.875% / Bộ phận 34.125% (Bộ phận đã tăng thêm 50% so với mức 22.75% trước) */}
-          <div className="flex min-w-0 flex-col gap-2 md:flex-1 md:flex-row">
-            <div className="min-w-0" style={{ flexBasis: "65.875%" }}>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Họ và tên" className={inputCls} />
-            </div>
-            <div className="min-w-0" style={{ flexBasis: "34.125%" }}>
-              <select value={dept} onChange={(e) => setDept(e.target.value)} className={selectCls}>{DEPTS.map((d) => <option key={d}>{d}</option>)}</select>
-            </div>
-            <div className="min-w-0" style={{ flexBasis: "34.125%" }}>
-              <select value={role} onChange={(e) => setRole(e.target.value)} className={selectCls}>
-                <option value="">— Không phân vai trò —</option>
-                {ROLES.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
-              </select>
-            </div>
-          </div>
-        </div>
-        {/* v1.7: tài khoản đăng nhập của nhân sự mới. Bỏ trống cả hai ô thì thêm nhân sự chưa có tài khoản */}
-        <div className="flex flex-col gap-2 md:flex-row md:items-center">
-          <div className="min-w-0 md:flex-1">{userInput(newUser, setNewUser)}</div>
-          <div className="min-w-0 md:flex-1">{passInput(newPass, setNewPass)}</div>
-          {adminCheck(newAdmin, setNewAdmin)}
-          <button onClick={add} disabled={busy} className={`shrink-0 whitespace-nowrap ${btnPrimary} disabled:opacity-50`}><Plus size={14} /> Thêm nhân sự</button>
-        </div>
-      </div>
-
-      {cfg.employees.length === 0 ? <p className="text-sm text-slate-500">Chưa có nhân sự.</p> : (
-        <>
-          <table className="hidden w-full border-collapse text-sm md:table">
-            <thead>
-              <tr className="border-b border-slate-800 text-left text-xs uppercase tracking-wider text-slate-500">
-                <th className="w-24 px-3 py-2 font-medium">Mã NV</th>
-                <th className="px-3 py-2 font-medium">Họ và tên</th>
-                <th className="w-40 px-3 py-2 font-medium">Bộ phận</th>
-                <th className="w-44 px-3 py-2 font-medium">Vai trò</th>
-                <th className="w-48 px-3 py-2 font-medium">Tên đăng nhập</th>
-                <th className="w-40 px-3 py-2 font-medium">Mật khẩu</th>
-                <th className="w-32"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {cfg.employees.map((e) => {
-                const editing = editId === e.id;
-                const a = accByEmp.get(e.id);
-                return (
-                  <tr key={e.id} className="border-b border-slate-800 hover:bg-slate-800">
-                    <td className="px-3 py-2">{editing ? <input value={draft.code} onChange={(x) => setDraft({ ...draft, code: x.target.value })} className={`font-mono ${inputCls}`} /> : <span className="font-mono text-xs text-slate-400">{e.code || "—"}</span>}</td>
-                    <td className="px-3 py-2">{editing ? <input value={draft.name} onChange={(x) => setDraft({ ...draft, name: x.target.value })} onKeyDown={(x) => x.key === "Enter" && commit()} className={inputCls} /> : <span className="text-slate-100">{e.name}</span>}</td>
-                    <td className="px-3 py-2">{editing ? <select value={draft.dept} onChange={(x) => setDraft({ ...draft, dept: x.target.value })} className={selectCls}>{DEPTS.map((d) => <option key={d}>{d}</option>)}</select> : <span className="text-slate-400">{e.dept}</span>}</td>
-                    <td className="px-3 py-2">
-                      {editing ? (
-                        <select value={draft.role || ""} onChange={(x) => setDraft({ ...draft, role: x.target.value })} className={selectCls}>
-                          <option value="">— Không phân —</option>
-                          {ROLES.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
-                        </select>
-                      ) : (
-                        e.role ? <span className="rounded border border-slate-700 px-1.5 py-0.5 font-mono text-[10px] text-teal-300">{roleLabel(e.role)}</span> : <span className="text-slate-600">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      {editing ? (
-                        <div className="space-y-2">{userInput(draft.username, (v) => setDraft({ ...draft, username: v }))}{adminCheck(draft.isAdmin, (v) => setDraft({ ...draft, isAdmin: v }))}</div>
-                      ) : a ? (
-                        <span className="flex flex-wrap items-center gap-1.5"><span className="font-mono text-xs text-slate-300">{a.username}</span>{a.isAdmin && adminBadge}{a.disabled && lockedBadge}</span>
-                      ) : <span className="text-slate-600">—</span>}
-                    </td>
-                    <td className="px-3 py-2 align-top">
-                      {editing ? passInput(draft.password, (v) => setDraft({ ...draft, password: v }))
-                        : <span className="flex h-9 items-center"><PasswordCell value={a?.password} shown={!!shown[a?.id]} onToggle={() => toggleShown(a.id)} /></span>}
-                    </td>
-                    <td className="px-2 py-2 align-top">
-                      <div className="flex justify-end gap-1.5">
-                        {editing ? (
-                          <><button onClick={commit} className={`${iconBtn} border-teal-800 text-teal-400`}><Check size={15} /></button>
-                            <button onClick={() => setEditId(null)} className={iconBtn}><X size={15} /></button></>
-                        ) : (
-                          <>{a && lockBtn(a)}
-                            <button onClick={() => startEdit(e)} className={iconBtn}><Pencil size={14} /></button>
-                            <button onClick={() => del(e.id)} className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={14} /></button></>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          <div className="space-y-2 md:hidden">
-            {cfg.employees.map((e) => {
-              const editing = editId === e.id;
-              const a = accByEmp.get(e.id);
-              return (
-                <div key={e.id} className="rounded-lg border border-slate-800 bg-slate-950 p-3">
-                  {editing ? (
-                    <div className="space-y-2">
-                      <input value={draft.code} onChange={(x) => setDraft({ ...draft, code: x.target.value })} placeholder="Mã NV" className={`font-mono ${inputCls}`} />
-                      <input value={draft.name} onChange={(x) => setDraft({ ...draft, name: x.target.value })} className={inputCls} />
-                      <select value={draft.dept} onChange={(x) => setDraft({ ...draft, dept: x.target.value })} className={selectCls}>{DEPTS.map((d) => <option key={d}>{d}</option>)}</select>
-                      <select value={draft.role || ""} onChange={(x) => setDraft({ ...draft, role: x.target.value })} className={selectCls}>
-                        <option value="">— Không phân vai trò —</option>
-                        {ROLES.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
-                      </select>
-                      {userInput(draft.username, (v) => setDraft({ ...draft, username: v }))}
-                      {passInput(draft.password, (v) => setDraft({ ...draft, password: v }))}
-                      {adminCheck(draft.isAdmin, (v) => setDraft({ ...draft, isAdmin: v }))}
-                      <div className="grid grid-cols-2 gap-2">
-                        <button onClick={commit} className={btnPrimary}><Check size={15} /> Lưu</button>
-                        <button onClick={() => setEditId(null)} className={btnGhost}><X size={15} /> Huỷ</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        {e.code && <div className="font-mono text-[11px] text-slate-500">{e.code}</div>}
-                        <div className="truncate text-sm font-medium text-slate-100">{e.name}</div>
-                        <div className="text-xs text-slate-500">{e.dept}{e.role ? ` · ${roleLabel(e.role)}` : ""}</div>
-                        {a && (
-                          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                            <span className="font-mono text-xs text-slate-300">{a.username}</span>
-                            <PasswordCell value={a.password} shown={!!shown[a.id]} onToggle={() => toggleShown(a.id)} />
-                            {a.isAdmin && adminBadge}{a.disabled && lockedBadge}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex shrink-0 gap-1.5">
-                        {a && lockBtn(a)}
-                        <button onClick={() => startEdit(e)} className={iconBtn}><Pencil size={14} /></button>
-                        <button onClick={() => del(e.id)} className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={14} /></button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-      <p className="mt-4 text-xs text-slate-500">Đổi tên không ảnh hưởng dữ liệu giờ công đã chấm — báo cáo sẽ hiển thị tên mới.</p>
-      </Panel>
-
-      {loose.length > 0 && (
-        <Panel title="Tài khoản không gắn nhân sự">
-          <div className="space-y-2">
-            {loose.map((a) => (
-              <div key={a.id} className="rounded-lg border border-slate-800 bg-slate-950 p-3">
-                {looseEdit === a.id ? (
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                    <div className="min-w-0 md:flex-1">{userInput(looseDraft.username, (v) => setLooseDraft({ ...looseDraft, username: v }))}</div>
-                    <div className="min-w-0 md:flex-1">{passInput(looseDraft.password, (v) => setLooseDraft({ ...looseDraft, password: v }))}</div>
-                    {adminCheck(looseDraft.isAdmin, (v) => setLooseDraft({ ...looseDraft, isAdmin: v }))}
-                    <div className="flex shrink-0 gap-1.5">
-                      <button onClick={commitLoose} className={`${iconBtn} border-teal-800 text-teal-400`}><Check size={15} /></button>
-                      <button onClick={() => setLooseEdit(null)} className={iconBtn}><X size={15} /></button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                      <span className="font-mono text-sm text-slate-100">{a.username}</span>
-                      <PasswordCell value={a.password} shown={!!shown[a.id]} onToggle={() => toggleShown(a.id)} />
-                      {a.isAdmin && adminBadge}{a.disabled && lockedBadge}
-                    </div>
-                    <div className="flex shrink-0 gap-1.5">
-                      {lockBtn(a)}
-                      <button onClick={() => startLoose(a)} className={iconBtn}><Pencil size={14} /></button>
-                      <button onClick={() => setPendingAcc(a)} className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={14} /></button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </Panel>
-      )}
-
-      <EmployeeProjectTracker cfg={cfg} saveCfg={saveCfg} flash={flash} />
     </div>
-  );
-}
-
-/* ============================ BẢNG THEO DÕI: NHÂN SỰ × DỰ ÁN ĐANG THAM GIA ============================ */
-function EmployeeProjectTracker({ cfg, saveCfg, flash }) {
-  const now = new Date();
-  const thisYm = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
-  const [projMap, setProjMap] = useState(null); // Map empId -> Set(projectId) — tự động theo giờ công đã chấm
-  const [loading, setLoading] = useState(false);
-  const [editId, setEditId] = useState(null);    // empId đang sửa Mã NV / Tên nhân viên
-  const [draft, setDraft] = useState({ code: "", name: "" });
-
-  const empIdsKey = cfg.employees.map((e) => e.id).join(",");
-
-  const load = useCallback(async () => {
-    if (cfg.employees.length === 0) { setProjMap(new Map()); return; }
-    setLoading(true);
-    const map = new Map();
-    for (const e of cfg.employees) {
-      const pids = new Set();
-      for (const r of dbTs(e.id, thisYm)?.rows || []) {
-        if (Object.values(r.days || {}).some((v) => v > 0)) pids.add(r.projectId);
-      }
-      map.set(e.id, pids);
-    }
-    setProjMap(map);
-    setLoading(false);
-  }, [empIdsKey, thisYm]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => { load(); }, [empIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const projLabel = (id) => cfg.projects.find((p) => p.id === id);
-
-  const startEdit = (e) => { setEditId(e.id); setDraft({ code: e.code || "", name: e.name }); };
-  const commit = async () => {
-    if (!draft.name.trim()) return flash("Tên nhân sự không được để trống.", "err");
-    await saveCfg({ ...cfg, employees: cfg.employees.map((e) => (e.id === editId ? { ...e, code: draft.code.trim(), name: draft.name.trim() } : e)) });
-    setEditId(null); flash("Đã cập nhật thông tin nhân sự.");
-  };
-
-  return (
-    <Panel
-      title={`Theo dõi nhân sự — dự án đang tham gia (${ymLabel(thisYm)})`}
-      right={
-        <button onClick={load} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200">
-          {loading ? <Loader2 className="animate-spin" size={13} /> : <RotateCcw size={13} />} Cập nhật
-        </button>
-      }
-    >
-      {cfg.employees.length === 0 ? (
-        <p className="text-sm text-slate-500">Chưa có nhân sự nào.</p>
-      ) : !projMap ? (
-        <div className="flex items-center gap-2 py-6 text-sm text-slate-400"><Loader2 className="animate-spin" size={16} /> Đang tải dữ liệu tham gia dự án…</div>
-      ) : (
-        <>
-          {/* desktop */}
-          <div className="hidden overflow-x-auto md:block">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-slate-800 text-left text-xs uppercase tracking-wider text-slate-500">
-                  <th className="w-28 px-3 py-2 font-medium">Mã NV</th>
-                  <th className="w-56 px-3 py-2 font-medium">Tên nhân viên</th>
-                  <th className="px-3 py-2 font-medium">Dự án đang tham gia</th>
-                  <th className="w-24"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {cfg.employees.map((e) => {
-                  const editing = editId === e.id;
-                  const pids = [...(projMap.get(e.id) || [])];
-                  return (
-                    <tr key={e.id} className="border-b border-slate-800 hover:bg-slate-800">
-                      <td className="px-3 py-2">{editing ? <input value={draft.code} onChange={(x) => setDraft({ ...draft, code: x.target.value })} className={`font-mono ${inputCls}`} /> : <span className="font-mono text-xs text-slate-400">{e.code || "—"}</span>}</td>
-                      <td className="px-3 py-2">{editing ? <input value={draft.name} onChange={(x) => setDraft({ ...draft, name: x.target.value })} onKeyDown={(x) => x.key === "Enter" && commit()} className={inputCls} /> : <span className="text-slate-100">{e.name}</span>}</td>
-                      <td className="px-3 py-2">
-                        {pids.length === 0 ? (
-                          <span className="text-xs text-slate-600">Chưa chấm dự án nào tháng này</span>
-                        ) : (
-                          <div className="flex flex-wrap gap-1.5">
-                            {pids.map((pid) => {
-                              const p = projLabel(pid);
-                              return (
-                                <span key={pid}
-                                  className={`rounded-md border px-2 py-0.5 text-xs ${p?.active === false ? "border-slate-800 text-slate-500" : "border-teal-800 bg-teal-950 text-teal-300"}`}>
-                                  {p ? (p.code ? `[${p.code}] ${p.name}` : p.name) : "(dự án đã xoá)"}
-                                  {p?.active === false && " · đã đóng"}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-2 py-2">
-                        <div className="flex justify-end gap-1.5">
-                          {editing ? (
-                            <><button onClick={commit} className={`${iconBtn} border-teal-800 text-teal-400`}><Check size={15} /></button>
-                              <button onClick={() => setEditId(null)} className={iconBtn}><X size={15} /></button></>
-                          ) : (
-                            <button onClick={() => startEdit(e)} className={iconBtn}><Pencil size={14} /></button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* mobile */}
-          <div className="space-y-2 md:hidden">
-            {cfg.employees.map((e) => {
-              const editing = editId === e.id;
-              const pids = [...(projMap.get(e.id) || [])];
-              return (
-                <div key={e.id} className="rounded-lg border border-slate-800 bg-slate-950 p-3">
-                  {editing ? (
-                    <div className="space-y-2">
-                      <input value={draft.code} onChange={(x) => setDraft({ ...draft, code: x.target.value })} placeholder="Mã NV" className={`font-mono ${inputCls}`} />
-                      <input value={draft.name} onChange={(x) => setDraft({ ...draft, name: x.target.value })} placeholder="Tên nhân viên" className={inputCls} />
-                      <div className="grid grid-cols-2 gap-2">
-                        <button onClick={commit} className={btnPrimary}><Check size={15} /> Lưu</button>
-                        <button onClick={() => setEditId(null)} className={btnGhost}><X size={15} /> Huỷ</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-baseline justify-between gap-2">
-                      <div className="min-w-0">
-                        {e.code && <div className="font-mono text-[11px] text-slate-500">{e.code}</div>}
-                        <div className="truncate text-sm font-medium text-slate-100">{e.name}</div>
-                      </div>
-                      <button onClick={() => startEdit(e)} className={iconBtn}><Pencil size={14} /></button>
-                    </div>
-                  )}
-                  {!editing && (
-                    <div className="mt-2">
-                      {pids.length === 0 ? (
-                        <span className="text-xs text-slate-600">Chưa chấm dự án nào tháng này</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5">
-                          {pids.map((pid) => {
-                            const p = projLabel(pid);
-                            return (
-                              <span key={pid}
-                                className={`rounded-md border px-2 py-0.5 text-xs ${p?.active === false ? "border-slate-800 text-slate-500" : "border-teal-800 bg-teal-950 text-teal-300"}`}>
-                                {p ? (p.code ? `[${p.code}] ${p.name}` : p.name) : "(dự án đã xoá)"}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-      <p className="mt-4 text-xs text-slate-500">
-        "Đang tham gia" là dự án nhân sự đã chấm ít nhất 1 giờ công trong tháng này (tự động theo dữ liệu chấm công, không chỉnh sửa được ở đây). Bấm biểu tượng bút chì để sửa Mã số nhân viên hoặc Tên nhân viên — thay đổi sẽ đồng bộ với bảng Nhân sự phía trên.
-      </p>
-    </Panel>
   );
 }
 
