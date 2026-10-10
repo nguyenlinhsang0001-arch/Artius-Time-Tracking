@@ -1,7 +1,9 @@
--- ARTIUS — Quản lý giờ công v1.8
+-- ARTIUS — Quản lý giờ công v1.9
 -- Chạy trong Supabase → SQL Editor. Chạy lại nhiều lần được, không xoá dữ liệu.
--- Nâng cấp từ v1.7: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v1.8.
--- File này tự chuyển dữ liệu từ bảng cũ (artius_kv) sang hai bảng mới ở mục 5.
+-- Nâng cấp từ v1.7 hoặc v1.8: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v1.9.
+-- File này tự làm hai việc chuyển dữ liệu, mỗi việc chỉ chạy đúng một lần:
+--   mục 5: chép dữ liệu từ bảng cũ (artius_kv) sang hai bảng mới (nếu chưa chép ở v1.8)
+--   mục 6: đánh dấu "đã gửi" cho mọi ngày cũ đang có giờ công
 
 -- 1. Bảng cũ (v1.4–v1.7): toàn bộ dữ liệu trong một dòng. Từ v1.8 chỉ còn là bản lưu, không ghi nữa.
 create table if not exists public.artius_kv (
@@ -36,7 +38,7 @@ alter table public.artius_config add column if not exists rev bigint not null de
 create table if not exists public.artius_ts (
   emp_id     text not null,
   ym         text not null,               -- 'YYYY-MM'
-  value      text not null,               -- JSON: { rows, weeks }
+  value      text not null,               -- JSON: { rows, sent, weeks }  (sent: ngày đã gửi; weeks: dấu tuần kiểu cũ)
   updated_at timestamptz not null default now(),
   primary key (emp_id, ym)
 );
@@ -84,17 +86,132 @@ begin
   end if;
 end $$;
 
--- 6. Phân quyền
+-- 6. v1.9 — Coi như ĐÃ GỬI mọi ngày cũ đang có giờ công.
+--    Từ v1.9 quản lý chỉ tổng hợp giờ của NGÀY đã gửi (value.sent['YYYY-MM-DD']); không làm bước này thì
+--    số liệu cũ sẽ biến mất khỏi Dashboard. Chỉ chạy MỘT LẦN (ghi dấu vào artius_meta), để chạy lại file này
+--    về sau không đánh dấu nhầm những ngày quản lý đã mở khoá.
+--    Nếu trước đó đã dùng bản v1.9 khoá theo tuần (có dấu 'sent_migration_v1_9'): chỉ đánh dấu các ngày thuộc
+--    tuần đang có dấu đã gửi, tuần quản lý đang mở khoá thì giữ nguyên là chưa gửi.
+create table if not exists public.artius_meta (
+  key   text primary key,
+  value text not null,
+  at    timestamptz not null default now()
+);
+
+do $$
+declare
+  stamp     jsonb;
+  week_mode boolean;
+begin
+  if exists (select 1 from public.artius_meta where key = 'sent_day_migration_v1_9') then
+    return;
+  end if;
+  week_mode := exists (select 1 from public.artius_meta where key = 'sent_migration_v1_9');
+  stamp := jsonb_build_object('at', to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), 'by', 'migrate');
+
+  update public.artius_ts t
+  set value = jsonb_set(t.value::jsonb, '{sent}',
+        coalesce(case when jsonb_typeof(t.value::jsonb -> 'sent') = 'object' then t.value::jsonb -> 'sent' end, '{}'::jsonb) || x.add,
+        true)::text
+  from (
+    select t2.emp_id, t2.ym, jsonb_object_agg(d.key, stamp) as add
+    from public.artius_ts t2,
+         jsonb_array_elements(case when jsonb_typeof(t2.value::jsonb -> 'rows') = 'array' then t2.value::jsonb -> 'rows' else '[]'::jsonb end) as rw,
+         jsonb_each(case when jsonb_typeof(rw -> 'days') = 'object' then rw -> 'days' else '{}'::jsonb end) as d
+    where d.key ~ '^\d{4}-\d{2}-\d{2}$'
+      and jsonb_typeof(d.value) = 'number'
+      and (d.value #>> '{}')::numeric > 0
+      and not (coalesce(case when jsonb_typeof(t2.value::jsonb -> 'sent') = 'object' then t2.value::jsonb -> 'sent' end, '{}'::jsonb) ? d.key)
+      and (not week_mode
+           or coalesce(case when jsonb_typeof(t2.value::jsonb -> 'weeks') = 'object' then t2.value::jsonb -> 'weeks' end, '{}'::jsonb)
+              ? to_char(date_trunc('week', d.key::date), 'YYYY-MM-DD'))
+    group by t2.emp_id, t2.ym
+  ) as x
+  where t.emp_id = x.emp_id and t.ym = x.ym;
+
+  insert into public.artius_meta (key, value) values ('sent_day_migration_v1_9', 'done');
+end $$;
+
+-- 7. v1.9 — Khoá cứng NGÀY đã gửi, do database thực thi.
+--    Giờ của một ngày trong một dòng bảng công, đưa về dạng chuẩn để so sánh trước/sau.
+drop function if exists public.artius_week_hours(jsonb, date);
+create or replace function public.artius_day_hours(bucket jsonb, d text)
+returns jsonb language sql immutable as $$
+  select coalesce(jsonb_agg(s.x order by s.x), '[]'::jsonb)
+  from (
+    select jsonb_build_array(
+             coalesce(rw ->> 'projectId', ''),
+             coalesce(nullif(rw ->> 'phaseId', ''), 'P2'),     -- app coi dòng chưa có giai đoạn là P2
+             coalesce(rw ->> 'taskId', ''),
+             (rw -> 'days' -> d #>> '{}')::numeric) as x
+    from jsonb_array_elements(case when jsonb_typeof(bucket -> 'rows') = 'array' then bucket -> 'rows' else '[]'::jsonb end) as rw
+    where case when jsonb_typeof(rw -> 'days') = 'object' and jsonb_typeof(rw -> 'days' -> d) = 'number'
+               then (rw -> 'days' -> d #>> '{}')::numeric > 0
+               else false end
+  ) as s;
+$$;
+
+--    Chạy trước mỗi lần thêm / sửa / xoá một dòng bảng công.
+--    Tài khoản quản lý (và SQL Editor, hàm server) được làm mọi thứ. Nhân sự thì:
+--      · không gỡ được dấu "đã gửi" của ngày nào
+--      · không đổi được giờ của ngày đã gửi (kể cả thêm giờ dự án khác vào ngày đó)
+--      · không xoá được dòng bảng công đang có ngày đã gửi
+--    Ngày chưa gửi thì nhân sự nhập và gửi bình thường.
+--    Hàm này cũng ghi updated_at theo giờ của server, để màn hình quản lý hỏi "có gì mới từ lúc X" cho chính xác.
+create or replace function public.artius_ts_guard()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  o  jsonb;
+  n  jsonb;
+  os jsonb;
+  dk text;
+begin
+  if auth.uid() is not null and not public.artius_is_admin() then
+    o  := case when tg_op = 'INSERT' then '{}'::jsonb else old.value::jsonb end;
+    os := case when jsonb_typeof(o -> 'sent') = 'object' then o -> 'sent' else '{}'::jsonb end;
+    if tg_op = 'DELETE' then
+      if os <> '{}'::jsonb then
+        raise exception 'Bảng công có ngày đã gửi, chỉ quản lý mới xoá được.' using errcode = '42501';
+      end if;
+      return old;
+    end if;
+    n := new.value::jsonb;
+    for dk in select jsonb_object_keys(os) loop
+      if not (coalesce(case when jsonb_typeof(n -> 'sent') = 'object' then n -> 'sent' end, '{}'::jsonb) ? dk) then
+        raise exception 'Ngày % đã gửi và đang khoá. Chỉ quản lý mới mở khoá được.', dk using errcode = '42501';
+      end if;
+      if public.artius_day_hours(o, dk) is distinct from public.artius_day_hours(n, dk) then
+        raise exception 'Ngày % đã gửi và đang khoá, không sửa giờ được. Nhờ quản lý mở khoá.', dk using errcode = '42501';
+      end if;
+    end loop;
+  end if;
+  if tg_op = 'DELETE' then return old; end if;
+  new.updated_at := now();
+  return new;
+end $$;
+
+drop trigger if exists artius_ts_guard on public.artius_ts;
+create trigger artius_ts_guard
+  before insert or update or delete on public.artius_ts
+  for each row execute function public.artius_ts_guard();
+
+create index if not exists artius_ts_updated_at on public.artius_ts (updated_at);
+
+-- 8. Phân quyền
+alter table public.artius_meta     enable row level security;
+revoke all on public.artius_meta from anon, authenticated;
+grant all on public.artius_meta to service_role;
+
 alter table public.artius_accounts enable row level security;
 alter table public.artius_kv       enable row level security;
 alter table public.artius_config   enable row level security;
 alter table public.artius_ts       enable row level security;
 
--- 6a. Bảng tài khoản: không policy nào, chỉ service_role dùng được
+-- 8a. Bảng tài khoản: không policy nào, chỉ service_role dùng được
 revoke all on public.artius_accounts from anon, authenticated;
 grant all on public.artius_accounts to service_role;
 
--- 6b. Bảng cũ: chỉ còn đọc. Bản v1.7 nào còn mở trên máy nhân viên sẽ báo lỗi khi lưu
+-- 8b. Bảng cũ: chỉ còn đọc. Bản v1.7 nào còn mở trên máy nhân viên sẽ báo lỗi khi lưu
 --     (thay vì lặng lẽ ghi vào bảng không còn dùng), tải lại trang là lên v1.8.
 revoke all on public.artius_kv from anon, authenticated;
 grant select on public.artius_kv to authenticated;
@@ -106,7 +223,7 @@ create policy "artius_kv_member_read" on public.artius_kv
   for select to authenticated
   using ((select public.artius_is_member()));
 
--- 6c. Thiết lập: mọi tài khoản hợp lệ đọc được, chỉ tài khoản quản lý sửa được
+-- 8c. Thiết lập: mọi tài khoản hợp lệ đọc được, chỉ tài khoản quản lý sửa được
 revoke all on public.artius_config from anon, authenticated;
 grant select, insert, update on public.artius_config to authenticated;
 grant all on public.artius_config to service_role;
@@ -124,7 +241,7 @@ create policy "artius_config_admin_update" on public.artius_config
   using ((select public.artius_is_admin()))
   with check ((select public.artius_is_admin()));
 
--- 6d. Bảng công: nhân sự chỉ đọc/ghi dòng của chính mình; tài khoản quản lý đọc/ghi tất cả
+-- 8d. Bảng công: nhân sự chỉ đọc/ghi dòng của chính mình; tài khoản quản lý đọc/ghi tất cả
 revoke all on public.artius_ts from anon, authenticated;
 grant select, insert, update, delete on public.artius_ts to authenticated;
 grant all on public.artius_ts to service_role;

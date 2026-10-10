@@ -1,17 +1,38 @@
-# ARTIUS — Quản lý giờ công · v1.8 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v1.9 (bản webapp cho Vercel)
 
 | File | Vai trò |
 |---|---|
-| `src/artius-timesheet_v1_8.jsx` | Ứng dụng v1.8 |
+| `src/artius-timesheet_v1_9.jsx` | Ứng dụng v1.9 |
 | `src/data.js` | Đọc/ghi thiết lập và bảng công theo từng dòng trên Supabase (mới ở v1.8) |
 | `src/merge.js` | Gộp thiết lập khi nhiều quản lý cùng sửa (mới ở v1.8) |
 | `src/auth.js` | Đăng nhập / đăng xuất, gọi hàm server quản lý tài khoản |
 | `src/storage.js` | Client Supabase dùng chung + tuỳ chọn riêng từng máy (localStorage) |
 | `api/accounts.js` | Hàm server trên Vercel: tạo / sửa / khoá / xoá tài khoản |
 | `src/main.jsx`, `index.html`, `src/index.css` | Điểm khởi động, Tailwind |
-| `supabase/schema.sql` | Các bảng, phân quyền, và phần tự chuyển dữ liệu từ v1.7 |
+| `supabase/schema.sql` | Các bảng, phân quyền, khoá cứng ngày đã gửi, và phần tự chuyển dữ liệu từ v1.7 / v1.8 |
 
-## Mới ở v1.8 — tách bảng dữ liệu
+## Mới ở v1.9 — quy trình gửi và khoá bảng công
+
+- **Bỏ Lưu nháp.** Giờ nhân sự nhập chỉ nằm trên màn hình cho tới khi bấm **Gửi giờ công**.
+  Đóng trang, đổi tuần hoặc đổi tab khi chưa gửi đều được hỏi lại, vì giờ đang nhập sẽ mất.
+- **Gửi là khoá cứng, theo từng ngày.** Bấm Gửi thì những ngày đang có giờ và chưa gửi được ghi lên hệ thống và khoá lại.
+  Ngày chưa nhập vẫn để mở, nhập và gửi sau được. Ngày đã gửi thì khoá cả ngày: không sửa giờ, không thêm giờ
+  dự án khác vào ngày đó. Nhân sự không tự mở được.
+  Quản lý mở ở **Bảng công → Chi tiết nhân viên → Mở khoá tuần này** (mở mọi ngày đã gửi của tuần đang xem).
+- **Database cũng chặn.** Trigger `artius_ts_guard` từ chối mọi thay đổi của nhân sự lên ngày đã gửi
+  (sửa giờ, thêm giờ, tự gỡ dấu đã gửi, xoá dòng), kể cả khi gọi thẳng database.
+- **Quản lý chỉ tổng hợp giờ đã gửi.** Dashboard, Ma trận giờ công, các file Excel và cột "Dự án đang tham gia"
+  chỉ cộng giờ của ngày có dấu đã gửi. Ngày đang được mở khoá tạm không tính cho tới khi nhân sự gửi lại.
+- **Tình trạng nộp theo tuần.** Một tuần tính là đã nộp khi mọi ngày phải chấm công của tuần (ngày có giờ chuẩn
+  lớn hơn 0 và không phải ngày lễ) đều đã gửi. Ngày nghỉ thì chấm bằng dòng Vắng mặt rồi gửi.
+- **Tự cập nhật.** Máy quản lý hỏi server 10 giây một lần (chỉ lấy dòng vừa thay đổi), máy nhân sự 60 giây
+  một lần và khi quay lại tab. Chỉ chạy khi tab đang hiện.
+- **Dữ liệu cũ.** `schema.sql` đánh dấu "đã gửi" một lần cho mọi ngày cũ đang có giờ, để số liệu không bị hụt.
+
+Quản lý vẫn sửa trực tiếp được bảng công của nhân viên (nút **Lưu thay đổi**). Giờ quản lý nhập thêm vào ngày chưa gửi
+chỉ được tính sau khi bấm **Đánh dấu đã gửi**.
+
+## Có từ v1.8 — tách bảng dữ liệu
 
 Tới v1.7 toàn bộ dữ liệu nằm trong **một dòng** của bảng `artius_kv`. Nút Lưu nháp ghi lại cả khối
 theo bản mà máy người đó tải lúc mở app, nên đè mất giờ công và thay đổi thiết lập của người khác.
@@ -34,20 +55,24 @@ Từ v1.8:
 - Nhân sự chỉ tải bảng công của mình, nên mở app và lưu đều nhẹ.
 - Bỏ hai cảnh báo "hạn mức lệnh của phiên" và "dữ liệu gần giới hạn một khoá": chỉ đúng với bản artifact.
 
-## Nâng cấp từ v1.7 — làm đúng thứ tự
+## Nâng cấp từ v1.7 hoặc v1.8 — làm đúng thứ tự
 
 Không cần thêm hay sửa biến môi trường nào trên Vercel.
 
-1. **Sao lưu.** Mở bản v1.7 đang chạy → Thiết lập → Sao lưu & khôi phục → Xuất file sao lưu.
+1. **Sao lưu.** Mở bản đang chạy → Thiết lập → Sao lưu & khôi phục → Xuất file sao lưu.
+   Nhắc mọi người **gửi hoặc ghi lại giờ đang nhập dở** trước giờ nâng cấp.
 2. **Supabase → SQL Editor**: dán toàn bộ `supabase/schema.sql`, bấm **Run**.
-   File này tự tạo hai bảng mới, chép dữ liệu từ `artius_kv` sang, rồi chuyển `artius_kv` thành chỉ đọc.
+   File này tự tạo các bảng mới, chép dữ liệu từ `artius_kv` sang (nếu chưa chép), chuyển `artius_kv` thành chỉ đọc,
+   đánh dấu đã gửi cho các ngày cũ đang có giờ, và bật khoá cứng.
    Từ lúc này bản v1.7 vẫn xem được dữ liệu nhưng **không lưu được** (báo "Chưa ghi được").
-3. **Kiểm tra** trong Table Editor: `artius_config` có 1 dòng `main`; `artius_ts` có các dòng dạng mã nhân sự + tháng.
-4. **GitHub**: chép các file v1.8 vào repository (nhớ có `src/data.js` và `src/merge.js`), **xoá** `src/artius-timesheet_v1_7.jsx`, commit. Vercel tự deploy.
-5. Mở webapp, bấm Ctrl + F5. Góc trái dưới ghi `ARTIUS v1.8`, dữ liệu cũ có đủ.
-6. Nhắn mọi người **tải lại trang**. Ai còn mở bản v1.7 sẽ thấy lỗi khi bấm lưu, tải lại là lên v1.8.
+3. **Kiểm tra** trong Table Editor: `artius_config` có 1 dòng `main`; `artius_ts` có các dòng dạng mã nhân sự + tháng;
+   `artius_meta` có dòng `sent_day_migration_v1_9`.
+4. **GitHub**: chép các file v1.9 vào repository (nhớ có `src/data.js` và `src/merge.js`), **xoá** file `src/artius-timesheet_v1_7.jsx` hoặc `_v1_8.jsx` cũ, commit. Vercel tự deploy.
+5. Mở webapp, bấm Ctrl + F5. Góc trái dưới ghi `ARTIUS v1.9`, dữ liệu cũ có đủ.
+6. Nhắn mọi người **tải lại trang**. Ai còn mở bản cũ sẽ thấy lỗi khi bấm lưu, tải lại là lên v1.9.
 
-Chạy lại `schema.sql` sau khi đã dùng v1.8 là an toàn: phần chuyển dữ liệu chỉ chạy khi `artius_config` còn trống.
+Chạy lại `schema.sql` về sau là an toàn: phần chép dữ liệu chỉ chạy khi `artius_config` còn trống,
+phần đánh dấu đã gửi chỉ chạy một lần (ghi dấu trong `artius_meta`).
 
 ### Quay lại v1.7 nếu cần
 
@@ -61,7 +86,7 @@ create policy "artius_kv_member_all" on public.artius_kv
   using ((select public.artius_is_member())) with check ((select public.artius_is_member()));
 ```
 
-Lưu ý: giờ công nhập trong thời gian chạy v1.8 nằm ở bảng mới, bản v1.7 sẽ không thấy.
+Lưu ý: giờ công nhập trong thời gian chạy v1.8 / v1.9 nằm ở bảng mới, bản v1.7 sẽ không thấy.
 
 ## Cài mới từ đầu
 
@@ -81,5 +106,5 @@ Lưu ý: giờ công nhập trong thời gian chạy v1.8 nằm ở bảng mới
 - Mật khẩu lưu ở dạng **đọc được** trong bảng `artius_accounts` để ban quản lý xem lại. Bảng này không mở cho
   trình duyệt. Ai vào được Supabase dashboard của project cũng xem được bảng này.
 - Tên đăng nhập được ghép thành email nội bộ `<tên>@artius-time.local` để dùng với Supabase Auth. Không có thư nào được gửi đi.
-- Màn hình của quản lý hiển thị dữ liệu tại lúc mở app. Muốn thấy giờ mọi người vừa nhập thì bấm **Tải lại** ở Dashboard
-  hoặc tải lại trang.
+- Gửi chỉ khoá **những ngày đã có giờ**. Gửi thứ Hai xong, thứ Ba vẫn nhập và gửi bình thường. Muốn sửa ngày đã gửi thì nhờ quản lý mở khoá.
+- Quản lý mở khoá theo **cả tuần**: mọi ngày đã gửi của tuần đó mở lại, giờ vẫn nằm trên hệ thống nhưng tạm không được tính cho tới khi nhân sự gửi lại.

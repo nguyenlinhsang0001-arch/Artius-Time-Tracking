@@ -67,6 +67,29 @@ export async function fetchTs({ empId, yms } = {}) {
   return out;
 }
 
+/* v1.9 — Bảng công kèm mốc thời gian, trả về { rows: { "<empId>:<ym>": bucket }, max }.
+   max = updated_at lớn nhất nhận được (giờ của SERVER, do trigger trong database ghi).
+   since rỗng: lấy tất cả. since có giá trị: chỉ lấy dòng thay đổi sau mốc đó, lùi lại 10 giây cho chắc
+   (hai lần ghi sát nhau có thể hoàn tất không đúng thứ tự). Dùng để màn hình tự cập nhật mà không tải lại cả khối. */
+export async function fetchTsChanges(since = "") {
+  const rows = {};
+  let max = since || "";
+  const from0 = since ? new Date(new Date(since).getTime() - 10000).toISOString() : "";
+  for (let from = 0; ; from += PAGE) {
+    let q = supabase.from(TS).select("emp_id,ym,value,updated_at").order("emp_id").order("ym").range(from, from + PAGE - 1);
+    if (from0) q = q.gt("updated_at", from0);
+    const { data, error } = await q;
+    if (error) throw fail("đọc bảng công", error);
+    for (const r of data || []) {
+      const v = parse(r.value);
+      if (v) rows[slotOf(r)] = v;
+      if (r.updated_at && (!max || new Date(r.updated_at) > new Date(max))) max = r.updated_at;
+    }
+    if (!data || data.length < PAGE) break;
+  }
+  return { rows, max };
+}
+
 /* Ghi các bảng công trong map { "<empId>:<ym>": bucket }. Chỉ đụng tới đúng các dòng đó. */
 export async function saveTs(map) {
   const now = new Date().toISOString();
