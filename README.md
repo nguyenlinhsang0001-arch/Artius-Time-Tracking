@@ -29,6 +29,10 @@
   chỉ để xem, và "Chép tuần trước" bỏ qua dự án đã đóng. Cần chấm thêm thì quản lý mở lại dự án ở tab Dự án.
   Quản lý vẫn sửa được giờ ở Chi tiết nhân viên. Trigger `artius_ts_guard` cũng từ chối nhân sự thêm / sửa / xoá
   giờ của dự án đã đóng. Số liệu của dự án chỉ là một khối giờ công, không phân biệt trước hay sau khi đóng.
+- **Giờ dự kiến chia theo phase.** Tab Dự án nhập giờ dự kiến cho từng phase P1–P4 (lưu ở `project.budgets`), Tổng tự cộng.
+  Mỗi ô phase hiện giờ đã gửi / giờ dự kiến, tính trên toàn bộ thời gian của dự án. Dashboard hiện mỗi dự án 4 thanh
+  theo phase kèm mốc dự kiến (theo kỳ và bộ lọc đang chọn), file Excel của Dashboard có thêm sheet "Dự kiến theo phase".
+  Số giờ dự kiến tổng kiểu cũ (một con số cho cả dự án) không còn được dùng: nhập lại theo từng phase.
 - **Tự cập nhật.** Máy quản lý hỏi server 10 giây một lần (chỉ lấy dòng vừa thay đổi), máy nhân sự 60 giây
   một lần và khi quay lại tab. Chỉ chạy khi tab đang hiện.
 - **Dữ liệu cũ.** `schema.sql` đánh dấu "đã gửi" một lần cho mọi ngày cũ đang có giờ, để số liệu không bị hụt.
