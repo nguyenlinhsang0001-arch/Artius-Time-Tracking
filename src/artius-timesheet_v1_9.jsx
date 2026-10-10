@@ -576,6 +576,12 @@ const PHASES = [
   { id: "P4", name: "Bàn giao", desc: "As-built, snagging, hoàn thiện hồ sơ, nghiệm thu, lưu trữ", cls: "border-violet-800 bg-violet-950 text-violet-300", color: "#a78bfa" },
 ];
 const DEFAULT_PHASE = "P2";
+/* v1.9 — Giờ dự kiến của dự án chia theo phase: project.budgets = { P1, P2, P3, P4 }. Tổng dự kiến = cộng 4 phase.
+   Số tổng kiểu cũ (project.budget, một con số cho cả dự án) không còn được dùng. Phase để trống / 0 = không theo dõi hạn mức. */
+const projBudgets = (p) => Object.fromEntries(PHASES.map((ph) => [ph.id, Math.max(0, Number(p?.budgets?.[ph.id]) || 0)]));
+const budgetTotal = (p) => PHASES.reduce((a, ph) => a + (Math.max(0, Number(p?.budgets?.[ph.id])) || 0), 0);
+const cleanBudgets = (d) => Object.fromEntries(PHASES.map((ph) => [ph.id, Math.max(0, Number(d?.[ph.id]) || 0)]));
+const fmtH = (n) => String(+Number(n || 0).toFixed(1));
 const phaseInfo = (id) => PHASES.find((p) => p.id === id) || null;
 const phaseLabel = (id) => { const p = phaseInfo(id); return p ? `${p.id} · ${p.name}` : "(chưa gán)"; };
 // Đoán giai đoạn từ nhóm của hạng mục — dùng khi thêm dòng mới và khi nâng cấp dữ liệu cũ chưa có giai đoạn
@@ -3264,6 +3270,19 @@ function Dashboard({ cfg, flash }) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), "Chi tiết");
     const sortDesc = (m, fn) => [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => fn(k, v));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sortDesc(new Map([...agg.byProj].filter(([k]) => k !== null)), (k, v) => ({ "Dự án": projLabel(k), "Tổng giờ": v, "Tỷ trọng %": +(v / agg.total * 100).toFixed(1) }))), "Theo dự án");
+    // v1.9: dự án × phase — giờ dự kiến, đã dùng (theo kỳ và bộ lọc đang chọn), còn lại, % sử dụng
+    const usedByProj = new Map(projectRows.map((r) => [r.id, r]));
+    const budgetRows = [];
+    for (const pr of [...cfg.projects, ...projectRows.filter((r) => !projMapById.has(r.id)).map((r) => ({ id: r.id, name: r.name }))]) {
+      if (fProj !== "all" && pr.id !== fProj) continue;
+      const u = usedByProj.get(pr.id), bg = projBudgets(pr);
+      if (!u && budgetTotal(pr) === 0) continue;
+      const line = (label, b, used) => ({ "Mã DA": pr.code || "", "Dự án": pr.name, "Giai đoạn": label, "Giờ dự kiến": b > 0 ? b : "", "Đã dùng": +Number(used).toFixed(1),
+        "Còn lại": b > 0 ? +(b - used).toFixed(1) : "", "% sử dụng": b > 0 ? +((used / b) * 100).toFixed(1) : "" });
+      for (const ph of PHASES) budgetRows.push(line(`${ph.id} · ${ph.name}`, bg[ph.id], u?.[ph.id] || 0));
+      budgetRows.push(line("Tổng", budgetTotal(pr), u?.total || 0));
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(budgetRows.length ? budgetRows : [{ "Dự án": "(chưa có dữ liệu)" }]), "Dự kiến theo phase");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(PHASES.map((p) => ({
       "Giai đoạn": `${p.id} · ${p.name}`,
       "Tổng giờ": +(agg.byPhase.get(p.id) || 0).toFixed(1),
@@ -3314,7 +3333,7 @@ function Dashboard({ cfg, flash }) {
     return [...m.entries()]
       .map(([id, r]) => {
         const p = projMapById.get(id);
-        const base = { id, name: projLabel(id), total: r.total, budget: Number(p?.budget) || 0 };
+        const base = { id, name: projLabel(id), total: r.total, budget: budgetTotal(p), budgets: projBudgets(p) };
         for (const ph of PHASES) base[ph.id] = r[ph.id] || 0;
         return base;
       })
@@ -3395,7 +3414,7 @@ function Dashboard({ cfg, flash }) {
           )}
 
           <Panel title="Dự án — giờ công theo giai đoạn và mốc giờ dự kiến">
-            <ChartProjects rows={projectRows} />
+            <ProjectPhaseBars rows={projectRows} />
           </Panel>
 
           <Panel title="Giờ công theo tác vụ"><ChartBar data={chartTask} color="#a78bfa" /></Panel>
@@ -3457,90 +3476,57 @@ function Dashboard({ cfg, flash }) {
 /* Biểu đồ gộp cho khối dự án: mỗi dự án là một cột chồng chia theo 4 giai đoạn,
    kèm mốc giờ dự kiến. Một hình trả lời được cả ba câu: dự án nào ngốn giờ,
    giờ đó rơi vào chặng nào, và đã vượt dự toán chưa. */
-const ChartProjects = ({ rows }) => {
-  const isMobile = useIsMobile();
+/* v1.9 — Mỗi dự án 4 thanh theo phase: phần tô màu là giờ đã dùng (theo kỳ và bộ lọc đang chọn),
+   vạch trắng là mốc giờ dự kiến của phase đó. Vượt mốc thì số chuyển đỏ và tên dự án có nhãn "Vượt Px". */
+const ProjectPhaseBars = ({ rows }) => {
   const [limit, setLimit] = useState(10);
-  const w = isMobile ? 96 : 170;
   if (rows.length === 0) return <p className="text-sm text-slate-500">Chưa có dữ liệu.</p>;
-
-  const trim = (s) => (isMobile && s.length > 16 ? s.slice(0, 15) + "…" : s.length > 30 ? s.slice(0, 29) + "…" : s);
-  // Danh sách dự án có thể rất dài — mặc định hiện 10 dự án nhiều giờ nhất, mở rộng khi cần
   const shown = limit === 0 ? rows : rows.slice(0, limit);
-  const data = shown.map((r) => ({ ...r, name: trim(r.name) }));
-  const hasBudget = shown.some((r) => r.budget > 0);
-  const chartH = Math.max(210, data.length * (isMobile ? 38 : 44) + 50);
-
-  const TipBox = ({ active, payload, label }) => {
-    if (!active || !payload?.length) return null;
-    const r = payload[0].payload;
-    const pct = r.budget > 0 ? (r.total / r.budget) * 100 : null;
-    return (
-      <div className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm">
-        <div className="font-semibold text-white">{label}</div>
-        <div className="mt-1 font-mono text-white">Tổng {r.total.toFixed(1)} giờ</div>
-        {pct !== null && (
-          <div className={`font-mono text-xs ${pct > 100 ? "text-rose-400" : pct > 85 ? "text-amber-400" : "text-teal-400"}`}>
-            Dự kiến {r.budget} giờ · đã dùng {pct.toFixed(0)}%
-          </div>
-        )}
-        <div className="mt-1.5 space-y-0.5">
-          {PHASES.filter((p) => r[p.id] > 0).map((p) => (
-            <div key={p.id} className="flex items-center gap-1.5 text-xs">
-              <span className="h-2 w-2 rounded-sm" style={{ background: p.color }} />
-              <span className="text-slate-300">{p.id} · {p.name}</span>
-              <span className="ml-auto font-mono text-slate-100">{r[p.id].toFixed(1)}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div>
-      {rows.length > 10 && (
-        <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="mr-1 text-slate-500">Hiện</span>
-          {[10, 25, 0].map((n) => (
-            <button key={n} onClick={() => setLimit(n)}
-              className={`rounded-md border px-2.5 py-1 ${limit === n ? "border-teal-700 bg-teal-950 text-teal-300" : "border-slate-700 text-slate-400 hover:text-slate-200"}`}>
-              {n === 0 ? `Tất cả (${rows.length})` : `Top ${n}`}
-            </button>
-          ))}
-          <span className="ml-auto text-slate-600">Đang xem {data.length}/{rows.length} dự án</span>
-        </div>
-      )}
-      {/* danh sách dài thì cuộn trong khung, không đẩy cả trang dài ra */}
-      <div className="overflow-y-auto" style={{ maxHeight: isMobile ? 420 : 560 }}>
-      <ResponsiveContainer width="100%" height={chartH}>
-      <ComposedChart data={data} layout="vertical" margin={{ left: 4, right: 56, top: 22 }}>
-        <CartesianGrid strokeDasharray="2 4" horizontal={false} stroke="#1e293b" />
-        <XAxis type="number" tick={{ fontSize: 10, fill: "#64748b" }} axisLine={{ stroke: "#1e293b" }} tickLine={false} />
-        <YAxis type="category" dataKey="name" width={w} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-        <Tooltip cursor={{ fill: "#1e293b" }} content={<TipBox />} />
-        <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8" }} />
-        {PHASES.map((p, i) => (
-          <Bar key={p.id} dataKey={p.id} name={`${p.id} · ${p.name}`} stackId="h" fill={p.color} barSize={isMobile ? 13 : 16}>
-            {/* tổng giờ ghi ở cuối cột — cột chồng nên đoạn cuối cùng chính là mốc tổng */}
-            {i === PHASES.length - 1 && (
-              <LabelList dataKey="total" position="right" offset={8}
-                formatter={(v) => `${Number(v).toFixed(0)}h`}
-                style={{ fill: "#e2e8f0", fontSize: isMobile ? 10 : 11, fontWeight: 600 }} />
-            )}
-          </Bar>
-        ))}
-        {/* mốc giờ dự kiến vẽ chồng lên cột, để thấy ngay cột nào đã vượt qua vạch */}
-        {hasBudget && (
-          <Line dataKey="budget" name="Giờ dự kiến" stroke="#f43f5e" strokeWidth={0}
-            dot={{ r: 4, fill: "#f43f5e", stroke: "#0f172a", strokeWidth: 1 }} activeDot={false} isAnimationActive={false}>
-            {/* số giờ dự kiến ghi ngay trên chấm mốc, khỏi phải rê chuột mới biết */}
-            <LabelList dataKey="budget" position="top" offset={isMobile ? 14 : 17}
-              formatter={(v) => (v > 0 ? `dự kiến ${Number(v).toFixed(0)}h` : "")}
-              style={{ fill: "#fb7185", fontSize: isMobile ? 9 : 10 }} />
-          </Line>
+      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-400">
+        {PHASES.map((ph) => <span key={ph.id} className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm" style={{ background: ph.color }} />{ph.id} · {ph.name}</span>)}
+        <span className="flex items-center gap-1.5"><span className="h-3 w-0.5 bg-slate-100" />Mốc dự kiến</span>
+        {rows.length > 10 && (
+          <span className="ml-auto flex items-center gap-1.5">
+            {[10, 25, 0].map((n) => (
+              <button key={n} onClick={() => setLimit(n)}
+                className={`rounded-md border px-2.5 py-1 ${limit === n ? "border-teal-700 bg-teal-950 text-teal-300" : "border-slate-700 text-slate-400 hover:text-slate-200"}`}>
+                {n === 0 ? `Tất cả (${rows.length})` : `Top ${n}`}
+              </button>
+            ))}
+          </span>
         )}
-      </ComposedChart>
-      </ResponsiveContainer>
+      </div>
+      <div className="overflow-y-auto" style={{ maxHeight: 620 }}>
+        {shown.map((r) => {
+          const max = Math.max(1, ...PHASES.map((ph) => Math.max(r.budgets?.[ph.id] || 0, r[ph.id] || 0)));
+          const overs = PHASES.filter((ph) => (r.budgets?.[ph.id] || 0) > 0 && (r[ph.id] || 0) > r.budgets[ph.id]).map((ph) => ph.id);
+          const tOver = r.budget > 0 && r.total > r.budget;
+          return (
+            <div key={r.id} data-proj={r.id} className="grid gap-x-5 gap-y-2 border-b border-slate-800 py-3 last:border-b-0 md:grid-cols-[220px_minmax(0,1fr)]">
+              <div className="min-w-0">
+                <div className="text-sm text-slate-100">{r.name}{overs.length > 0 && <span className="ml-1.5 whitespace-nowrap rounded border border-rose-900 bg-rose-950 px-1.5 py-0.5 text-[10px] text-rose-300">Vượt {overs.join(", ")}</span>}</div>
+                <div className={`mt-1 font-mono text-xs ${tOver ? "text-rose-400" : "text-slate-400"}`}>Tổng {fmtH(r.total)} / {r.budget > 0 ? `${fmtH(r.budget)} h · ${Math.round((r.total / r.budget) * 100)}%` : "—"}</div>
+              </div>
+              <div className="min-w-0 space-y-1.5">
+                {PHASES.map((ph) => {
+                  const b = r.budgets?.[ph.id] || 0, u = r[ph.id] || 0, over = b > 0 && u > b;
+                  return (
+                    <div key={ph.id} className="grid grid-cols-[28px_minmax(0,1fr)_104px] items-center gap-2.5 text-xs md:grid-cols-[28px_minmax(0,1fr)_150px]">
+                      <span className="font-mono text-slate-400" title={ph.name}>{ph.id}</span>
+                      <div className="relative h-2.5 rounded-sm bg-slate-800">
+                        <div className="absolute inset-y-0 left-0 rounded-sm" style={{ width: `${(u / max) * 100}%`, background: ph.color }} />
+                        {b > 0 && <div className="absolute w-0.5 bg-slate-100" style={{ left: `calc(${(b / max) * 100}% - 1px)`, top: -3, bottom: -3 }} />}
+                      </div>
+                      <span className={`whitespace-nowrap text-right font-mono ${over ? "text-rose-400" : "text-slate-300"}`}>{fmtH(u)} / {b > 0 ? `${fmtH(b)} h` : "—"}{b > 0 && <span className="hidden md:inline"> · {Math.round((u / b) * 100)}%</span>}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -3572,21 +3558,55 @@ const ChartBar = ({ data, color }) => {
 /* ============================ DỰ ÁN ============================ */
 function Projects({ cfg, saveCfg, flash }) {
   const [name, setName] = useState(""); const [code, setCode] = useState(""); const [client, setClient] = useState("");
-  const [budget, setBudget] = useState("");   // giờ công dự kiến
+  const [budgets, setBudgets] = useState({});   // giờ công dự kiến theo phase
   const [editId, setEditId] = useState(null);
   const [draft, setDraft] = useState({});
+  const dataTick = useDataTick();
+
+  /* Giờ đã dùng của từng dự án theo phase: tính trên TOÀN BỘ thời gian, chỉ giờ của ngày đã gửi, không tính vắng mặt. */
+  const used = useMemo(() => {
+    const m = new Map();
+    for (const bucket of Object.values(DB?.ts || {})) for (const r of sentRows(bucket)) {
+      if (isLeaveTask(r.taskId) || r.projectId === NO_PROJECT) continue;
+      const h = Object.values(r.days || {}).reduce((a, v) => a + (Number(v) || 0), 0);
+      if (!h) continue;
+      const o = m.get(r.projectId) || {};
+      const ph = r.phaseId || DEFAULT_PHASE;
+      o[ph] = (o[ph] || 0) + h; m.set(r.projectId, o);
+    }
+    return m;
+  }, [dataTick]);
+  const usedOf = (p, ph) => used.get(p.id)?.[ph] || 0;
+  const usedTotal = (p) => PHASES.reduce((a, ph) => a + usedOf(p, ph.id), 0);
 
   const add = async () => {
     if (!name.trim()) return flash("Nhập tên dự án.", "err");
-    await saveCfg({ ...cfg, projects: [...cfg.projects, { id: uid("p"), name: name.trim(), code: code.trim(), client: client.trim(), budget: Number(budget) || 0, active: true }] });
-    setName(""); setCode(""); setClient(""); setBudget(""); flash("Đã thêm dự án.");
+    const bg = cleanBudgets(budgets);
+    await saveCfg({ ...cfg, projects: [...cfg.projects, { id: uid("p"), name: name.trim(), code: code.trim(), client: client.trim(), budgets: bg, budget: budgetTotal({ budgets: bg }), active: true }] });
+    setName(""); setCode(""); setClient(""); setBudgets({}); flash("Đã thêm dự án.");
   };
-  const startEdit = (p) => { setEditId(p.id); setDraft({ code: p.code || "", name: p.name, client: p.client || "", budget: p.budget || 0 }); };
+  const startEdit = (p) => { setEditId(p.id); setDraft({ code: p.code || "", name: p.name, client: p.client || "", budgets: Object.fromEntries(PHASES.map((ph) => [ph.id, projBudgets(p)[ph.id] || ""])) }); };
   const commit = async () => {
     if (!draft.name.trim()) return flash("Tên dự án không được để trống.", "err");
-    await saveCfg({ ...cfg, projects: cfg.projects.map((p) => (p.id === editId ? { ...p, code: draft.code.trim(), name: draft.name.trim(), client: draft.client.trim(), budget: Number(draft.budget) || 0 } : p)) });
+    const bg = cleanBudgets(draft.budgets);
+    await saveCfg({ ...cfg, projects: cfg.projects.map((p) => (p.id === editId ? { ...p, code: draft.code.trim(), name: draft.name.trim(), client: draft.client.trim(), budgets: bg, budget: budgetTotal({ budgets: bg }) } : p)) });
     setEditId(null); flash("Đã cập nhật dự án.");
   };
+  const phInput = (val, onChange, ph, withPlaceholder) => (
+    <input type="number" min="0" step="8" value={val ?? ""} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && editId && commit()}
+      aria-label={`Giờ dự kiến ${ph.id}`} placeholder={withPlaceholder ? ph.id : "0"} className={`px-2 text-right font-mono ${inputCls}`} />
+  );
+  const PhaseCell = ({ p, ph }) => {
+    const b = projBudgets(p)[ph.id], u = usedOf(p, ph.id), over = b > 0 && u > b;
+    if (!b && !u) return <span className="font-mono text-slate-600">—</span>;
+    return (
+      <div>
+        <div className={`whitespace-nowrap font-mono text-[13px] ${over ? "text-rose-400" : "text-slate-300"}`}>{fmtH(u)}<span className={over ? "" : "text-slate-500"}> / {b > 0 ? `${fmtH(b)} h` : "—"}</span></div>
+        {b > 0 && <div className="mt-1 h-1 overflow-hidden rounded bg-slate-800"><div className="h-full rounded" style={{ width: `${Math.min(100, (u / b) * 100)}%`, background: over ? "#fb7185" : ph.color }} /></div>}
+      </div>
+    );
+  };
+  const phHead = (ph) => <span className="flex items-center gap-1.5 whitespace-nowrap"><span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: ph.color }} />{ph.id} · {ph.name}</span>;
   const toggle = (id) => saveCfg({ ...cfg, projects: cfg.projects.map((p) => (p.id === id ? { ...p, active: !p.active } : p)) });
   const [pendingDel, setPendingDel] = useState(null); // dự án chờ xác nhận xoá
   const del = (id) => setPendingDel(cfg.projects.find((p) => p.id === id) || null);
@@ -3607,18 +3627,23 @@ function Projects({ cfg, saveCfg, flash }) {
   return (
     <Panel title="Dự án — sửa thông tin & bật/tắt chấm công">
       {/* bọc trong div để class width không bị w-full của inputCls ghi đè */}
-      <div className="mb-5 grid gap-2 md:flex md:flex-wrap md:items-center">
+      <div className="mb-5 grid gap-2 md:flex md:flex-wrap md:items-end">
         <div className="md:w-28">
           <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Mã DA" className={`font-mono ${inputCls}`} />
         </div>
         <div className="md:min-w-48 md:flex-1">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tên dự án" className={inputCls} />
         </div>
-        <div className="md:w-56">
+        <div className="md:w-44">
           <input value={client} onChange={(e) => setClient(e.target.value)} placeholder="Khách hàng" className={inputCls} />
         </div>
-        <div className="md:w-36">
-          <input type="number" min="0" step="8" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="Giờ dự kiến" className={`font-mono ${inputCls}`} />
+        <div className="grid grid-cols-4 gap-2 md:w-[23rem]">
+          {PHASES.map((ph) => (
+            <label key={ph.id} className="min-w-0">
+              <span className="mb-1 flex items-center gap-1 truncate text-[11px] text-slate-500"><span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: ph.color }} />{ph.id}<span className="hidden truncate md:inline"> · {ph.name}</span></span>
+              {phInput(budgets[ph.id], (v) => setBudgets({ ...budgets, [ph.id]: v }), ph, false)}
+            </label>
+          ))}
         </div>
         <button onClick={add} className={btnPrimary}><Plus size={14} /> Thêm dự án</button>
       </div>
@@ -3626,14 +3651,15 @@ function Projects({ cfg, saveCfg, flash }) {
       {cfg.projects.length === 0 ? <p className="text-sm text-slate-500">Chưa có dự án. Thêm dự án để nhân sự bắt đầu chấm công.</p> : (
         <>
           <div className="hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[900px] border-collapse text-sm">
+            <table className="w-full min-w-[1240px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-800 text-left text-xs uppercase tracking-wider text-slate-500">
-                  <th className="w-28 px-3 py-2 font-medium">Mã DA</th>
+                  <th className="w-20 px-3 py-2 font-medium">Mã DA</th>
                   <th className="px-3 py-2 font-medium">Tên dự án</th>
-                  <th className="w-56 px-3 py-2 font-medium">Khách hàng</th>
-                  <th className="w-32 px-3 py-2 font-medium">Giờ dự kiến</th>
-                  <th className="w-44 px-3 py-2 font-medium">Trạng thái</th>
+                  <th className="w-36 px-3 py-2 font-medium">Khách hàng</th>
+                  {PHASES.map((ph) => <th key={ph.id} className="w-[130px] px-2 py-2 font-medium normal-case tracking-normal">{phHead(ph)}</th>)}
+                  <th className="w-32 px-3 py-2 text-right font-medium">Tổng</th>
+                  <th className="w-40 px-3 py-2 font-medium">Trạng thái</th>
                   <th className="w-24"></th>
                 </tr>
               </thead>
@@ -3645,10 +3671,13 @@ function Projects({ cfg, saveCfg, flash }) {
                       <td className="px-3 py-2">{editing ? <input value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} className={`font-mono ${inputCls}`} /> : <span className="font-mono text-base font-bold text-white">{p.code || "—"}</span>}</td>
                       <td className="px-3 py-2">{editing ? <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && commit()} className={inputCls} /> : <span className="text-slate-100">{p.name}</span>}</td>
                       <td className="px-3 py-2">{editing ? <input value={draft.client} onChange={(e) => setDraft({ ...draft, client: e.target.value })} onKeyDown={(e) => e.key === "Enter" && commit()} className={inputCls} /> : <span className="text-slate-400">{p.client || "—"}</span>}</td>
-                      <td className="px-3 py-2">
-                        {editing
-                          ? <input type="number" min="0" step="8" value={draft.budget} onChange={(e) => setDraft({ ...draft, budget: e.target.value })} className={`font-mono ${inputCls}`} />
-                          : <span className="font-mono text-slate-400">{p.budget ? `${p.budget} h` : "—"}</span>}
+                      {PHASES.map((ph) => (
+                        <td key={ph.id} className="px-2 py-2" data-phase={ph.id}>
+                          {editing ? phInput(draft.budgets?.[ph.id], (v) => setDraft({ ...draft, budgets: { ...draft.budgets, [ph.id]: v } }), ph, false) : <PhaseCell p={p} ph={ph} />}
+                        </td>
+                      ))}
+                      <td className={`whitespace-nowrap px-3 py-2 text-right font-mono text-[13px] ${!editing && budgetTotal(p) > 0 && usedTotal(p) > budgetTotal(p) ? "text-rose-400" : "text-slate-300"}`} data-total>
+                        {editing ? `${fmtH(budgetTotal({ budgets: cleanBudgets(draft.budgets) }))} h` : `${fmtH(usedTotal(p))} / ${budgetTotal(p) > 0 ? `${fmtH(budgetTotal(p))} h` : "—"}`}
                       </td>
                       <td className="px-3 py-2"><StatusBtn p={p} /></td>
                       <td className="px-2 py-2">
@@ -3679,7 +3708,9 @@ function Projects({ cfg, saveCfg, flash }) {
                       <input value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} placeholder="Mã DA" className={`font-mono ${inputCls}`} />
                       <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Tên dự án" className={inputCls} />
                       <input value={draft.client} onChange={(e) => setDraft({ ...draft, client: e.target.value })} placeholder="Khách hàng" className={inputCls} />
-                      <input type="number" min="0" step="8" value={draft.budget} onChange={(e) => setDraft({ ...draft, budget: e.target.value })} placeholder="Giờ dự kiến" className={`font-mono ${inputCls}`} />
+                      <div className="grid grid-cols-4 gap-2">
+                        {PHASES.map((ph) => <div key={ph.id}>{phInput(draft.budgets?.[ph.id], (v) => setDraft({ ...draft, budgets: { ...draft.budgets, [ph.id]: v } }), ph, true)}</div>)}
+                      </div>
                       <div className="grid grid-cols-2 gap-2">
                         <button onClick={commit} className={btnPrimary}><Check size={15} /> Lưu</button>
                         <button onClick={() => setEditId(null)} className={btnGhost}><X size={15} /> Huỷ</button>
@@ -3698,6 +3729,11 @@ function Projects({ cfg, saveCfg, flash }) {
                           <button onClick={() => del(p.id)} className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={14} /></button>
                         </div>
                       </div>
+                      <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2">
+                        {PHASES.map((ph) => (
+                          <div key={ph.id} className="min-w-0"><div className="mb-0.5 text-[11px] text-slate-500">{phHead(ph)}</div><PhaseCell p={p} ph={ph} /></div>
+                        ))}
+                      </div>
                       <div className="mt-2.5"><StatusBtn p={p} full /></div>
                     </>
                   )}
@@ -3707,7 +3743,7 @@ function Projects({ cfg, saveCfg, flash }) {
           </div>
         </>
       )}
-      <p className="mt-4 text-xs text-slate-500">Giờ dự kiến để trống nghĩa là không theo dõi hạn mức. Đóng dự án chỉ ẩn khỏi bảng chấm công mới — giờ công đã ghi vẫn giữ nguyên trong báo cáo.</p>
+      <p className="mt-4 text-xs text-slate-500">Mỗi ô phase: giờ đã gửi / giờ dự kiến. Phase để trống nghĩa là không theo dõi hạn mức. Dự án đã đóng thì nhân sự không chấm công được nữa — giờ công đã ghi vẫn giữ nguyên trong báo cáo.</p>
 
       <ConfirmDialog
         open={!!pendingDel}
