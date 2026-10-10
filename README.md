@@ -25,6 +25,10 @@
   chỉ cộng giờ của ngày có dấu đã gửi. Ngày đang được mở khoá tạm không tính cho tới khi nhân sự gửi lại.
 - **Tình trạng nộp theo tuần.** Một tuần tính là đã nộp khi mọi ngày phải chấm công của tuần (ngày có giờ chuẩn
   lớn hơn 0 và không phải ngày lễ) đều đã gửi. Ngày nghỉ thì chấm bằng dòng Vắng mặt rồi gửi.
+- **Dự án đã đóng được tách riêng.** Khi quản lý đóng một dự án, app ghi lại ngày đóng. Giờ nhân sự chấm vào dự án đó
+  từ ngày đóng trở đi hiện thành mục riêng "(sau khi đóng)" trong Dashboard, Ma trận giờ công và các file Excel,
+  không cộng vào số liệu lúc dự án đang chạy. Mở lại dự án thì bỏ ngày đóng và số liệu gộp lại như cũ.
+  Dự án đã đóng từ trước bản này chưa có ngày đóng nên không tách.
 - **Tự cập nhật.** Máy quản lý hỏi server 10 giây một lần (chỉ lấy dòng vừa thay đổi), máy nhân sự 60 giây
   một lần và khi quay lại tab. Chỉ chạy khi tab đang hiện.
 - **Dữ liệu cũ.** `schema.sql` đánh dấu "đã gửi" một lần cho mọi ngày cũ đang có giờ, để số liệu không bị hụt.
