@@ -151,11 +151,30 @@ returns jsonb language sql immutable as $$
   ) as s;
 $$;
 
+--    Giờ của MỘT DỰ ÁN trong một dòng bảng công (mọi ngày), dạng chuẩn để so sánh trước/sau.
+create or replace function public.artius_proj_hours(bucket jsonb, pid text)
+returns jsonb language sql immutable as $$
+  select coalesce(jsonb_agg(s.x order by s.x), '[]'::jsonb)
+  from (
+    select jsonb_build_array(
+             coalesce(nullif(rw ->> 'phaseId', ''), 'P2'),
+             coalesce(rw ->> 'taskId', ''),
+             d.key,
+             (d.value #>> '{}')::numeric) as x
+    from jsonb_array_elements(case when jsonb_typeof(bucket -> 'rows') = 'array' then bucket -> 'rows' else '[]'::jsonb end) as rw,
+         jsonb_each(case when jsonb_typeof(rw -> 'days') = 'object' then rw -> 'days' else '{}'::jsonb end) as d
+    where rw ->> 'projectId' = pid
+      and case when jsonb_typeof(d.value) = 'number' then (d.value #>> '{}')::numeric > 0 else false end
+  ) as s;
+$$;
+
 --    Chạy trước mỗi lần thêm / sửa / xoá một dòng bảng công.
 --    Tài khoản quản lý (và SQL Editor, hàm server) được làm mọi thứ. Nhân sự thì:
 --      · không gỡ được dấu "đã gửi" của ngày nào
 --      · không đổi được giờ của ngày đã gửi (kể cả thêm giờ dự án khác vào ngày đó)
 --      · không xoá được dòng bảng công đang có ngày đã gửi
+--      · không thêm / sửa / xoá được giờ của dự án ĐÃ ĐÓNG (active = false trong artius_config);
+--        cần chấm thêm thì quản lý mở lại dự án
 --    Ngày chưa gửi thì nhân sự nhập và gửi bình thường.
 --    Hàm này cũng ghi updated_at theo giờ của server, để màn hình quản lý hỏi "có gì mới từ lúc X" cho chính xác.
 create or replace function public.artius_ts_guard()
@@ -165,6 +184,7 @@ declare
   n  jsonb;
   os jsonb;
   dk text;
+  pid text;
 begin
   if auth.uid() is not null and not public.artius_is_admin() then
     o  := case when tg_op = 'INSERT' then '{}'::jsonb else old.value::jsonb end;
@@ -173,15 +193,27 @@ begin
       if os <> '{}'::jsonb then
         raise exception 'Bảng công có ngày đã gửi, chỉ quản lý mới xoá được.' using errcode = '42501';
       end if;
-      return old;
+      n := '{}'::jsonb;
+    else
+      n := new.value::jsonb;
     end if;
-    n := new.value::jsonb;
     for dk in select jsonb_object_keys(os) loop
       if not (coalesce(case when jsonb_typeof(n -> 'sent') = 'object' then n -> 'sent' end, '{}'::jsonb) ? dk) then
         raise exception 'Ngày % đã gửi và đang khoá. Chỉ quản lý mới mở khoá được.', dk using errcode = '42501';
       end if;
       if public.artius_day_hours(o, dk) is distinct from public.artius_day_hours(n, dk) then
         raise exception 'Ngày % đã gửi và đang khoá, không sửa giờ được. Nhờ quản lý mở khoá.', dk using errcode = '42501';
+      end if;
+    end loop;
+    -- dự án đã đóng: giờ của dự án đó trong dòng này phải giữ nguyên
+    for pid in
+      select pr ->> 'id'
+      from public.artius_config c,
+           jsonb_array_elements(case when jsonb_typeof(c.value::jsonb -> 'projects') = 'array' then c.value::jsonb -> 'projects' else '[]'::jsonb end) as pr
+      where c.id = 'main' and pr -> 'active' = 'false'::jsonb
+    loop
+      if public.artius_proj_hours(o, pid) is distinct from public.artius_proj_hours(n, pid) then
+        raise exception 'Dự án này đã đóng, không chấm công được nữa. Nhờ quản lý mở lại dự án.' using errcode = '42501';
       end if;
     end loop;
   end if;
