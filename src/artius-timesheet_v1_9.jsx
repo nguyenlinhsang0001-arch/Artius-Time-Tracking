@@ -586,17 +586,6 @@ const guessPhase = (taskId, tasks = []) => {
   return DEFAULT_PHASE;
 };
 // Khoá định danh một dòng chấm công: cùng dự án nhưng khác giai đoạn thì vẫn là hai dòng riêng
-/* v1.9 — Dự án đã đóng: giờ của các ngày từ ngày đóng (closedAt) trở đi được tách thành một mục riêng
-   "sau khi đóng" trong Dashboard, Ma trận và Excel, không cộng vào số liệu lúc dự án đang chạy.
-   Dữ liệu lưu trên server không đổi; việc tách chỉ diễn ra lúc tổng hợp, bằng một mã dự án ảo có đuôi POST_CLOSE. */
-const POST_CLOSE = "::sau-khi-dong";
-const isPostClose = (id) => typeof id === "string" && id.endsWith(POST_CLOSE);
-const basePid = (id) => (isPostClose(id) ? id.slice(0, -POST_CLOSE.length) : id);
-const makeEffPid = (projects = []) => {
-  const closed = new Map(projects.filter((x) => !x.active && x.closedAt).map((x) => [x.id, x.closedAt]));
-  return (pid, date) => (closed.has(pid) && date >= closed.get(pid) ? pid + POST_CLOSE : pid);
-};
-const POST_CLOSE_LABEL = " (sau khi đóng)";
 const rowKey = (r) => `${r.projectId}|${r.phaseId || DEFAULT_PHASE}|${r.taskId}`;
 // Khoá nhóm: cùng dự án + giai đoạn thì gộp chung một khối, chỉ hạng mục mới tách dòng bên trong
 const groupKey = (r) => `${r.projectId}|${r.phaseId || DEFAULT_PHASE}`;
@@ -1421,6 +1410,9 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   const yms = useMemo(() => [...new Set(days.map(ymOf))], [days]);
   const isSent = (d) => !!buckets[ymOf(d)]?.sent?.[d];
   const dayLocked = (d) => !admin && isSent(d);
+  /* v1.9 — Dự án đã đóng (hoặc đã xoá) thì nhân sự không chấm công vào được nữa: dòng của dự án đó chỉ để xem.
+     Cần chấm thêm thì quản lý mở lại dự án. Quản lý vẫn sửa được ở Chi tiết nhân viên. Database cũng chặn. */
+  const projClosed = (r) => !admin && r.projectId !== NO_PROJECT && !cfg.projects.some((p) => p.id === r.projectId && p.active);
   const dayTotal = (d) => rows.reduce((s, r) => s + (r.days[d] || 0), 0);
   const dayName = (d) => `${DOW[(parseD(d).getDay() + 6) % 7]} ${dLabel(d)}`;
   const activeProjects = cfg.projects.filter((p) => p.active);
@@ -1548,6 +1540,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
       if (!b?.rows) continue;
       for (const r of b.rows) {
         if (!prevDays.some((d) => r.days?.[d] > 0)) continue; // chỉ lấy dòng thực sự có giờ tuần trước
+        if (projClosed(r)) continue;                          // dự án đã đóng: nhân sự không chấm tiếp được
         const phaseId = r.phaseId || guessPhase(r.taskId, cfg.tasks);
         found.set(rowKey({ ...r, phaseId }), { projectId: r.projectId, phaseId, taskId: r.taskId, note: r.note || "", days: {} });
       }
@@ -1640,11 +1633,13 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
          Quản lý ghi được mọi ngày. */
       const writable = admin ? daysInYm : daysInYm.filter((d) => !sent[d]);
       const keep = bucket.rows.map((r) => {
+        if (projClosed(r)) return r;                       // giờ của dự án đã đóng giữ nguyên bản trên server
         const dd = { ...r.days }; for (const d of writable) delete dd[d];
         return { ...r, days: dd };
       });
       const map = new Map(keep.map((r) => [rowKey(r), r]));
       for (const r of rows) {
+        if (projClosed(r)) continue;
         const k = rowKey(r);
         const had = map.get(k);
         const cur = had || { projectId: r.projectId, phaseId: r.phaseId || DEFAULT_PHASE, taskId: r.taskId, days: {} };
@@ -1665,7 +1660,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
     if (!admin && newly.length === 0) {
       // các ngày định gửi đã được gửi/khoá từ máy khác trong lúc đang nhập
       setSaving(false); setDirty(false); setReloadKey((k) => k + 1);
-      flash("Các ngày này đã được gửi trước đó. Màn hình vừa được tải lại.", "err");
+      flash("Không có giờ mới nào được ghi: ngày đã gửi trước đó hoặc dự án đã đóng. Màn hình vừa được tải lại.", "err");
       return false;
     }
 
@@ -1852,7 +1847,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   const sentDays = days.filter(isSent);
   const submitted = days.filter((d) => minHoursFor(d, hoursCfg, holidaySet) !== null).every(isSent) || yms.every((ym) => buckets[ym]?.weeks?.[monday]);
   const locked = !admin && sentDays.length === 7;          // cả 7 ngày đã gửi: không còn gì để nhập
-  const rowLocked = (r) => !admin && days.some((d) => isSent(d) && r.days[d] > 0);
+  const rowLocked = (r) => !admin && (projClosed(r) || days.some((d) => isSent(d) && r.days[d] > 0));
   const toSend = days.filter((d) => !isSent(d) && dayTotal(d) > 0);
   const weekTotal = days.reduce((s, d) => s + dayTotal(d), 0);
   const todayStr = fmt(new Date());
@@ -2092,7 +2087,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                         <div className="flex items-center gap-2">
                           {/* nút + mở đầu khối; ô hạng mục bên dưới chừa đúng bề rộng này để thẳng hàng */}
                           <div className="shrink-0" style={{ width: GUT }}>
-                            {!locked && (
+                            {!locked && !projClosed(g) && (
                               <button onClick={() => addTaskToGroup(g)} title="Thêm hạng mục vào dự án và giai đoạn này"
                                 className={`${iconBtn} hover:border-teal-700 hover:text-teal-300`}><Plus size={15} /></button>
                             )}
@@ -2126,7 +2121,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                                 <select ref={(el) => { taskSel.current[i] = el; }} disabled={rowLocked(r)} value={r.taskId} onChange={(e) => upd(i, { taskId: e.target.value })} className={`disabled:opacity-60 ${selectCls}`}>{taskOptions(r)}</select>
                               </div>
                               <div className="flex shrink-0 items-center gap-1">
-                                <button disabled={locked || isLeaveTask(r.taskId)} onClick={() => fillStandard(i)} title="Điền giờ chuẩn cho cả tuần vào các ô còn trống"
+                                <button disabled={locked || projClosed(r) || isLeaveTask(r.taskId)} onClick={() => fillStandard(i)} title="Điền giờ chuẩn cho cả tuần vào các ô còn trống"
                                   className={`${iconBtn} disabled:opacity-40`}><Zap size={14} /></button>
                                 <button onClick={() => setNoteRow(i)} title={r.note || "Thêm mô tả"}
                                   className={`${iconBtn} relative ${r.note ? "border-teal-800 text-teal-400" : ""}`}>
@@ -2140,7 +2135,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                           {days.map((d, k) => (
                             <td key={d} className={`px-1 pt-1.5 ${pb}`}>
                               <input ref={(el) => { gridInputs.current[`${i}:${k}`] = el; }}
-                                type="number" min="0" max="24" step="0.5" value={r.days[d] ?? ""} placeholder="0" disabled={dayLocked(d)}
+                                type="number" min="0" max="24" step="0.5" value={r.days[d] ?? ""} placeholder="0" disabled={dayLocked(d) || projClosed(r)}
                                 onChange={(e) => setHour(i, d, e.target.value)}
                                 onFocus={(e) => e.target.select()}
                                 onKeyDown={(e) => gridKey(e, i, k)}
@@ -2240,7 +2235,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                           </div>
                           <div className="flex shrink-0 items-center gap-2">
                             <input ref={(el) => { mobileInputs.current[i] = el; }}
-                              type="number" inputMode="decimal" min="0" max="24" step="0.5" placeholder="0" disabled={dayLocked(activeDay)}
+                              type="number" inputMode="decimal" min="0" max="24" step="0.5" placeholder="0" disabled={dayLocked(activeDay) || projClosed(r)}
                               value={r.days[activeDay] ?? ""} onChange={(e) => setHour(i, activeDay, e.target.value)}
                               onFocus={(e) => e.target.select()}
                               onKeyDown={(e) => {
@@ -2263,7 +2258,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                     );
                   })}
 
-                  {!locked && (
+                  {!locked && !projClosed(g) && (
                     <button onClick={() => addTaskToGroup(g)}
                       className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-slate-700 py-2 text-xs text-slate-400 hover:border-teal-700 hover:text-teal-300">
                       <Plus size={14} /> Hạng mục
@@ -2369,25 +2364,24 @@ function HoursMatrix({ cfg, ym, flash, onPickEmp }) {
   const to = fmt(lastOfMonth(parseD(from)));
   const projById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
   const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
-  const projLabel = (id) => { if (id === NO_PROJECT) return "Vắng mặt"; const x = projById.get(basePid(id)); return (x ? (x.code ? `[${x.code}] ${x.name}` : x.name) : "(dự án đã xoá)") + (isPostClose(id) ? POST_CLOSE_LABEL : ""); };
-  const projShort = (id) => { if (id === NO_PROJECT) return "Vắng mặt"; const x = projById.get(basePid(id)); return (x ? (x.code ? `${x.code} ${x.name}` : x.name) : "(đã xoá)") + (isPostClose(id) ? POST_CLOSE_LABEL : ""); };
+  const projLabel = (id) => { if (id === NO_PROJECT) return "Vắng mặt"; const x = projById.get(id); return x ? (x.code ? `[${x.code}] ${x.name}` : x.name) : "(dự án đã xoá)"; };
+  const projShort = (id) => { if (id === NO_PROJECT) return "Vắng mặt"; const x = projById.get(id); return x ? (x.code ? `${x.code} ${x.name}` : x.name) : "(đã xoá)"; };
   const taskLabel = (id) => { const t = taskById.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
 
   // Toàn bộ dòng giờ của tháng, gom theo (nhân sự, dự án)
   const base = useMemo(() => {
     const detail = [];
-    const eff = makeEffPid(cfg.projects);
     for (const ymk of ymsBetween(from, to)) for (const e of cfg.employees) {
       const d = dbTsSent(e.id, ymk);   // v1.9: chỉ giờ của ngày đã gửi
       if (!d?.rows) continue;
       for (const r of d.rows) for (const [date, h] of Object.entries(r.days || {})) {
         if (!h || date < from || date > to) continue;
-        const pid = isLeaveTask(r.taskId) ? NO_PROJECT : eff(r.projectId, date);
+        const pid = isLeaveTask(r.taskId) ? NO_PROJECT : r.projectId;
         detail.push({ empId: e.id, date, hours: Number(h), projectId: pid, phaseId: r.phaseId || DEFAULT_PHASE, taskId: r.taskId, note: r.note || "" });
       }
     }
     return detail;
-  }, [cfg.employees, cfg.projects, from, to, dataTick]);
+  }, [cfg.employees, from, to, dataTick]);
 
   const emps = cfg.employees.filter((e) => {
     if (fDept !== "all" && e.dept !== fDept) return false;
@@ -2900,22 +2894,21 @@ function EmployeeDashboard({ cfg, empId }) {
     const raw = [];
     for (const ym of yms) raw.push({ ym, data: dbTs(empId, ym) });
     const detail = [];
-    const eff = makeEffPid(cfg.projects);
     for (const { data: d } of raw) {
       if (!d?.rows) continue;
       for (const r of d.rows) for (const [date, h] of Object.entries(r.days || {})) {
         if (!h || date < from || date > to) continue;
-        detail.push({ date, hours: Number(h), projectId: isLeaveTask(r.taskId) ? r.projectId : eff(r.projectId, date), phaseId: r.phaseId || DEFAULT_PHASE, taskId: r.taskId, note: r.note || "" });
+        detail.push({ date, hours: Number(h), projectId: r.projectId, phaseId: r.phaseId || DEFAULT_PHASE, taskId: r.taskId, note: r.note || "" });
       }
     }
     setData({ detail }); setLoading(false);
-  }, [from, to, empId, cfg.projects]);
+  }, [from, to, empId]);
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const projMapById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
   const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
-  const projLabel = (id) => { if (id === NO_PROJECT) return "— Vắng mặt —"; const p = projMapById.get(basePid(id)); return (p ? (p.code ? `[${p.code}] ${p.name}` : p.name) : "(dự án đã xoá)") + (isPostClose(id) ? POST_CLOSE_LABEL : ""); };
+  const projLabel = (id) => { if (id === NO_PROJECT) return "— Vắng mặt —"; const p = projMapById.get(id); return p ? (p.code ? `[${p.code}] ${p.name}` : p.name) : "(dự án đã xoá)"; };
   const taskLabel = (id) => { const t = taskMap.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
 
   // Xuất bảng công của riêng mình — nhân sự tự đối chiếu với bảng lương mà không cần xin file từ quản lý
@@ -3166,13 +3159,12 @@ function Dashboard({ cfg, flash }) {
     const yms = ymsBetween(from, to);
     // Toàn bộ dữ liệu đã nằm trong bộ nhớ — không tốn lệnh lưu trữ nào
     const detail = [];
-    const eff = makeEffPid(cfg.projects);
     for (const ym of yms) for (const e of cfg.employees) {
       const d = dbTsSent(e.id, ym);   // v1.9: chỉ giờ của ngày đã gửi
       if (!d?.rows) continue;
       for (const r of d.rows) for (const [date, h] of Object.entries(r.days || {})) {
         if (!h || date < from || date > to) continue;   // lọc đúng theo NGÀY
-        detail.push({ empId: e.id, date, hours: Number(h), projectId: isLeaveTask(r.taskId) ? r.projectId : eff(r.projectId, date), phaseId: r.phaseId || DEFAULT_PHASE, taskId: r.taskId, note: r.note || "" });
+        detail.push({ empId: e.id, date, hours: Number(h), projectId: r.projectId, phaseId: r.phaseId || DEFAULT_PHASE, taskId: r.taskId, note: r.note || "" });
       }
     }
     const status = [];
@@ -3184,16 +3176,13 @@ function Dashboard({ cfg, flash }) {
       }
     }
     setData({ detail, status, yms }); setLoading(false);
-  }, [from, to, cfg.employees, cfg.projects]);
+  }, [from, to, cfg.employees]);
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // v1.9: có dòng bảng công vừa đổi trên server thì tính lại ngay, không cần bấm Tải lại
   const firstTick = useRef(dataTick);
   useEffect(() => { if (dataTick !== firstTick.current) load(); }, [dataTick]); // eslint-disable-line react-hooks/exhaustive-deps
-  // đóng / mở lại dự án làm đổi cách tách "sau khi đóng": tính lại
-  const firstProjects = useRef(cfg.projects);
-  useEffect(() => { if (cfg.projects !== firstProjects.current) load(); }, [cfg.projects]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Kéo lại toàn bộ từ server — phòng khi nghi ngờ thiếu số liệu
   const rebuild = async () => {
@@ -3210,7 +3199,7 @@ function Dashboard({ cfg, flash }) {
   const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
   const empName = (id) => empMap.get(id)?.name || "(đã xoá)";
   const empDept = (id) => empMap.get(id)?.dept || "";
-  const projLabel = (id) => { if (id === NO_PROJECT) return "— Vắng mặt —"; const p = projMapById.get(basePid(id)); return (p ? (p.code ? `[${p.code}] ${p.name}` : p.name) : "(dự án đã xoá)") + (isPostClose(id) ? POST_CLOSE_LABEL : ""); };
+  const projLabel = (id) => { if (id === NO_PROJECT) return "— Vắng mặt —"; const p = projMapById.get(id); return p ? (p.code ? `[${p.code}] ${p.name}` : p.name) : "(dự án đã xoá)"; };
   const taskLabel = (id) => { const t = taskMap.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
 
   // Bộ lọc áp lên toàn bộ số liệu bên dưới: KPI, biểu đồ, ma trận và cả file Excel xuất ra
@@ -3225,7 +3214,7 @@ function Dashboard({ cfg, flash }) {
   const agg = useMemo(() => {
     if (!data) return null;
     const detail = data.detail.filter((d) => matchEmp(d.empId)
-      && (fProj === "all" || basePid(d.projectId) === fProj)
+      && (fProj === "all" || d.projectId === fProj)
       && (fPhase === "all" || (d.phaseId || DEFAULT_PHASE) === fPhase));
     const by = (fn) => { const m = new Map(); for (const d of detail) m.set(fn(d), (m.get(fn(d)) || 0) + d.hours); return m; };
     const matrix = new Map();
@@ -3598,12 +3587,7 @@ function Projects({ cfg, saveCfg, flash }) {
     await saveCfg({ ...cfg, projects: cfg.projects.map((p) => (p.id === editId ? { ...p, code: draft.code.trim(), name: draft.name.trim(), client: draft.client.trim(), budget: Number(draft.budget) || 0 } : p)) });
     setEditId(null); flash("Đã cập nhật dự án.");
   };
-  /* Đóng: ghi ngày đóng (hôm nay) — giờ từ ngày này trở đi được tách riêng trong báo cáo. Mở lại: bỏ ngày đóng. */
-  const toggle = (id) => saveCfg({ ...cfg, projects: cfg.projects.map((p) => {
-    if (p.id !== id) return p;
-    const { closedAt, ...rest } = p; // eslint-disable-line no-unused-vars
-    return p.active ? { ...rest, active: false, closedAt: fmt(new Date()) } : { ...rest, active: true };
-  }) });
+  const toggle = (id) => saveCfg({ ...cfg, projects: cfg.projects.map((p) => (p.id === id ? { ...p, active: !p.active } : p)) });
   const [pendingDel, setPendingDel] = useState(null); // dự án chờ xác nhận xoá
   const del = (id) => setPendingDel(cfg.projects.find((p) => p.id === id) || null);
   const confirmDel = async () => {
@@ -3616,7 +3600,7 @@ function Projects({ cfg, saveCfg, flash }) {
   const StatusBtn = ({ p, full }) => (
     <button onClick={() => toggle(p.id)}
       className={`h-9 rounded-md border px-3 text-xs font-medium ${full ? "w-full" : ""} ${p.active ? "border-teal-800 bg-teal-950 text-teal-300" : "border-slate-700 bg-slate-950 text-slate-500"}`}>
-      {p.active ? "Đang chấm công" : p.closedAt ? `Đã đóng ${dLabel(p.closedAt)}` : "Đã đóng"}
+      {p.active ? "Đang chấm công" : "Đã đóng"}
     </button>
   );
 
