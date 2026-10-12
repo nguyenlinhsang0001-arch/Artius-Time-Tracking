@@ -1,8 +1,8 @@
-# ARTIUS — Quản lý giờ công · v2.0 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v2.1 (bản webapp cho Vercel)
 
 | File | Vai trò |
 |---|---|
-| `src/artius-timesheet_v2_0.jsx` | Ứng dụng v2.0 |
+| `src/artius-timesheet_v2_1.jsx` | Ứng dụng v2.1 |
 | `src/data.js` | Đọc/ghi thiết lập và bảng công theo từng dòng trên Supabase (mới ở v1.8) |
 | `src/merge.js` | Gộp thiết lập khi nhiều quản lý cùng sửa (mới ở v1.8) |
 | `src/auth.js` | Đăng nhập / đăng xuất, gọi hàm server quản lý tài khoản |
@@ -11,7 +11,22 @@
 | `src/main.jsx`, `index.html`, `src/index.css` | Điểm khởi động, Tailwind |
 | `supabase/schema.sql` | Các bảng, phân quyền, khoá cứng ngày đã gửi, và phần tự chuyển dữ liệu từ v1.7 / v1.8 |
 
-## Mới ở v2.0
+## Mới ở v2.1
+
+- **Mở app nhanh hơn khi dữ liệu nhiều.** Lúc đăng nhập chỉ tải bảng công **6 tháng gần nhất** (tính cả tháng này).
+  Tháng cũ hơn tự tải khi có màn hình cần tới: chọn kỳ cũ ở Dashboard, lùi tháng ở Bảng công, lùi tuần hoặc mở lịch
+  ở màn chấm công. Mỗi tháng cũ chỉ tải một lần cho tới khi đăng xuất. Xuất file sao lưu vẫn tải đủ mọi tháng.
+- **Tổng giờ từ trước tới nay do database tính.** Ô "đã gửi / dự kiến" ở tab Dự án và số giờ trên thẻ giai đoạn
+  (Thiết lập) lấy từ hàm `artius_usage` (mục 9 của `schema.sql`), nên vẫn đủ dù app chỉ giữ 6 tháng trong bộ nhớ.
+  Nếu chưa chạy SQL mới, app tạm cộng từ 6 tháng đang có và **không cho xoá giai đoạn** cho tới khi hỏi được database.
+- **Sửa lỗi nút Xuất Excel ở Dashboard cá nhân của nhân sự** (lỗi `byPhase` có từ v1.6). Sheet "Theo giai đoạn" giờ
+  chỉ tính giờ làm việc, không tính vắng mặt.
+
+**Nâng cấp từ v2.0:** chạy lại toàn bộ `supabase/schema.sql` (thêm hàm `artius_usage`, chạy lại không ảnh hưởng dữ liệu).
+Trên GitHub thêm `src/artius-timesheet_v2_1.jsx`, **xoá** `src/artius-timesheet_v2_0.jsx`, thay `src/main.jsx`, `src/data.js`,
+`index.html`, `package.json`, `README.md`. Góc trái dưới của app ghi `ARTIUS v2.1`.
+
+## Có từ v2.0
 
 - **Cảnh báo thiếu bảng công chỉ tính ngày đã tới** (tính cả hôm nay). Tuần chưa bắt đầu không bị báo thiếu và không tính
   vào "Số tuần cần nộp"; tuần đang chạy chỉ cần gửi đủ các ngày từ thứ Hai tới hôm nay. Áp dụng cho dải cảnh báo của nhân sự,
@@ -90,7 +105,7 @@ Không cần thêm hay sửa biến môi trường nào trên Vercel.
 3. **Kiểm tra** trong Table Editor: `artius_config` có 1 dòng `main`; `artius_ts` có các dòng dạng mã nhân sự + tháng;
    `artius_meta` có dòng `sent_day_migration_v1_9`.
 4. **GitHub**: chép các file v1.9 vào repository (nhớ có `src/data.js` và `src/merge.js`), **xoá** file `src/artius-timesheet_v1_7.jsx` hoặc `_v1_8.jsx` cũ, commit. Vercel tự deploy.
-5. Mở webapp, bấm Ctrl + F5. Góc trái dưới ghi `ARTIUS v2.0`, dữ liệu cũ có đủ.
+5. Mở webapp, bấm Ctrl + F5. Góc trái dưới ghi `ARTIUS v2.1`, dữ liệu cũ có đủ.
 6. Nhắn mọi người **tải lại trang**. Ai còn mở bản cũ sẽ thấy lỗi khi bấm lưu, tải lại là lên v1.9.
 
 Chạy lại `schema.sql` về sau là an toàn: phần chép dữ liệu chỉ chạy khi `artius_config` còn trống,

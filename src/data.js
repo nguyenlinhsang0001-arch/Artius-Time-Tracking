@@ -71,13 +71,14 @@ export async function fetchTs({ empId, yms } = {}) {
    max = updated_at lớn nhất nhận được (giờ của SERVER, do trigger trong database ghi).
    since rỗng: lấy tất cả. since có giá trị: chỉ lấy dòng thay đổi sau mốc đó, lùi lại 10 giây cho chắc
    (hai lần ghi sát nhau có thể hoàn tất không đúng thứ tự). Dùng để màn hình tự cập nhật mà không tải lại cả khối. */
-export async function fetchTsChanges(since = "") {
+export async function fetchTsChanges(since = "", { fromYm = "" } = {}) {
   const rows = {};
   let max = since || "";
   const from0 = since ? new Date(new Date(since).getTime() - 10000).toISOString() : "";
   for (let from = 0; ; from += PAGE) {
     let q = supabase.from(TS).select("emp_id,ym,value,updated_at").order("emp_id").order("ym").range(from, from + PAGE - 1);
     if (from0) q = q.gt("updated_at", from0);
+    if (fromYm) q = q.gte("ym", fromYm);   // v2.1: lúc mở app chỉ tải các tháng gần đây
     const { data, error } = await q;
     if (error) throw fail("đọc bảng công", error);
     for (const r of data || []) {
@@ -88,6 +89,15 @@ export async function fetchTsChanges(since = "") {
     if (!data || data.length < PAGE) break;
   }
   return { rows, max };
+}
+
+/* v2.1 — Tổng giờ theo dự án × giai đoạn trên TOÀN BỘ dữ liệu, do database tính (hàm artius_usage, chỉ quản lý gọi được).
+   App chỉ giữ vài tháng gần đây trong bộ nhớ, nên con số "từ trước tới nay" phải hỏi server.
+   Trả về [{ projectId, phaseId, sent, all }]: sent = giờ của ngày đã gửi, all = mọi giờ đang lưu. */
+export async function fetchUsage() {
+  const { data, error } = await supabase.rpc("artius_usage");
+  if (error) throw fail("đọc tổng giờ", error);
+  return (data || []).map((r) => ({ projectId: r.project_id, phaseId: r.phase_id, sent: Number(r.sent_hours) || 0, all: Number(r.all_hours) || 0 }));
 }
 
 /* Ghi các bảng công trong map { "<empId>:<ym>": bucket }. Chỉ đụng tới đúng các dòng đó. */

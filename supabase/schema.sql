@@ -1,6 +1,7 @@
--- ARTIUS — Quản lý giờ công v1.9
+-- ARTIUS — Quản lý giờ công v2.1
 -- Chạy trong Supabase → SQL Editor. Chạy lại nhiều lần được, không xoá dữ liệu.
--- Nâng cấp từ v1.7 hoặc v1.8: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v1.9.
+-- Nâng cấp từ v1.7, v1.8, v1.9 hoặc v2.0: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v2.1.
+-- (v2.1 thêm mục 9: hàm artius_usage tính tổng giờ toàn bộ dữ liệu cho tab Dự án và tab Thiết lập.)
 -- File này tự làm hai việc chuyển dữ liệu, mỗi việc chỉ chạy đúng một lần:
 --   mục 5: chép dữ liệu từ bảng cũ (artius_kv) sang hai bảng mới (nếu chưa chép ở v1.8)
 --   mục 6: đánh dấu "đã gửi" cho mọi ngày cũ đang có giờ công
@@ -282,3 +283,26 @@ create policy "artius_ts_own_or_admin" on public.artius_ts
   for all to authenticated
   using ((select public.artius_is_admin()) or emp_id = (select public.artius_my_emp()))
   with check ((select public.artius_is_admin()) or emp_id = (select public.artius_my_emp()));
+
+-- 9. v2.1 — Tổng giờ theo dự án × giai đoạn trên TOÀN BỘ bảng công.
+--    App chỉ tải sẵn 6 tháng gần nhất, nên con số "từ trước tới nay" (tab Dự án, tab Thiết lập → Giai đoạn) hỏi hàm này.
+--    sent_hours = giờ của ngày đã gửi; all_hours = mọi giờ đang lưu. Chỉ tài khoản quản lý nhận được số liệu.
+create or replace function public.artius_usage()
+returns table (project_id text, phase_id text, sent_hours numeric, all_hours numeric)
+language sql stable security definer set search_path = public as $$
+  select coalesce(rw ->> 'projectId', '') as project_id,
+         coalesce(nullif(rw ->> 'phaseId', ''), 'P2') as phase_id,
+         sum(case when coalesce(case when jsonb_typeof(v.j -> 'sent') = 'object' then v.j -> 'sent' end, '{}'::jsonb) ? d.key
+                  then (d.value #>> '{}')::numeric else 0 end) as sent_hours,
+         sum((d.value #>> '{}')::numeric) as all_hours
+  from public.artius_ts t
+       cross join lateral (select t.value::jsonb as j) as v
+       cross join lateral jsonb_array_elements(case when jsonb_typeof(v.j -> 'rows') = 'array' then v.j -> 'rows' else '[]'::jsonb end) as rw
+       cross join lateral jsonb_each(case when jsonb_typeof(rw -> 'days') = 'object' then rw -> 'days' else '{}'::jsonb end) as d
+  where public.artius_is_admin()
+    and jsonb_typeof(d.value) = 'number'
+    and (d.value #>> '{}')::numeric > 0
+  group by 1, 2;
+$$;
+revoke all on function public.artius_usage() from public, anon;
+grant execute on function public.artius_usage() to authenticated, service_role;
