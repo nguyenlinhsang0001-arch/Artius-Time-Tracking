@@ -33,6 +33,9 @@
   Mỗi ô phase hiện giờ đã gửi / giờ dự kiến, tính trên toàn bộ thời gian của dự án. Dashboard hiện mỗi dự án 4 thanh
   theo phase kèm mốc dự kiến (theo kỳ và bộ lọc đang chọn), file Excel của Dashboard có thêm sheet "Dự kiến theo phase".
   Số giờ dự kiến tổng kiểu cũ (một con số cho cả dự án) không còn được dùng: nhập lại theo từng phase.
+- **Giai đoạn dự án sửa được** (Thiết lập → Giai đoạn dự án, lưu ở `config.phases`). Bấm tên / mô tả để sửa, thêm giai đoạn mới
+  (mã kế tiếp P5, P6…). Giai đoạn chưa có giờ công và giờ dự kiến thì xoá được; đã có thì chỉ ngừng dùng: nhân sự không chọn
+  được nữa, giờ cũ vẫn giữ trong báo cáo. Phải còn ít nhất một giai đoạn đang dùng.
 - **Tự cập nhật.** Máy quản lý hỏi server 10 giây một lần (chỉ lấy dòng vừa thay đổi), máy nhân sự 60 giây
   một lần và khi quay lại tab. Chỉ chạy khi tab đang hiện.
 - **Dữ liệu cũ.** `schema.sql` đánh dấu "đã gửi" một lần cho mọi ngày cũ đang có giờ, để số liệu không bị hụt.
