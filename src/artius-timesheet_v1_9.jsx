@@ -569,12 +569,24 @@ const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u
 const PROJECT_COLORS = ["#2dd4bf", "#f59e0b", "#a78bfa", "#f472b6", "#60a5fa", "#facc15", "#34d399", "#fb7185", "#38bdf8", "#c084fc"];
 /* Giai đoạn dự án — cho biết giờ công đổ vào chặng nào, tách bạch với "hạng mục công việc"
    (hạng mục nói làm việc gì, giai đoạn nói việc đó thuộc chặng nào của dự án) */
-const PHASES = [
-  { id: "P1", name: "Đấu thầu", desc: "Khảo sát sơ bộ, nghiên cứu, concept đấu thầu, báo giá, hồ sơ proposal", cls: "border-amber-800 bg-amber-950 text-amber-300", color: "#f59e0b" },
-  { id: "P2", name: "Thiết kế", desc: "Concept, phát triển thiết kế, 3D, hồ sơ kỹ thuật, phối hợp thiết kế", cls: "border-teal-800 bg-teal-950 text-teal-300", color: "#2dd4bf" },
-  { id: "P3", name: "Thi công", desc: "Shopdrawing, RFI, material, xử lý hiện trường, điều chỉnh thiết kế", cls: "border-sky-800 bg-sky-950 text-sky-300", color: "#38bdf8" },
-  { id: "P4", name: "Bàn giao", desc: "As-built, snagging, hoàn thiện hồ sơ, nghiệm thu, lưu trữ", cls: "border-violet-800 bg-violet-950 text-violet-300", color: "#a78bfa" },
+/* v1.9 — Giai đoạn do quản lý sửa được ở tab Thiết lập (cfg.phases = [{ id, name, desc, active }]).
+   Mã P1, P2… cố định theo thứ tự tạo; màu suy từ số trong mã. Giai đoạn "ngừng dùng" (active = false) không chọn được
+   khi chấm công nhưng vẫn hiện trong báo cáo. PHASES là bản sống: App chép cfg.phases vào đây ở mỗi lần render. */
+const PHASE_COLORS = ["#f59e0b", "#2dd4bf", "#38bdf8", "#a78bfa", "#f472b6", "#a3e635", "#fb923c", "#22d3ee"];
+const phaseColor = (id) => PHASE_COLORS[((parseInt(String(id).replace(/\D/g, ""), 10) || 1) - 1) % PHASE_COLORS.length];
+const DEFAULT_PHASES = [
+  { id: "P1", name: "Đấu thầu", desc: "Khảo sát sơ bộ, nghiên cứu, concept đấu thầu, báo giá, hồ sơ proposal", active: true },
+  { id: "P2", name: "Thiết kế", desc: "Concept, phát triển thiết kế, 3D, hồ sơ kỹ thuật, phối hợp thiết kế", active: true },
+  { id: "P3", name: "Thi công", desc: "Shopdrawing, RFI, material, xử lý hiện trường, điều chỉnh thiết kế", active: true },
+  { id: "P4", name: "Bàn giao", desc: "As-built, snagging, hoàn thiện hồ sơ, nghiệm thu, lưu trữ", active: true },
 ];
+const PHASES = DEFAULT_PHASES.map((x) => ({ ...x, color: phaseColor(x.id) }));
+const syncPhases = (list) => {
+  const src = Array.isArray(list) && list.length ? list : DEFAULT_PHASES;
+  PHASES.splice(0, PHASES.length, ...src.map((x) => ({ ...x, active: x.active !== false, color: phaseColor(x.id) })));
+};
+const activePhases = () => PHASES.filter((x) => x.active);
+const firstActivePhase = () => activePhases()[0]?.id || PHASES[0]?.id || "P2";
 const DEFAULT_PHASE = "P2";
 /* v1.9 — Giờ dự kiến của dự án chia theo phase: project.budgets = { P1, P2, P3, P4 }. Tổng dự kiến = cộng 4 phase.
    Số tổng kiểu cũ (project.budget, một con số cho cả dự án) không còn được dùng. Phase để trống / 0 = không theo dõi hạn mức. */
@@ -583,13 +595,14 @@ const budgetTotal = (p) => PHASES.reduce((a, ph) => a + (Math.max(0, Number(p?.b
 const cleanBudgets = (d) => Object.fromEntries(PHASES.map((ph) => [ph.id, Math.max(0, Number(d?.[ph.id]) || 0)]));
 const fmtH = (n) => String(+Number(n || 0).toFixed(1));
 const phaseInfo = (id) => PHASES.find((p) => p.id === id) || null;
-const phaseLabel = (id) => { const p = phaseInfo(id); return p ? `${p.id} · ${p.name}` : "(chưa gán)"; };
+const phaseLabel = (id) => { const p = phaseInfo(id); return p ? `${p.id} · ${p.name}` : `${id || ""} (đã xoá)`.trim(); };
 // Đoán giai đoạn từ nhóm của hạng mục — dùng khi thêm dòng mới và khi nâng cấp dữ liệu cũ chưa có giai đoạn
 const guessPhase = (taskId, tasks = []) => {
   const g = tasks.find((t) => t.id === taskId)?.group || "";
-  if (/xưởng|thi công/i.test(g)) return "P3";
-  if (/thiết kế/i.test(g)) return "P2";
-  return DEFAULT_PHASE;
+  const ok = (id) => (phaseInfo(id)?.active ? id : null);
+  if (/xưởng|thi công/i.test(g)) return ok("P3") || firstActivePhase();
+  if (/thiết kế/i.test(g)) return ok("P2") || firstActivePhase();
+  return ok(DEFAULT_PHASE) || firstActivePhase();
 };
 // Khoá định danh một dòng chấm công: cùng dự án nhưng khác giai đoạn thì vẫn là hai dòng riêng
 const rowKey = (r) => `${r.projectId}|${r.phaseId || DEFAULT_PHASE}|${r.taskId}`;
@@ -1033,6 +1046,8 @@ export default function App() {
       syncDepts(c.depts);
       syncRoles(c.roles);
       syncLeave(c.leaveTypes);
+      c.phases = Array.isArray(c.phases) && c.phases.length ? c.phases : DEFAULT_PHASES.map((x) => ({ ...x }));
+      syncPhases(c.phases);
       setCfg(c); setLoadFailed(false);
       return true;
     } catch {
@@ -1085,6 +1100,7 @@ export default function App() {
   syncDepts(cfg?.depts);
   syncLeave(cfg?.leaveTypes);
   syncRoles(cfg?.roles);   // đồng bộ trước khi các màn con render (cfg còn null lúc app vừa mở)
+  syncPhases(cfg?.phases);
 
   const signOut = async () => {
     await authSignOut();
@@ -1800,8 +1816,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
     const have = new Set(rows.map(rowKey));
     let text = norm(q).trim();
     let phase = qPhase;
-    const m = text.match(/(^|\s)p([1-4])(\s|$)/);       // gõ thẳng "vin p2 khao" cũng lọc được giai đoạn
-    if (m) { phase = `P${m[2]}`; text = (text.slice(0, m.index) + " " + text.slice(m.index + m[0].length)).trim(); }
+    const m = text.match(/(^|\s)p(\d{1,2})(\s|$)/);    // gõ thẳng "vin p2 khao" cũng lọc được giai đoạn
+    if (m && phaseInfo(`P${m[2]}`)?.active) { phase = `P${m[2]}`; text = (text.slice(0, m.index) + " " + text.slice(m.index + m[0].length)).trim(); }
     /* Token nào trùng khít một mã dự án thì coi là bộ lọc dự án, không đem đi so chuỗi nữa.
        Gõ cụ thể luôn thắng chip đang chọn, giống cách token P1–P4 đang hoạt động. */
     let proj = qProj;
@@ -1894,7 +1910,12 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
       )}
     </>
   );
-  const phaseOptions = () => PHASES.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.name}</option>);
+  const phaseOptions = (cur) => (
+    <>
+      {activePhases().map((p) => <option key={p.id} value={p.id}>{p.id} · {p.name}</option>)}
+      {cur && !phaseInfo(cur)?.active && <option value={cur}>{phaseLabel(cur)}{phaseInfo(cur) ? " (ngừng dùng)" : ""}</option>}
+    </>
+  );
   // Nhân sự chưa chấm công bao giờ thì chưa suy ra được dự án nào — lúc đó hiện tạm danh sách đang mở
   const projChips = myProjects.length ? myProjects : activeProjects.slice(0, 6);
   const qChip = (on) => `rounded border px-1.5 py-0.5 text-[11px] ${on ? "border-teal-600 bg-teal-950 text-teal-300" : "border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-600 hover:text-slate-200"}`;
@@ -2007,7 +2028,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                         ))}
                       </div>
                       <div className="ml-auto flex flex-wrap items-center gap-1">
-                        {PHASES.map((ph) => (
+                        {activePhases().map((ph) => (
                           <button key={ph.id} onMouseDown={(e) => e.preventDefault()} onClick={() => { setQPhase(qPhase === ph.id ? null : ph.id); setQIdx(0); }}
                             className={qChip(qPhase === ph.id)} title={ph.desc}>
                             <span className="font-mono">{ph.id}</span> {ph.name}
@@ -2021,7 +2042,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                       ) : quickHits.map((o, k) => (
                         <button key={rowKey(o)} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setQIdx(k)} onClick={() => addCombo(o)}
                           className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${k === qIdx ? "bg-slate-800 text-slate-100" : "text-slate-300"}`}>
-                          <span className="shrink-0 rounded border border-slate-700 px-1.5 py-0.5 font-mono text-[10px] text-slate-400">{o.phaseId}</span>
+                          {o.projectId !== NO_PROJECT && <span className="shrink-0 rounded border border-slate-700 px-1.5 py-0.5 font-mono text-[10px] text-slate-400">{o.phaseId}</span>}
                           <span className="min-w-0 truncate">{o.label}</span>
                         </button>
                       ))}
@@ -2105,7 +2126,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                           <div className="min-w-0" style={{ flexBasis: "42%", flexGrow: 1 }}>
                             <select disabled={gLocked || noProj} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })}
                               title={phaseInfo(g.phaseId)?.desc}
-                              className={`disabled:opacity-50 ${selectCls}`}>{phaseOptions()}</select>
+                              className={`disabled:opacity-50 ${selectCls}`}>{phaseOptions(g.phaseId)}</select>
                           </div>
                         </div>
                       </td>
@@ -2227,7 +2248,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                 <div key={g.key} className="rounded-xl border border-slate-800 bg-slate-900 p-3">
                   {/* Đầu thẻ: dự án + giai đoạn dùng chung cho mọi hạng mục bên trong */}
                   <select disabled={gLocked || noProj} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })} className={`disabled:opacity-50 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
-                  <select disabled={gLocked || noProj} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })} className={`mt-2 disabled:opacity-50 ${selectCls}`}>{phaseOptions()}</select>
+                  <select disabled={gLocked || noProj} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })} className={`mt-2 disabled:opacity-50 ${selectCls}`}>{phaseOptions(g.phaseId)}</select>
 
                   {g.items.map(({ r, i }) => {
                     const rt = days.reduce((s, d) => s + (r.days[d] || 0), 0);
@@ -3562,6 +3583,7 @@ function Projects({ cfg, saveCfg, flash }) {
   const [editId, setEditId] = useState(null);
   const [draft, setDraft] = useState({});
   const dataTick = useDataTick();
+  const isWide = !useIsMobile();
 
   /* Giờ đã dùng của từng dự án theo phase: tính trên TOÀN BỘ thời gian, chỉ giờ của ngày đã gửi, không tính vắng mặt. */
   const used = useMemo(() => {
@@ -3637,7 +3659,7 @@ function Projects({ cfg, saveCfg, flash }) {
         <div className="md:w-44">
           <input value={client} onChange={(e) => setClient(e.target.value)} placeholder="Khách hàng" className={inputCls} />
         </div>
-        <div className="grid grid-cols-4 gap-2 md:w-[23rem]">
+        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(PHASES.length, 4)}, minmax(0, 1fr))`, width: isWide ? `${PHASES.length * 5.75}rem` : undefined }}>
           {PHASES.map((ph) => (
             <label key={ph.id} className="min-w-0">
               <span className="mb-1 flex items-center gap-1 truncate text-[11px] text-slate-500"><span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: ph.color }} />{ph.id}<span className="hidden truncate md:inline"> · {ph.name}</span></span>
@@ -4739,6 +4761,98 @@ function Tasks({ cfg, saveCfg, flash }) {
 }
 
 /* ============================ THIẾT LẬP ============================ */
+/* v1.9 — Giai đoạn dự án sửa được: bấm tên / mô tả để sửa tại chỗ, thêm giai đoạn mới (mã kế tiếp P5, P6…).
+   Giai đoạn chưa có giờ công và chưa có giờ dự kiến thì xoá được; đã có thì chỉ ngừng dùng / dùng lại. */
+function PhasePanel({ cfg, saveCfg, flash }) {
+  const dataTick = useDataTick();
+  const [editing, setEditing] = useState(null);   // { id, field: "name" | "desc" }
+  const [val, setVal] = useState("");
+  const list = Array.isArray(cfg.phases) && cfg.phases.length ? cfg.phases : DEFAULT_PHASES;
+
+  // Giờ công đang gắn với từng giai đoạn: mọi dòng bảng công (kể cả chưa gửi), không tính vắng mặt
+  const hoursBy = useMemo(() => {
+    const m = new Map();
+    for (const bucket of Object.values(DB?.ts || {})) for (const r of bucket?.rows || []) {
+      if (isLeaveTask(r.taskId) || r.projectId === NO_PROJECT) continue;
+      const h = Object.values(r.days || {}).reduce((a, v) => a + (Number(v) || 0), 0);
+      if (h > 0) { const k = r.phaseId || DEFAULT_PHASE; m.set(k, (m.get(k) || 0) + h); }
+    }
+    return m;
+  }, [dataTick]);
+  const hasBudget = (id) => cfg.projects.some((p) => Number(p.budgets?.[id]) > 0);
+  const inUse = (id) => (hoursBy.get(id) || 0) > 0 || hasBudget(id);
+
+  const save = (next, msg) => saveCfg({ ...cfg, phases: next }).then((ok) => { if (ok && msg) flash(msg); });
+  const startEdit = (x, field) => { setEditing({ id: x.id, field }); setVal(x[field] || ""); };
+  const commit = () => {
+    if (!editing) return;
+    const v = val.trim(), cur = list.find((x) => x.id === editing.id);
+    setEditing(null);
+    if (!cur || v === (cur[editing.field] || "")) return;
+    if (editing.field === "name" && !v) return flash("Tên giai đoạn không được để trống.", "err");
+    save(list.map((x) => (x.id === cur.id ? { ...x, [editing.field]: v } : x)), "Đã lưu giai đoạn.");
+  };
+  const add = async () => {
+    const n = Math.max(0, ...list.map((x) => parseInt(String(x.id).replace(/\D/g, ""), 10) || 0)) + 1;
+    const x = { id: `P${n}`, name: "Giai đoạn mới", desc: "", active: true };
+    await save([...list, x], `Đã thêm ${x.id}.`);
+    startEdit(x, "name");
+  };
+  const toggle = (x) => {
+    if (x.active !== false && list.filter((y) => y.active !== false).length <= 1) return flash("Phải còn ít nhất một giai đoạn đang dùng.", "err");
+    save(list.map((y) => (y.id === x.id ? { ...y, active: x.active === false } : y)),
+      x.active === false ? `Đã dùng lại ${x.id}.` : `${x.id} · ${x.name} ngừng dùng — nhân sự không chọn được nữa.`);
+  };
+  const del = (x) => {
+    if (inUse(x.id)) return flash("Giai đoạn đã có giờ công hoặc giờ dự kiến, chỉ ngừng dùng được.", "err");
+    if (list.filter((y) => y.id !== x.id && y.active !== false).length === 0) return flash("Phải còn ít nhất một giai đoạn đang dùng.", "err");
+    save(list.filter((y) => y.id !== x.id), `Đã xoá ${x.id} · ${x.name}.`);
+  };
+  const editKey = (e) => {
+    if (e.key === "Enter" && !(e.shiftKey && e.currentTarget.tagName === "TEXTAREA")) { e.preventDefault(); e.currentTarget.blur(); }
+    if (e.key === "Escape") { setEditing(null); }
+  };
+  const editCls = "w-full rounded border border-teal-600 bg-slate-900 px-2 text-slate-100 focus:outline-none";
+
+  return (
+    <Panel title="Giai đoạn dự án">
+      <p className="text-sm text-slate-400">Mỗi dòng chấm công phải chọn một giai đoạn. Bấm vào tên hoặc mô tả để sửa.</p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {list.map((x) => {
+          const c = phaseColor(x.id), off = x.active === false, hrs = hoursBy.get(x.id) || 0;
+          const isEd = (f) => editing?.id === x.id && editing.field === f;
+          return (
+            <div key={x.id} data-phase-card={x.id} className={`relative min-w-0 rounded-lg border border-slate-800 bg-slate-950 py-3 pl-3 pr-14 ${off ? "opacity-60" : ""}`}>
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px]" style={{ color: c, borderColor: `${c}66`, background: `${c}1a` }}>{x.id}</span>
+                {isEd("name")
+                  ? <input autoFocus value={val} onChange={(e) => setVal(e.target.value)} onBlur={commit} onKeyDown={editKey} aria-label="Tên giai đoạn" className={`h-8 text-sm ${editCls}`} />
+                  : <button onClick={() => startEdit(x, "name")} className="-ml-1 min-w-0 truncate rounded border border-transparent px-1 text-left text-sm font-medium text-slate-100 hover:border-slate-700">{x.name}</button>}
+                {!isEd("name") && hrs > 0 && <span className="shrink-0 whitespace-nowrap rounded border border-teal-900 px-1.5 py-0.5 text-[10px] text-teal-400">{fmtH(hrs)} giờ</span>}
+                {!isEd("name") && off && <span className="shrink-0 whitespace-nowrap rounded border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400">Ngừng dùng</span>}
+              </div>
+              {isEd("desc")
+                ? <textarea autoFocus value={val} onChange={(e) => setVal(e.target.value)} onBlur={commit} onKeyDown={editKey} aria-label="Mô tả giai đoạn" rows={2} className={`mt-1.5 py-1 text-xs ${editCls}`} />
+                : <button onClick={() => startEdit(x, "desc")} className="-ml-1 mt-1.5 block w-full rounded border border-transparent px-1 text-left text-xs leading-relaxed text-slate-500 hover:border-slate-700">{x.desc || "Thêm mô tả…"}</button>}
+              <div className="absolute right-2 top-2">
+                {inUse(x.id)
+                  ? <button onClick={() => toggle(x)} title={off ? "Dùng lại" : "Ngừng dùng"} className={iconBtn}>{off ? <Eye size={14} /> : <EyeOff size={14} />}</button>
+                  : <button onClick={() => del(x)} title="Xoá giai đoạn" className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={14} /></button>}
+              </div>
+            </div>
+          );
+        })}
+        <button onClick={add} className="flex min-h-[84px] items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-700 text-sm text-slate-400 hover:border-teal-700 hover:text-teal-300">
+          <Plus size={15} /> Thêm giai đoạn
+        </button>
+      </div>
+      <p className="mt-3 text-xs text-slate-500">
+        Giai đoạn đã có giờ công hoặc giờ dự kiến thì không xoá được, chỉ ngừng dùng: nhân sự không chọn được nữa, giờ cũ vẫn giữ trong báo cáo.
+      </p>
+    </Panel>
+  );
+}
+
 function SettingsTab({ cfg, saveCfg, flash }) {
   const [day, setDay] = useState(cfg.deadlineDay || 5);
   const [confirm, setConfirm] = useState("");
@@ -4797,25 +4911,7 @@ function SettingsTab({ cfg, saveCfg, flash }) {
 
   return (
     <div className="space-y-3 md:space-y-4">
-      <Panel title="Giai đoạn dự án">
-        <p className="text-sm text-slate-400">
-          Mỗi dòng chấm công phải chọn một giai đoạn. Nhờ đó biết được tỷ trọng công sức đổ vào đấu thầu so với thi công — con số này dùng để tính chi phí theo đuổi dự án.
-        </p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {PHASES.map((p) => (
-            <div key={p.id} className="rounded-lg border border-slate-800 bg-slate-950 p-3">
-              <div className="flex items-center gap-2">
-                <span className={`rounded border px-1.5 py-0.5 font-mono text-[10px] ${p.cls}`}>{p.id}</span>
-                <span className="text-sm font-medium text-slate-100">{p.name}</span>
-              </div>
-              <p className="mt-1.5 text-xs leading-relaxed text-slate-500">{p.desc}</p>
-            </div>
-          ))}
-        </div>
-        <p className="mt-3 text-xs text-slate-500">
-          Bốn giai đoạn này cố định trong hệ thống. Dữ liệu chấm công cũ chưa có giai đoạn sẽ được suy đoán theo nhóm của hạng mục công việc, nên cần rà lại nếu muốn số liệu chuẩn.
-        </p>
-      </Panel>
+      <PhasePanel cfg={cfg} saveCfg={saveCfg} flash={flash} />
 
       <Panel title="Giờ chuẩn & ngưỡng cảnh báo">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
