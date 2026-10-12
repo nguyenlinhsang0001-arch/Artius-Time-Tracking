@@ -1,8 +1,8 @@
-# ARTIUS — Quản lý giờ công · v1.9 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v2.0 (bản webapp cho Vercel)
 
 | File | Vai trò |
 |---|---|
-| `src/artius-timesheet_v1_9.jsx` | Ứng dụng v1.9 |
+| `src/artius-timesheet_v2_0.jsx` | Ứng dụng v2.0 |
 | `src/data.js` | Đọc/ghi thiết lập và bảng công theo từng dòng trên Supabase (mới ở v1.8) |
 | `src/merge.js` | Gộp thiết lập khi nhiều quản lý cùng sửa (mới ở v1.8) |
 | `src/auth.js` | Đăng nhập / đăng xuất, gọi hàm server quản lý tài khoản |
@@ -11,7 +11,18 @@
 | `src/main.jsx`, `index.html`, `src/index.css` | Điểm khởi động, Tailwind |
 | `supabase/schema.sql` | Các bảng, phân quyền, khoá cứng ngày đã gửi, và phần tự chuyển dữ liệu từ v1.7 / v1.8 |
 
-## Mới ở v1.9 — quy trình gửi và khoá bảng công
+## Mới ở v2.0
+
+- **Cảnh báo thiếu bảng công chỉ tính ngày đã tới** (tính cả hôm nay). Tuần chưa bắt đầu không bị báo thiếu và không tính
+  vào "Số tuần cần nộp"; tuần đang chạy chỉ cần gửi đủ các ngày từ thứ Hai tới hôm nay. Áp dụng cho dải cảnh báo của nhân sự,
+  Dashboard, tab Bảng công và sheet "Tình trạng nộp".
+- **Bỏ dòng thông báo "Đã gửi và khoá: T2, T3…"** trên màn chấm công. Ô ngày đã gửi vẫn khoá và vẫn có biểu tượng ổ khoá ở đầu cột.
+
+**Nâng cấp từ v1.9:** `supabase/schema.sql` không đổi so với bản v1.9 cuối cùng, không cần chạy lại SQL. Trên GitHub thêm
+`src/artius-timesheet_v2_0.jsx`, **xoá** `src/artius-timesheet_v1_9.jsx`, thay `src/main.jsx`, `index.html`, `package.json`, `README.md`.
+Góc trái dưới của app ghi `ARTIUS v2.0`.
+
+## Có từ v1.9 — quy trình gửi và khoá bảng công
 
 - **Bỏ Lưu nháp.** Giờ nhân sự nhập chỉ nằm trên màn hình cho tới khi bấm **Gửi giờ công**.
   Đóng trang, đổi tuần hoặc đổi tab khi chưa gửi đều được hỏi lại, vì giờ đang nhập sẽ mất.
@@ -79,7 +90,7 @@ Không cần thêm hay sửa biến môi trường nào trên Vercel.
 3. **Kiểm tra** trong Table Editor: `artius_config` có 1 dòng `main`; `artius_ts` có các dòng dạng mã nhân sự + tháng;
    `artius_meta` có dòng `sent_day_migration_v1_9`.
 4. **GitHub**: chép các file v1.9 vào repository (nhớ có `src/data.js` và `src/merge.js`), **xoá** file `src/artius-timesheet_v1_7.jsx` hoặc `_v1_8.jsx` cũ, commit. Vercel tự deploy.
-5. Mở webapp, bấm Ctrl + F5. Góc trái dưới ghi `ARTIUS v1.9`, dữ liệu cũ có đủ.
+5. Mở webapp, bấm Ctrl + F5. Góc trái dưới ghi `ARTIUS v2.0`, dữ liệu cũ có đủ.
 6. Nhắn mọi người **tải lại trang**. Ai còn mở bản cũ sẽ thấy lỗi khi bấm lưu, tải lại là lên v1.9.
 
 Chạy lại `schema.sql` về sau là an toàn: phần chép dữ liệu chỉ chạy khi `artius_config` còn trống,
