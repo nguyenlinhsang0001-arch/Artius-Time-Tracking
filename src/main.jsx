@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 // Thứ tự import có ý nghĩa: storage.js phải chạy trước App (xem ghi chú trong storage.js)
 import { STORAGE_CONFIGURED } from "./storage.js";
-import App from "./artius-timesheet_v2_0.jsx";
+import App from "./artius-timesheet_v2_1.jsx";
 
 function MissingConfig() {
   return (
