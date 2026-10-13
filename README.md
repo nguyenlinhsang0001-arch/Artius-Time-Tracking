@@ -1,8 +1,8 @@
-# ARTIUS — Quản lý giờ công · v2.6 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v2.7 (bản webapp cho Vercel)
 
 | File | Vai trò |
 |---|---|
-| `src/artius-timesheet_v2_6.jsx` | Ứng dụng v2.6 |
+| `src/artius-timesheet_v2_7.jsx` | Ứng dụng v2.7 |
 | `src/push.js` | (v2.6) Xin quyền và đăng ký thông báo trên trình duyệt |
 | `api/push.js`, `api/_reminders.js` | (v2.6) Hàm server gửi thông báo nhắc nộp bảng công + luật tính lịch / ngày thiếu |
 | `public/sw.js`, `public/*.png` | (v2.6) Service worker hiện thông báo, biểu tượng thông báo |
@@ -14,6 +14,17 @@
 | `api/accounts.js` | Hàm server trên Vercel: tạo / sửa / khoá / xoá tài khoản |
 | `src/main.jsx`, `index.html`, `src/index.css` | Điểm khởi động, Tailwind |
 | `supabase/schema.sql` | Các bảng, phân quyền, khoá cứng ngày đã gửi, và phần tự chuyển dữ liệu từ v1.7 / v1.8 |
+
+## Mới ở v2.7 — chỉnh giao diện màn Chấm công
+
+- Chú thích **"Hôm nay"** chuyển lên hàng chú thích đầu màn Chấm công (sau "Nghỉ phép").
+- **Bảng lịch chọn tuần** bỏ hết các dòng chú thích màu; vẫn giữ nút "Hôm nay" ở đáy lịch.
+- **Cột ngày hôm nay** có nền sáng hơn một chút; **các ngày tương lai** mờ đi. Áp dụng cả bảng giờ (máy tính)
+  lẫn hàng thẻ ngày (mobile).
+
+**Nâng cấp từ v2.6:** database không đổi, không cần chạy SQL. Trên GitHub thêm `src/artius-timesheet_v2_7.jsx`,
+**xoá** `src/artius-timesheet_v2_6.jsx`, thay `src/main.jsx`, `index.html`, `package.json`, `README.md`.
+Nếu chưa deploy v2.6: làm đủ 5 bước của v2.6 bên dưới, chỉ thay file `.jsx` v2.6 bằng file v2.7.
 
 ## Mới ở v2.6 — Thông báo nhắc nộp bảng công trên máy tính
 
