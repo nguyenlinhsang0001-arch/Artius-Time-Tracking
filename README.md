@@ -21,7 +21,9 @@
   và **vắng mặt**. Chọn "Khác" thì **ô Giai đoạn ẩn đi**.
 - Chọn một **dự án** thì ô Hạng mục chỉ còn **tác vụ gắn vai trò** của người đó (không còn tác vụ chung, không còn vắng mặt).
 - Đổi dự án của một khối giữa "Khác" và dự án: hạng mục không hợp lệ tự đổi sang hạng mục hợp lệ đầu tiên.
-- Ô thêm nhanh: gõ "khac" ra các mục "Khác · …". "Chép tuần trước" và chip gợi ý đưa tác vụ chung / vắng mặt vào "Khác".
+- **Bỏ ô tìm thêm nhanh và chip gợi ý.** Nút **Thêm dòng** thêm ngay một dòng (dự án đang làm + tác vụ dự án chưa dùng;
+  hết tác vụ dự án thì thêm vào "Khác"), sau đó chọn lại Dự án / Giai đoạn / Hạng mục bằng các ô chọn. Nút **+** ở đầu khối
+  vẫn thêm hạng mục vào đúng khối đó. "Chép tuần trước" đưa tác vụ chung / vắng mặt vào "Khác".
 - **Giờ cũ** đã chấm tác vụ chung dưới một dự án **giữ nguyên** (vẫn tính cho dự án đó), dòng cũ hiện nhãn "(tác vụ chung — dữ liệu cũ)".
 - **Báo cáo:** cột "Vắng mặt" đổi thành **"Khác"** (tác vụ chung + vắng mặt) ở Dashboard, Ma trận giờ công, Excel; KPI
   "Giờ vắng mặt" vẫn tách riêng. "Khác" không tính là dự án và không có giai đoạn (không vào biểu đồ / sheet theo giai đoạn).
