@@ -1,8 +1,8 @@
-# ARTIUS — Quản lý giờ công · v2.1 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v2.2 (bản webapp cho Vercel)
 
 | File | Vai trò |
 |---|---|
-| `src/artius-timesheet_v2_1.jsx` | Ứng dụng v2.1 |
+| `src/artius-timesheet_v2_2.jsx` | Ứng dụng v2.2 |
 | `src/data.js` | Đọc/ghi thiết lập và bảng công theo từng dòng trên Supabase (mới ở v1.8) |
 | `src/merge.js` | Gộp thiết lập khi nhiều quản lý cùng sửa (mới ở v1.8) |
 | `src/auth.js` | Đăng nhập / đăng xuất, gọi hàm server quản lý tài khoản |
@@ -11,7 +11,20 @@
 | `src/main.jsx`, `index.html`, `src/index.css` | Điểm khởi động, Tailwind |
 | `supabase/schema.sql` | Các bảng, phân quyền, khoá cứng ngày đã gửi, và phần tự chuyển dữ liệu từ v1.7 / v1.8 |
 
-## Mới ở v2.1
+## Mới ở v2.2 — chuẩn bị chạy thật cho 50+ người
+
+- **Tự cập nhật nhẹ hơn.** Lần hỏi định kỳ chỉ lấy danh sách "dòng nào đổi lúc mấy giờ" (vài trăm byte), rồi chỉ tải nội dung
+  đúng dòng đổi. Quản lý hỏi 30 giây/lần (trước 10 giây), nhân sự 60 giây/lần; máy để yên quá 10 phút thì ngừng hỏi,
+  chạm chuột / gõ phím là hỏi ngay. Giảm mạnh dung lượng tải ra (egress) của Supabase.
+- **Mở app nhanh hơn.** Thư viện Excel (khoảng 430 KB) chỉ tải khi bấm xuất file.
+- **Mất mạng.** Hiện dải "Mất kết nối tới máy chủ — đang thử lại"; có mạng lại thì tự gửi lại phần đang chờ (giờ vẫn giữ trên màn hình).
+- **Màn hình hỏng** hiện thông báo + nút tải lại thay vì trang trắng.
+
+**Nâng cấp từ v2.1:** database không đổi, không cần chạy lại SQL. Trên GitHub thêm `src/artius-timesheet_v2_2.jsx`,
+**xoá** `src/artius-timesheet_v2_1.jsx`, thay `src/main.jsx`, `src/data.js`, `index.html`, `package.json`, `README.md`.
+Góc trái dưới của app ghi `ARTIUS v2.2`.
+
+## Có từ v2.1
 
 - **Mở app nhanh hơn khi dữ liệu nhiều.** Lúc đăng nhập chỉ tải bảng công **6 tháng gần nhất** (tính cả tháng này).
   Tháng cũ hơn tự tải khi có màn hình cần tới: chọn kỳ cũ ở Dashboard, lùi tháng ở Bảng công, lùi tuần hoặc mở lịch
@@ -105,7 +118,7 @@ Không cần thêm hay sửa biến môi trường nào trên Vercel.
 3. **Kiểm tra** trong Table Editor: `artius_config` có 1 dòng `main`; `artius_ts` có các dòng dạng mã nhân sự + tháng;
    `artius_meta` có dòng `sent_day_migration_v1_9`.
 4. **GitHub**: chép các file v1.9 vào repository (nhớ có `src/data.js` và `src/merge.js`), **xoá** file `src/artius-timesheet_v1_7.jsx` hoặc `_v1_8.jsx` cũ, commit. Vercel tự deploy.
-5. Mở webapp, bấm Ctrl + F5. Góc trái dưới ghi `ARTIUS v2.1`, dữ liệu cũ có đủ.
+5. Mở webapp, bấm Ctrl + F5. Góc trái dưới ghi `ARTIUS v2.2`, dữ liệu cũ có đủ.
 6. Nhắn mọi người **tải lại trang**. Ai còn mở bản cũ sẽ thấy lỗi khi bấm lưu, tải lại là lên v1.9.
 
 Chạy lại `schema.sql` về sau là an toàn: phần chép dữ liệu chỉ chạy khi `artius_config` còn trống,

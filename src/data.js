@@ -53,15 +53,36 @@ export async function saveConfig(config, expectedRev) {
 /* Bảng công, trả về { "<empId>:<ym>": bucket }.
    Không truyền gì: mọi dòng người gọi được phép thấy (nhân sự -> của mình; quản lý -> tất cả).
    Truyền empId + yms: chỉ các tháng đó của một người (dùng để đọc lại ngay trước khi lưu). */
-export async function fetchTs({ empId, yms } = {}) {
+export async function fetchTs({ empId, empIds, yms, stamps } = {}) {
   const out = {};
   for (let from = 0; ; from += PAGE) {
-    let q = supabase.from(TS).select("emp_id,ym,value").order("emp_id").order("ym").range(from, from + PAGE - 1);
+    let q = supabase.from(TS).select("emp_id,ym,value,updated_at").order("emp_id").order("ym").range(from, from + PAGE - 1);
     if (empId) q = q.eq("emp_id", empId);
+    if (empIds?.length) q = q.in("emp_id", empIds);
     if (yms?.length) q = q.in("ym", yms);
     const { data, error } = await q;
     if (error) throw fail("đọc bảng công", error);
-    for (const r of data || []) { const v = parse(r.value); if (v) out[slotOf(r)] = v; }
+    for (const r of data || []) {
+      const v = parse(r.value);
+      if (v) out[slotOf(r)] = v;
+      if (stamps && r.updated_at) stamps[slotOf(r)] = r.updated_at;   // v2.2: ghi kèm mốc thời gian của từng dòng
+    }
+    if (!data || data.length < PAGE) break;
+  }
+  return out;
+}
+
+/* v2.2 — Hỏi nhẹ: chỉ lấy (nhân sự, tháng, mốc thời gian) của các dòng đổi sau mốc since, KHÔNG kèm nội dung.
+   Mỗi lần hỏi chỉ vài chục byte; app so mốc với bản đang giữ rồi mới tải nội dung dòng thật sự đổi. */
+export async function fetchTsStamps(since = "") {
+  const out = [];
+  const from0 = since ? new Date(new Date(since).getTime() - 10000).toISOString() : "";
+  for (let from = 0; ; from += PAGE) {
+    let q = supabase.from(TS).select("emp_id,ym,updated_at").order("emp_id").order("ym").range(from, from + PAGE - 1);
+    if (from0) q = q.gt("updated_at", from0);
+    const { data, error } = await q;
+    if (error) throw fail("đọc bảng công", error);
+    for (const r of data || []) out.push({ key: slotOf(r), ym: r.ym, empId: r.emp_id, at: r.updated_at });
     if (!data || data.length < PAGE) break;
   }
   return out;
@@ -72,7 +93,7 @@ export async function fetchTs({ empId, yms } = {}) {
    since rỗng: lấy tất cả. since có giá trị: chỉ lấy dòng thay đổi sau mốc đó, lùi lại 10 giây cho chắc
    (hai lần ghi sát nhau có thể hoàn tất không đúng thứ tự). Dùng để màn hình tự cập nhật mà không tải lại cả khối. */
 export async function fetchTsChanges(since = "", { fromYm = "" } = {}) {
-  const rows = {};
+  const rows = {}, stamps = {};
   let max = since || "";
   const from0 = since ? new Date(new Date(since).getTime() - 10000).toISOString() : "";
   for (let from = 0; ; from += PAGE) {
@@ -84,11 +105,12 @@ export async function fetchTsChanges(since = "", { fromYm = "" } = {}) {
     for (const r of data || []) {
       const v = parse(r.value);
       if (v) rows[slotOf(r)] = v;
+      if (r.updated_at) stamps[slotOf(r)] = r.updated_at;
       if (r.updated_at && (!max || new Date(r.updated_at) > new Date(max))) max = r.updated_at;
     }
     if (!data || data.length < PAGE) break;
   }
-  return { rows, max };
+  return { rows, max, stamps };
 }
 
 /* v2.1 — Tổng giờ theo dự án × giai đoạn trên TOÀN BỘ dữ liệu, do database tính (hàm artius_usage, chỉ quản lý gọi được).
