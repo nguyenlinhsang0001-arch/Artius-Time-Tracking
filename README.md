@@ -1,19 +1,35 @@
-# ARTIUS — Quản lý giờ công · v2.9 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v3.0 (bản webapp cho Vercel)
+
+## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
+
+Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt từng file nữa.
+
+1. **Supabase → SQL Editor → New query:** dán toàn bộ `supabase/schema.sql` → **Run**
+   (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
+2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
+   kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v3.0`.
+
+Ghi chú:
+- Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
+  Các file `src/artius-timesheet_v2_x.jsx` cũ còn trong repo không ảnh hưởng gì (không được dùng); muốn gọn thì xoá tay.
+- Không có file khoá bí mật nào trong folder này. Khoá thông báo (VAPID, CRON_SECRET) nằm riêng ở
+  `D:\Time-Tracking\KHOA_BI_MAT_v2_6\` — chỉ cần làm một lần (xem mục v2.6 bên dưới).
 
 | File | Vai trò |
 |---|---|
-| `src/artius-timesheet_v2_9.jsx` | Ứng dụng v2.9 |
-| `src/push.js` | (v2.6) Xin quyền và đăng ký thông báo trên trình duyệt |
-| `api/push.js`, `api/_reminders.js` | (v2.6) Hàm server gửi thông báo nhắc nộp bảng công + luật tính lịch / ngày thiếu |
-| `public/sw.js`, `public/*.png` | (v2.6) Service worker hiện thông báo, biểu tượng thông báo |
-| `supabase/cron.sql` | (v2.6) Lịch Supabase gọi `/api/push` 15 phút/lần |
-| `src/data.js` | Đọc/ghi thiết lập và bảng công theo từng dòng trên Supabase (mới ở v1.8) |
-| `src/merge.js` | Gộp thiết lập khi nhiều quản lý cùng sửa (mới ở v1.8) |
-| `src/auth.js` | Đăng nhập / đăng xuất, gọi hàm server quản lý tài khoản |
-| `src/storage.js` | Client Supabase dùng chung + tuỳ chọn riêng từng máy (localStorage) |
-| `api/accounts.js` | Hàm server trên Vercel: tạo / sửa / khoá / xoá tài khoản |
+| `src/App.jsx` | Ứng dụng (tên cố định từ v3.0) |
 | `src/main.jsx`, `index.html`, `src/index.css` | Điểm khởi động, Tailwind |
-| `supabase/schema.sql` | Các bảng, phân quyền, khoá cứng ngày đã gửi, và phần tự chuyển dữ liệu từ v1.7 / v1.8 |
+| `src/data.js`, `src/merge.js`, `src/storage.js`, `src/auth.js`, `src/push.js` | Đọc/ghi Supabase, đăng nhập, thông báo |
+| `api/accounts.js`, `api/push.js`, `api/_reminders.js` | Hàm server trên Vercel: tài khoản, thông báo nhắc |
+| `public/` | Service worker + biểu tượng thông báo |
+| `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
+| `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v3.0
+
+- Không đổi chức năng so với v2.9 (mục "Khác", bỏ ô tìm thêm nhanh…). Chỉ đổi cách đóng gói: folder đầy đủ như repo,
+  file ứng dụng đổi tên thành `src/App.jsx`. **Nếu production chưa chạy SQL của v2.9 thì bước 1 là bắt buộc.**
 
 ## Mới ở v2.9 — mục "Khác" cho tác vụ chung và vắng mặt
 

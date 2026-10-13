@@ -1,4 +1,4 @@
--- ARTIUS — Quản lý giờ công v2.9
+-- ARTIUS — Quản lý giờ công v3.0
 -- Chạy trong Supabase → SQL Editor. Chạy lại nhiều lần được, không xoá dữ liệu.
 -- Nâng cấp từ bất kỳ bản v1.7 → v2.8: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v2.9.
 -- (Lịch gửi nhắc nhở nằm riêng ở supabase/cron.sql — chạy sau file này, xem README.)
