@@ -28,8 +28,10 @@ Ghi chú:
 
 ## Mới ở v3.0
 
-- Không đổi chức năng so với v2.9 (mục "Khác", bỏ ô tìm thêm nhanh…). Chỉ đổi cách đóng gói: folder đầy đủ như repo,
-  file ứng dụng đổi tên thành `src/App.jsx`. **Nếu production chưa chạy SQL của v2.9 thì bước 1 là bắt buộc.**
+- **Nút "Thêm dòng" tạo một khối trống** ở cuối bảng: Dự án, Giai đoạn, Hạng mục đều "— Chọn … —", người dùng tự chọn
+  lần lượt (chọn "Khác" thì không có Giai đoạn). Ô giờ chỉ mở khi đã chọn đủ. Mỗi lúc chỉ có một khối trống; thêm hạng mục
+  vào khối đã có thì dùng nút **+** ở đầu khối. Dòng chưa chọn đủ không được ghi khi Gửi.
+- Đóng gói: folder đầy đủ như repo, file ứng dụng đổi tên thành `src/App.jsx`. Các chức năng khác giữ như v2.9. **Nếu production chưa chạy SQL của v2.9 thì bước 1 là bắt buộc.**
 
 ## Mới ở v2.9 — mục "Khác" cho tác vụ chung và vắng mặt
 
