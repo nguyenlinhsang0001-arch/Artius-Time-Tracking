@@ -1,8 +1,9 @@
--- ARTIUS — Quản lý giờ công v2.6
+-- ARTIUS — Quản lý giờ công v2.9
 -- Chạy trong Supabase → SQL Editor. Chạy lại nhiều lần được, không xoá dữ liệu.
--- Nâng cấp từ bất kỳ bản v1.7 → v2.5: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v2.6.
+-- Nâng cấp từ bất kỳ bản v1.7 → v2.8: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v2.9.
 -- (Lịch gửi nhắc nhở nằm riêng ở supabase/cron.sql — chạy sau file này, xem README.)
 -- (v2.1 thêm mục 9: hàm artius_usage tính tổng giờ toàn bộ dữ liệu cho tab Dự án và tab Thiết lập.)
+-- (v2.9 sửa mục 7c: dòng "Khác" (projectId '__none__': tác vụ chung + vắng mặt) không cần giờ dự kiến.)
 -- (v2.6 thêm mục 13: thông báo nhắc nộp bảng công trên máy tính — bảng thiết bị nhận và nhật ký đã gửi.)
 -- (v2.5 thêm mục 7c: nhân sự chỉ chấm vào giai đoạn đã có giờ dự kiến của dự án.)
 -- (v2.4 thêm mục 12: khoá các hàm tính toán với người chưa đăng nhập.)
@@ -175,6 +176,7 @@ returns jsonb language sql immutable as $$
     from jsonb_array_elements(case when jsonb_typeof(bucket -> 'rows') = 'array' then bucket -> 'rows' else '[]'::jsonb end) as rw,
          jsonb_each(case when jsonb_typeof(rw -> 'days') = 'object' then rw -> 'days' else '{}'::jsonb end) as d
     where coalesce(rw ->> 'taskId', '') not like 'LV\_%'
+      and coalesce(rw ->> 'projectId', '') <> '__none__'      -- v2.9: "Khác" không thuộc dự án nào
       and case when jsonb_typeof(d.value) = 'number' then (d.value #>> '{}')::numeric > 0 else false end
       and not exists (
         select 1
