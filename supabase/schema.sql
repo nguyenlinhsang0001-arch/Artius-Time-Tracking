@@ -1,7 +1,8 @@
--- ARTIUS — Quản lý giờ công v2.3
+-- ARTIUS — Quản lý giờ công v2.4
 -- Chạy trong Supabase → SQL Editor. Chạy lại nhiều lần được, không xoá dữ liệu.
--- Nâng cấp từ bất kỳ bản v1.7 → v2.2: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v2.3.
+-- Nâng cấp từ bất kỳ bản v1.7 → v2.3: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v2.4.
 -- (v2.1 thêm mục 9: hàm artius_usage tính tổng giờ toàn bộ dữ liệu cho tab Dự án và tab Thiết lập.)
+-- (v2.4 thêm mục 12: khoá các hàm tính toán với người chưa đăng nhập.)
 -- (v2.3 thêm mục 7b: nhân sự không chấm giờ làm việc cho ngày chưa tới; mục 10: gỡ mã PIN cũ khỏi thiết lập dùng chung.)
 -- File này tự làm hai việc chuyển dữ liệu, mỗi việc chỉ chạy đúng một lần:
 --   mục 5: chép dữ liệu từ bảng cũ (artius_kv) sang hai bảng mới (nếu chưa chép ở v1.8)
@@ -346,6 +347,15 @@ where id = 'main' and value::jsonb ? 'adminPin';
 update public.artius_kv
 set value = jsonb_set(value::jsonb, '{config}', (value::jsonb -> 'config') - 'adminPin')::text, updated_at = now()
 where key = 'artius:db:v1' and jsonb_typeof(value::jsonb -> 'config') = 'object' and (value::jsonb -> 'config') ? 'adminPin';
+
+-- 12. v2.4 — Các hàm tính toán chỉ dùng nội bộ trong trigger / hàm khác: không cho người chưa đăng nhập gọi qua API.
+--     (Hàm không đọc bảng nào nên trước đây cũng không lộ dữ liệu; khoá lại cho gọn.)
+revoke all on function public.artius_day_hours(jsonb, text)     from public, anon;
+revoke all on function public.artius_proj_hours(jsonb, text)    from public, anon;
+revoke all on function public.artius_future_work(jsonb, date)   from public, anon;
+grant execute on function public.artius_day_hours(jsonb, text)   to authenticated, service_role;
+grant execute on function public.artius_proj_hours(jsonb, text)  to authenticated, service_role;
+grant execute on function public.artius_future_work(jsonb, date) to authenticated, service_role;
 
 -- 11. Bắt PostgREST nạp lại danh sách bảng / hàm ngay (để hàm artius_usage dùng được liền, không báo 404)
 notify pgrst, 'reload schema';

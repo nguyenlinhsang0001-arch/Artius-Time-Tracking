@@ -1,8 +1,8 @@
-# ARTIUS — Quản lý giờ công · v2.3 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v2.4 (bản webapp cho Vercel)
 
 | File | Vai trò |
 |---|---|
-| `src/artius-timesheet_v2_3.jsx` | Ứng dụng v2.3 |
+| `src/artius-timesheet_v2_4.jsx` | Ứng dụng v2.4 |
 | `src/data.js` | Đọc/ghi thiết lập và bảng công theo từng dòng trên Supabase (mới ở v1.8) |
 | `src/merge.js` | Gộp thiết lập khi nhiều quản lý cùng sửa (mới ở v1.8) |
 | `src/auth.js` | Đăng nhập / đăng xuất, gọi hàm server quản lý tài khoản |
@@ -10,6 +10,23 @@
 | `api/accounts.js` | Hàm server trên Vercel: tạo / sửa / khoá / xoá tài khoản |
 | `src/main.jsx`, `index.html`, `src/index.css` | Điểm khởi động, Tailwind |
 | `supabase/schema.sql` | Các bảng, phân quyền, khoá cứng ngày đã gửi, và phần tự chuyển dữ liệu từ v1.7 / v1.8 |
+
+## Mới ở v2.4 — sửa sau đợt test tài khoản quản lý 13/10/2026
+
+- **Mobile:** thẻ tuần ở màn chấm công không còn tràn ở màn hình hẹp (375px). Nhóm "Đã gửi + tổng giờ" tự xuống dòng
+  và căn phải khi không đủ chỗ; ngày của tuần không bị ngắt dòng.
+- **Không hỏi oan khi chuyển tuần.** Nhân sự chỉ thêm dòng trống (chưa nhập giờ) rồi chuyển tuần / đổi tab / đóng trang
+  thì không còn bị hỏi "giờ sẽ mất". Chỉ hỏi khi thật sự có giờ ở ngày chưa gửi. Quản lý giữ nguyên như cũ.
+- **Nhãn phiên bản** trên máy tính nằm trong thanh bên, dưới nút Thoát, không còn đè lên nút.
+- **Database:** khoá 3 hàm tính toán nội bộ (`artius_day_hours`, `artius_proj_hours`, `artius_future_work`) với người
+  chưa đăng nhập (`schema.sql` mục 12).
+
+**Nâng cấp từ v2.3:**
+1. Supabase → SQL Editor: chạy nguyên `supabase/schema.sql` (chạy lại không ảnh hưởng dữ liệu).
+2. Trên GitHub thêm `src/artius-timesheet_v2_4.jsx`, **xoá** `src/artius-timesheet_v2_3.jsx`, thay `src/main.jsx`,
+   `supabase/schema.sql`, `index.html`, `package.json`, `README.md`. Thanh bên (máy tính) ghi `ARTIUS v2.4`.
+3. Khuyến nghị (không cần sửa code): Vercel → Settings → Functions → Function Region chọn **Singapore (sin1)** rồi
+   Redeploy, để đăng nhập / quản lý tài khoản không phải đi vòng qua Mỹ.
 
 ## Mới ở v2.3 — sửa sau đợt chạy thử 13/10/2026
 
