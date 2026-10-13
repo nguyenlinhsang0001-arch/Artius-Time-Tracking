@@ -1,8 +1,8 @@
-# ARTIUS — Quản lý giờ công · v2.4 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v2.5 (bản webapp cho Vercel)
 
 | File | Vai trò |
 |---|---|
-| `src/artius-timesheet_v2_4.jsx` | Ứng dụng v2.4 |
+| `src/artius-timesheet_v2_5.jsx` | Ứng dụng v2.5 |
 | `src/data.js` | Đọc/ghi thiết lập và bảng công theo từng dòng trên Supabase (mới ở v1.8) |
 | `src/merge.js` | Gộp thiết lập khi nhiều quản lý cùng sửa (mới ở v1.8) |
 | `src/auth.js` | Đăng nhập / đăng xuất, gọi hàm server quản lý tài khoản |
@@ -10,6 +10,25 @@
 | `api/accounts.js` | Hàm server trên Vercel: tạo / sửa / khoá / xoá tài khoản |
 | `src/main.jsx`, `index.html`, `src/index.css` | Điểm khởi động, Tailwind |
 | `supabase/schema.sql` | Các bảng, phân quyền, khoá cứng ngày đã gửi, và phần tự chuyển dữ liệu từ v1.7 / v1.8 |
+
+## Mới ở v2.5 — chỉ chấm công vào giai đoạn đã có giờ dự kiến
+
+- **Nhân sự chỉ thấy giai đoạn có giờ dự kiến.** Ở màn chấm công, ô chọn giai đoạn của mỗi dự án chỉ liệt kê các phase
+  đã nhập giờ dự kiến > 0 ở tab Dự án. Dự án chưa nhập giờ dự kiến ở phase nào thì **không hiện** để chấm.
+  Áp dụng cho ô thêm nhanh, chip gợi ý, "Chép tuần trước" và khi đổi dự án của một khối (giai đoạn tự chuyển sang phase hợp lệ).
+- **Dòng cũ** đã chấm vào phase chưa có giờ dự kiến vẫn giữ nguyên, chỉ để xem (giống dự án đã đóng). Quản lý nhập
+  giờ dự kiến cho phase đó là nhân sự chấm tiếp được.
+- **Quản lý không bị giới hạn** (Chi tiết nhân viên vẫn chọn được mọi giai đoạn đang dùng).
+- **Database cũng chặn:** trigger `artius_ts_guard` từ chối nhân sự thêm / sửa / xoá giờ ở phase chưa có giờ dự kiến
+  (`schema.sql` mục 7c). Vắng mặt không bị ảnh hưởng.
+
+**Lưu ý trước khi deploy:** dự án nào đang cần chấm công thì nhập giờ dự kiến cho đúng phase đang làm ở tab Dự án trước,
+nếu không nhân sự sẽ không thấy dự án đó.
+
+**Nâng cấp từ v2.4:**
+1. Supabase → SQL Editor: chạy nguyên `supabase/schema.sql` (chạy lại không ảnh hưởng dữ liệu).
+2. Trên GitHub thêm `src/artius-timesheet_v2_5.jsx`, **xoá** `src/artius-timesheet_v2_4.jsx`, thay `src/main.jsx`,
+   `supabase/schema.sql`, `index.html`, `package.json`, `README.md`. Thanh bên (máy tính) ghi `ARTIUS v2.5`.
 
 ## Mới ở v2.4 — sửa sau đợt test tài khoản quản lý 13/10/2026
 
