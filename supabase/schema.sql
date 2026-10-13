@@ -1,7 +1,8 @@
--- ARTIUS — Quản lý giờ công v2.1
+-- ARTIUS — Quản lý giờ công v2.3
 -- Chạy trong Supabase → SQL Editor. Chạy lại nhiều lần được, không xoá dữ liệu.
--- Nâng cấp từ v1.7, v1.8, v1.9 hoặc v2.0: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v2.1.
+-- Nâng cấp từ bất kỳ bản v1.7 → v2.2: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v2.3.
 -- (v2.1 thêm mục 9: hàm artius_usage tính tổng giờ toàn bộ dữ liệu cho tab Dự án và tab Thiết lập.)
+-- (v2.3 thêm mục 7b: nhân sự không chấm giờ làm việc cho ngày chưa tới; mục 10: gỡ mã PIN cũ khỏi thiết lập dùng chung.)
 -- File này tự làm hai việc chuyển dữ liệu, mỗi việc chỉ chạy đúng một lần:
 --   mục 5: chép dữ liệu từ bảng cũ (artius_kv) sang hai bảng mới (nếu chưa chép ở v1.8)
 --   mục 6: đánh dấu "đã gửi" cho mọi ngày cũ đang có giờ công
@@ -133,6 +134,27 @@ begin
   insert into public.artius_meta (key, value) values ('sent_day_migration_v1_9', 'done');
 end $$;
 
+-- 7b. v2.3 — Giờ LÀM VIỆC (không tính vắng mặt, mã tác vụ bắt đầu bằng LV_) của các ngày SAU hôm nay
+--     trong một dòng bảng công, dạng chuẩn để so sánh trước/sau. "Hôm nay" tính theo giờ Việt Nam.
+create or replace function public.artius_future_work(bucket jsonb, today date)
+returns jsonb language sql immutable as $$
+  select coalesce(jsonb_agg(s.x order by s.x), '[]'::jsonb)
+  from (
+    select jsonb_build_array(
+             coalesce(rw ->> 'projectId', ''),
+             coalesce(nullif(rw ->> 'phaseId', ''), 'P2'),
+             coalesce(rw ->> 'taskId', ''),
+             d.key,
+             (d.value #>> '{}')::numeric) as x
+    from jsonb_array_elements(case when jsonb_typeof(bucket -> 'rows') = 'array' then bucket -> 'rows' else '[]'::jsonb end) as rw,
+         jsonb_each(case when jsonb_typeof(rw -> 'days') = 'object' then rw -> 'days' else '{}'::jsonb end) as d
+    where coalesce(rw ->> 'taskId', '') not like 'LV\_%'
+      and d.key ~ '^\d{4}-\d{2}-\d{2}$'
+      and d.key::date > today
+      and case when jsonb_typeof(d.value) = 'number' then (d.value #>> '{}')::numeric > 0 else false end
+  ) as s;
+$$;
+
 -- 7. v1.9 — Khoá cứng NGÀY đã gửi, do database thực thi.
 --    Giờ của một ngày trong một dòng bảng công, đưa về dạng chuẩn để so sánh trước/sau.
 drop function if exists public.artius_week_hours(jsonb, date);
@@ -176,6 +198,7 @@ $$;
 --      · không xoá được dòng bảng công đang có ngày đã gửi
 --      · không thêm / sửa / xoá được giờ của dự án ĐÃ ĐÓNG (active = false trong artius_config);
 --        cần chấm thêm thì quản lý mở lại dự án
+--      · (v2.3) không thêm / sửa giờ làm việc cho ngày SAU hôm nay; vắng mặt thì đăng ký trước được
 --    Ngày chưa gửi thì nhân sự nhập và gửi bình thường.
 --    Hàm này cũng ghi updated_at theo giờ của server, để màn hình quản lý hỏi "có gì mới từ lúc X" cho chính xác.
 create or replace function public.artius_ts_guard()
@@ -217,6 +240,11 @@ begin
         raise exception 'Dự án này đã đóng, không chấm công được nữa. Nhờ quản lý mở lại dự án.' using errcode = '42501';
       end if;
     end loop;
+    -- v2.3: ngày chưa tới chỉ được đăng ký vắng mặt, không chấm giờ làm việc
+    if tg_op <> 'DELETE' and public.artius_future_work(o, (now() at time zone 'Asia/Ho_Chi_Minh')::date)
+         is distinct from public.artius_future_work(n, (now() at time zone 'Asia/Ho_Chi_Minh')::date) then
+      raise exception 'Chưa tới ngày, chưa chấm giờ làm việc được. Vắng mặt thì vẫn đăng ký trước được.' using errcode = '42501';
+    end if;
   end if;
   if tg_op = 'DELETE' then return old; end if;
   new.updated_at := now();
@@ -306,3 +334,18 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.artius_usage() from public, anon;
 grant execute on function public.artius_usage() to authenticated, service_role;
+
+-- 10. v2.3 — Gỡ mã PIN quản lý của bản v1.6 khỏi thiết lập dùng chung.
+--     Thiết lập (artius_config) và bảng cũ (artius_kv) đều đọc được bởi MỌI tài khoản, nên PIN nằm đó là lộ cho nhân sự.
+--     PIN chỉ dùng để tạo tài khoản quản lý đầu tiên khi chưa có tài khoản nào — việc này đã làm xong.
+--     Tăng rev để các máy đang mở tự nạp lại thiết lập mới.
+update public.artius_config
+set value = (value::jsonb - 'adminPin')::text, rev = rev + 1, updated_at = now()
+where id = 'main' and value::jsonb ? 'adminPin';
+
+update public.artius_kv
+set value = jsonb_set(value::jsonb, '{config}', (value::jsonb -> 'config') - 'adminPin')::text, updated_at = now()
+where key = 'artius:db:v1' and jsonb_typeof(value::jsonb -> 'config') = 'object' and (value::jsonb -> 'config') ? 'adminPin';
+
+-- 11. Bắt PostgREST nạp lại danh sách bảng / hàm ngay (để hàm artius_usage dùng được liền, không báo 404)
+notify pgrst, 'reload schema';

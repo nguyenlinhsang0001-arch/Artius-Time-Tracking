@@ -1,8 +1,8 @@
-# ARTIUS — Quản lý giờ công · v2.2 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v2.3 (bản webapp cho Vercel)
 
 | File | Vai trò |
 |---|---|
-| `src/artius-timesheet_v2_2.jsx` | Ứng dụng v2.2 |
+| `src/artius-timesheet_v2_3.jsx` | Ứng dụng v2.3 |
 | `src/data.js` | Đọc/ghi thiết lập và bảng công theo từng dòng trên Supabase (mới ở v1.8) |
 | `src/merge.js` | Gộp thiết lập khi nhiều quản lý cùng sửa (mới ở v1.8) |
 | `src/auth.js` | Đăng nhập / đăng xuất, gọi hàm server quản lý tài khoản |
@@ -10,6 +10,24 @@
 | `api/accounts.js` | Hàm server trên Vercel: tạo / sửa / khoá / xoá tài khoản |
 | `src/main.jsx`, `index.html`, `src/index.css` | Điểm khởi động, Tailwind |
 | `supabase/schema.sql` | Các bảng, phân quyền, khoá cứng ngày đã gửi, và phần tự chuyển dữ liệu từ v1.7 / v1.8 |
+
+## Mới ở v2.3 — sửa sau đợt chạy thử 13/10/2026
+
+- **Không chấm giờ làm việc cho ngày chưa tới.** Nhân sự chỉ nhập và gửi giờ làm việc từ hôm nay trở về trước; ô của
+  ngày sau hôm nay bị khoá. **Vắng mặt** (nghỉ phép…) vẫn đăng ký trước được. Quản lý không bị giới hạn.
+  Trigger `artius_ts_guard` cũng chặn (mục 7b của `schema.sql`). Giờ tương lai đã gửi từ trước vẫn giữ nguyên,
+  cần sửa thì quản lý mở khoá.
+- **Gỡ mã PIN cũ (v1.6) khỏi thiết lập dùng chung.** Trước đây mọi tài khoản đọc được PIN này. App không còn ghi PIN,
+  `schema.sql` mục 10 xoá PIN khỏi `artius_config` và `artius_kv`.
+- **Hàm `artius_usage` báo 404 trên bản đang chạy** = database chưa chạy SQL của v2.1. Chạy `schema.sql` của v2.3 là có
+  (mục 11 bắt Supabase nạp lại danh sách hàm ngay).
+- **Chip gợi ý** ở thanh thêm nhanh bỏ tác vụ đã xoá / không còn thuộc bộ phận và giai đoạn đã ngừng dùng.
+- **Mobile:** nhãn "Đã gửi" gọn một dòng, bỏ nhãn phiên bản đè lên nội dung, rút ngắn chữ gợi ý ô tìm kiếm.
+
+**Nâng cấp từ v2.2:**
+1. Supabase → SQL Editor: chạy nguyên `supabase/schema.sql` (chạy lại không ảnh hưởng dữ liệu).
+2. Trên GitHub thêm `src/artius-timesheet_v2_3.jsx`, **xoá** `src/artius-timesheet_v2_2.jsx`, thay `src/main.jsx`,
+   `supabase/schema.sql`, `index.html`, `package.json`, `README.md`. Góc trái dưới của app (máy tính) ghi `ARTIUS v2.3`.
 
 ## Mới ở v2.2 — chuẩn bị chạy thật cho 50+ người
 
