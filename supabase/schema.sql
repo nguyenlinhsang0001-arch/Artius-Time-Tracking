@@ -1,7 +1,9 @@
--- ARTIUS — Quản lý giờ công v2.5
+-- ARTIUS — Quản lý giờ công v2.6
 -- Chạy trong Supabase → SQL Editor. Chạy lại nhiều lần được, không xoá dữ liệu.
--- Nâng cấp từ bất kỳ bản v1.7 → v2.4: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v2.5.
+-- Nâng cấp từ bất kỳ bản v1.7 → v2.5: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v2.6.
+-- (Lịch gửi nhắc nhở nằm riêng ở supabase/cron.sql — chạy sau file này, xem README.)
 -- (v2.1 thêm mục 9: hàm artius_usage tính tổng giờ toàn bộ dữ liệu cho tab Dự án và tab Thiết lập.)
+-- (v2.6 thêm mục 13: thông báo nhắc nộp bảng công trên máy tính — bảng thiết bị nhận và nhật ký đã gửi.)
 -- (v2.5 thêm mục 7c: nhân sự chỉ chấm vào giai đoạn đã có giờ dự kiến của dự án.)
 -- (v2.4 thêm mục 12: khoá các hàm tính toán với người chưa đăng nhập.)
 -- (v2.3 thêm mục 7b: nhân sự không chấm giờ làm việc cho ngày chưa tới; mục 10: gỡ mã PIN cũ khỏi thiết lập dùng chung.)
@@ -394,6 +396,49 @@ grant execute on function public.artius_unbudgeted_hours(jsonb, jsonb) to authen
 grant execute on function public.artius_day_hours(jsonb, text)   to authenticated, service_role;
 grant execute on function public.artius_proj_hours(jsonb, text)  to authenticated, service_role;
 grant execute on function public.artius_future_work(jsonb, date) to authenticated, service_role;
+
+-- 13. v2.6 — Thông báo nhắc nộp bảng công (Web Push).
+--     artius_push:     mỗi dòng là một trình duyệt đã cho phép nhận thông báo (endpoint do trình duyệt cấp).
+--                      Một người có thể có nhiều dòng (Chrome + Edge, máy công ty + điện thoại).
+--     artius_push_log: mỗi lần nhắc đã gửi cho một người, để không gửi trùng (kind + period + emp_id là duy nhất).
+--     Chỉ hàm server /api/push (service_role) ghi; tài khoản quản lý được đọc để xem ai đã bật.
+create table if not exists public.artius_push (
+  endpoint   text primary key,
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  emp_id     text,
+  p256dh     text not null,
+  auth       text not null,
+  ua         text,
+  created_at timestamptz not null default now(),
+  seen_at    timestamptz not null default now()
+);
+create index if not exists artius_push_emp on public.artius_push (emp_id);
+
+create table if not exists public.artius_push_log (
+  kind     text not null,                 -- 'week' | 'month' | 'test'
+  period   text not null,                 -- tuần: thứ Hai của tuần nhắc; tháng: 'YYYY-MM@YYYY-MM-DD' (ngày gửi)
+  emp_id   text not null,
+  missing  int  not null default 0,       -- số ngày còn thiếu lúc gửi
+  devices  int  not null default 0,       -- số thiết bị nhận thành công
+  sent_at  timestamptz not null default now(),
+  primary key (kind, period, emp_id)
+);
+create index if not exists artius_push_log_sent on public.artius_push_log (sent_at desc);
+
+alter table public.artius_push     enable row level security;
+alter table public.artius_push_log enable row level security;
+revoke all on public.artius_push     from anon, authenticated;
+revoke all on public.artius_push_log from anon, authenticated;
+grant select on public.artius_push     to authenticated;
+grant select on public.artius_push_log to authenticated;
+grant all on public.artius_push     to service_role;
+grant all on public.artius_push_log to service_role;
+drop policy if exists "artius_push_admin_read" on public.artius_push;
+drop policy if exists "artius_push_log_admin_read" on public.artius_push_log;
+create policy "artius_push_admin_read" on public.artius_push
+  for select to authenticated using ((select public.artius_is_admin()));
+create policy "artius_push_log_admin_read" on public.artius_push_log
+  for select to authenticated using ((select public.artius_is_admin()));
 
 -- 11. Bắt PostgREST nạp lại danh sách bảng / hàm ngay (để hàm artius_usage dùng được liền, không báo 404)
 notify pgrst, 'reload schema';

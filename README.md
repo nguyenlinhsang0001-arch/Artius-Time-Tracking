@@ -1,8 +1,12 @@
-# ARTIUS — Quản lý giờ công · v2.5 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v2.6 (bản webapp cho Vercel)
 
 | File | Vai trò |
 |---|---|
-| `src/artius-timesheet_v2_5.jsx` | Ứng dụng v2.5 |
+| `src/artius-timesheet_v2_6.jsx` | Ứng dụng v2.6 |
+| `src/push.js` | (v2.6) Xin quyền và đăng ký thông báo trên trình duyệt |
+| `api/push.js`, `api/_reminders.js` | (v2.6) Hàm server gửi thông báo nhắc nộp bảng công + luật tính lịch / ngày thiếu |
+| `public/sw.js`, `public/*.png` | (v2.6) Service worker hiện thông báo, biểu tượng thông báo |
+| `supabase/cron.sql` | (v2.6) Lịch Supabase gọi `/api/push` 15 phút/lần |
 | `src/data.js` | Đọc/ghi thiết lập và bảng công theo từng dòng trên Supabase (mới ở v1.8) |
 | `src/merge.js` | Gộp thiết lập khi nhiều quản lý cùng sửa (mới ở v1.8) |
 | `src/auth.js` | Đăng nhập / đăng xuất, gọi hàm server quản lý tài khoản |
@@ -10,6 +14,32 @@
 | `api/accounts.js` | Hàm server trên Vercel: tạo / sửa / khoá / xoá tài khoản |
 | `src/main.jsx`, `index.html`, `src/index.css` | Điểm khởi động, Tailwind |
 | `supabase/schema.sql` | Các bảng, phân quyền, khoá cứng ngày đã gửi, và phần tự chuyển dữ liệu từ v1.7 / v1.8 |
+
+## Mới ở v2.6 — Thông báo nhắc nộp bảng công trên máy tính
+
+- **Thông báo hiện ở góc màn hình (Notifications của Windows)**, kể cả khi không mở ARTIUS. Trình duyệt đang tắt thì
+  thông báo được giữ tối đa 3 ngày và hiện ngay khi bật Chrome / Edge lên. Nhiều lần nhắc chưa xem thì chỉ giữ lần mới nhất.
+- **Chỉ gửi cho nhân sự còn ngày chưa gửi** (cùng luật với "Tình trạng nộp": ngày có giờ chuẩn > 0, không phải ngày lễ, đã tới).
+- **Lịch mặc định:** thứ Hai 09:30 nhắc tuần trước; ngày cuối tháng → mùng 2, 09:30 mỗi sáng nhắc chốt bảng công tháng.
+  Quản lý sửa ở **Thiết lập → Nhắc nộp bảng công** (thứ, giờ, tới ngày mấy, bật/tắt từng loại). Gửi trong vòng 15 phút sau giờ đã chọn.
+- **Bấm vào thông báo** mở thẳng đúng tuần cần gửi.
+- **Quyền thông báo:** app không hiện hộp hỏi riêng. Ngay khi bấm **Đăng nhập** (người đang đăng nhập sẵn: cú bấm đầu tiên
+  trong app), trình duyệt tự hiện hộp "Cho phép thông báo" của nó — bấm Cho phép một lần duy nhất. Đây là quy định của
+  Chrome / Edge, không bỏ qua được bằng code.
+- **Quản lý theo dõi** ở Thiết lập: số nhân sự đã bật thông báo, tên người chưa bật, các lần nhắc gần nhất, nút gửi thử.
+  Nhân sự xem trạng thái và gửi thử ở **Cài đặt → Thông báo**.
+
+**Nâng cấp từ v2.5 (theo đúng thứ tự):**
+1. **Vercel → Settings → Environment Variables:** thêm 4 biến `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`,
+   `CRON_SECRET` (giá trị nằm trong file khoá riêng, KHÔNG đưa lên GitHub).
+2. **Supabase → SQL Editor:** chạy nguyên `supabase/schema.sql` (thêm 2 bảng `artius_push`, `artius_push_log`).
+3. **GitHub:** thêm `src/artius-timesheet_v2_6.jsx`, **xoá** `src/artius-timesheet_v2_5.jsx`; thêm mới `src/push.js`,
+   `api/push.js`, `api/_reminders.js`, thư mục `public/` (sw.js, icon-192.png, icon-96.png, badge-96.png), `supabase/cron.sql`;
+   thay `src/main.jsx`, `supabase/schema.sql`, `index.html`, `package.json` (thêm thư viện `web-push`), `README.md`.
+   Vercel tự build lại. Nếu repo có `package-lock.json` mà build báo thiếu `web-push`, xoá `package-lock.json` rồi đẩy lại.
+4. **Supabase → Database → Extensions:** bật `pg_cron` và `pg_net`. Sau đó SQL Editor chạy `supabase/cron.sql`
+   (bản đã điền sẵn mã nằm cạnh file khoá riêng).
+5. Đăng nhập lại ARTIUS → cho phép thông báo → Thiết lập → **Gửi thử tới máy này** để kiểm tra.
 
 ## Mới ở v2.5 — chỉ chấm công vào giai đoạn đã có giờ dự kiến
 
