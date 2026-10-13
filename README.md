@@ -1,8 +1,8 @@
-# ARTIUS — Quản lý giờ công · v2.8 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v2.9 (bản webapp cho Vercel)
 
 | File | Vai trò |
 |---|---|
-| `src/artius-timesheet_v2_8.jsx` | Ứng dụng v2.8 |
+| `src/artius-timesheet_v2_9.jsx` | Ứng dụng v2.9 |
 | `src/push.js` | (v2.6) Xin quyền và đăng ký thông báo trên trình duyệt |
 | `api/push.js`, `api/_reminders.js` | (v2.6) Hàm server gửi thông báo nhắc nộp bảng công + luật tính lịch / ngày thiếu |
 | `public/sw.js`, `public/*.png` | (v2.6) Service worker hiện thông báo, biểu tượng thông báo |
@@ -14,6 +14,26 @@
 | `api/accounts.js` | Hàm server trên Vercel: tạo / sửa / khoá / xoá tài khoản |
 | `src/main.jsx`, `index.html`, `src/index.css` | Điểm khởi động, Tailwind |
 | `supabase/schema.sql` | Các bảng, phân quyền, khoá cứng ngày đã gửi, và phần tự chuyển dữ liệu từ v1.7 / v1.8 |
+
+## Mới ở v2.9 — mục "Khác" cho tác vụ chung và vắng mặt
+
+- Ô **Dự án** có thêm mục **"Khác"**, luôn nằm trên cùng. "Khác" gồm **tác vụ chung của công ty** (tác vụ không gắn vai trò)
+  và **vắng mặt**. Chọn "Khác" thì **ô Giai đoạn ẩn đi**.
+- Chọn một **dự án** thì ô Hạng mục chỉ còn **tác vụ gắn vai trò** của người đó (không còn tác vụ chung, không còn vắng mặt).
+- Đổi dự án của một khối giữa "Khác" và dự án: hạng mục không hợp lệ tự đổi sang hạng mục hợp lệ đầu tiên.
+- Ô thêm nhanh: gõ "khac" ra các mục "Khác · …". "Chép tuần trước" và chip gợi ý đưa tác vụ chung / vắng mặt vào "Khác".
+- **Giờ cũ** đã chấm tác vụ chung dưới một dự án **giữ nguyên** (vẫn tính cho dự án đó), dòng cũ hiện nhãn "(tác vụ chung — dữ liệu cũ)".
+- **Báo cáo:** cột "Vắng mặt" đổi thành **"Khác"** (tác vụ chung + vắng mặt) ở Dashboard, Ma trận giờ công, Excel; KPI
+  "Giờ vắng mặt" vẫn tách riêng. "Khác" không tính là dự án và không có giai đoạn (không vào biểu đồ / sheet theo giai đoạn).
+- **Database:** trigger không còn đòi giờ dự kiến cho dòng "Khác" (`schema.sql` mục 7c).
+
+**Lưu ý trước khi deploy:** người có vai trò chưa có tác vụ nào (tab Tác vụ hiện 0) sẽ **không chấm được vào dự án**,
+chỉ chấm được "Khác". Bổ sung tác vụ cho các vai trò đó trước.
+
+**Nâng cấp từ v2.8:**
+1. Supabase → SQL Editor: chạy nguyên `supabase/schema.sql` (BẮT BUỘC — thiếu bước này nhân sự sẽ bị chặn khi gửi giờ "Khác").
+2. Trên GitHub thêm `src/artius-timesheet_v2_9.jsx`, **xoá** `src/artius-timesheet_v2_8.jsx`, thay `src/main.jsx`,
+   `supabase/schema.sql`, `index.html`, `package.json`, `README.md`.
 
 ## Mới ở v2.8 — đưa cột "hôm nay" về kiểu nền xám
 
