@@ -1,8 +1,9 @@
--- ARTIUS — Quản lý giờ công v3.0
+-- ARTIUS — Quản lý giờ công v3.1
 -- Chạy trong Supabase → SQL Editor. Chạy lại nhiều lần được, không xoá dữ liệu.
--- Nâng cấp từ bất kỳ bản v1.7 → v2.8: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v2.9.
+-- Nâng cấp từ bất kỳ bản v1.7 → v3.0: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v3.1.
 -- (Lịch gửi nhắc nhở nằm riêng ở supabase/cron.sql — chạy sau file này, xem README.)
 -- (v2.1 thêm mục 9: hàm artius_usage tính tổng giờ toàn bộ dữ liệu cho tab Dự án và tab Thiết lập.)
+-- (v3.1 sửa mục 7c: nhân sự chấm được giai đoạn quản lý đang MỞ (project.phaseOpen); dự án chưa đặt mở/đóng thì theo giờ dự kiến như cũ.)
 -- (v2.9 sửa mục 7c: dòng "Khác" (projectId '__none__': tác vụ chung + vắng mặt) không cần giờ dự kiến.)
 -- (v2.6 thêm mục 13: thông báo nhắc nộp bảng công trên máy tính — bảng thiết bị nhận và nhật ký đã gửi.)
 -- (v2.5 thêm mục 7c: nhân sự chỉ chấm vào giai đoạn đã có giờ dự kiến của dự án.)
@@ -182,9 +183,14 @@ returns jsonb language sql immutable as $$
         select 1
         from jsonb_array_elements(case when jsonb_typeof(cfg -> 'projects') = 'array' then cfg -> 'projects' else '[]'::jsonb end) as pr
         where pr ->> 'id' = rw ->> 'projectId'
-          and case when jsonb_typeof(pr -> 'budgets' -> coalesce(nullif(rw ->> 'phaseId', ''), 'P2')) = 'number'
-                   then (pr -> 'budgets' ->> coalesce(nullif(rw ->> 'phaseId', ''), 'P2'))::numeric > 0
-                   else false end
+          and case
+                -- v3.1: quản lý đã đặt mở/đóng từng giai đoạn
+                when jsonb_typeof(pr -> 'phaseOpen') = 'object'
+                  then coalesce(pr -> 'phaseOpen' -> coalesce(nullif(rw ->> 'phaseId', ''), 'P2') = 'true'::jsonb, false)
+                -- chưa đặt: giai đoạn có giờ dự kiến > 0 coi như đang mở (luật v2.5)
+                when jsonb_typeof(pr -> 'budgets' -> coalesce(nullif(rw ->> 'phaseId', ''), 'P2')) = 'number'
+                  then (pr -> 'budgets' ->> coalesce(nullif(rw ->> 'phaseId', ''), 'P2'))::numeric > 0
+                else false end
       )
   ) as s;
 $$;
@@ -284,7 +290,7 @@ begin
     -- v2.5: giai đoạn chưa có giờ dự kiến của dự án thì nhân sự không chấm vào được
     select c.value::jsonb into cf from public.artius_config c where c.id = 'main';
     if cf is not null and public.artius_unbudgeted_hours(o, cf) is distinct from public.artius_unbudgeted_hours(n, cf) then
-      raise exception 'Giai đoạn này của dự án chưa có giờ dự kiến, chưa chấm công được. Nhờ quản lý nhập giờ dự kiến.' using errcode = '42501';
+      raise exception 'Giai đoạn này của dự án đang đóng, chưa chấm công được. Nhờ quản lý mở giai đoạn.' using errcode = '42501';
     end if;
   end if;
   if tg_op = 'DELETE' then return old; end if;

@@ -113,7 +113,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v3.0";
+const APP_VERSION = "v3.1";
 /* v2.2 — Thư viện Excel nặng nhất app; chỉ tải khi có người bấm xuất / đọc file Excel. */
 let XLSX_MOD = null;
 const loadXlsx = async () => XLSX_MOD || (XLSX_MOD = await import("xlsx"));
@@ -684,6 +684,11 @@ const DEFAULT_PHASE = "P2";
    Số tổng kiểu cũ (project.budget, một con số cho cả dự án) không còn được dùng. Phase để trống / 0 = không theo dõi hạn mức. */
 const projBudgets = (p) => Object.fromEntries(PHASES.map((ph) => [ph.id, Math.max(0, Number(p?.budgets?.[ph.id]) || 0)]));
 const budgetTotal = (p) => PHASES.reduce((a, ph) => a + (Math.max(0, Number(p?.budgets?.[ph.id])) || 0), 0);
+/* v3.1 — Quản lý MỞ / ĐÓNG từng giai đoạn của dự án (project.phaseOpen = { P1: true, … }).
+   Nhân sự chỉ chấm được giai đoạn đang mở. Dự án chưa từng đặt mở/đóng thì coi giai đoạn có giờ dự kiến > 0 là đang mở
+   (đúng như luật v2.5), để dữ liệu cũ không bị đổi. Giờ dự kiến từ v3.1 chỉ dùng để theo dõi. */
+const hasPhaseOpenMap = (p) => !!p && !!p.phaseOpen && typeof p.phaseOpen === "object";
+const projPhaseIsOpen = (p, phId) => (hasPhaseOpenMap(p) ? !!p.phaseOpen[phId] : Math.max(0, Number(p?.budgets?.[phId]) || 0) > 0);
 const cleanBudgets = (d) => Object.fromEntries(PHASES.map((ph) => [ph.id, Math.max(0, Number(d?.[ph.id]) || 0)]));
 const fmtH = (n) => String(+Number(n || 0).toFixed(1));
 const phaseInfo = (id) => PHASES.find((p) => p.id === id) || null;
@@ -1595,12 +1600,16 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   /* v2.5 — Nhân sự chỉ chấm vào giai đoạn ĐÃ CÓ giờ dự kiến (> 0) của dự án. Giai đoạn chưa nhập giờ dự kiến thì không hiện;
      dự án chưa nhập giờ dự kiến ở giai đoạn nào thì không hiện. Dòng cũ rơi vào giai đoạn đó chỉ để xem, giống dự án đã đóng.
      Quản lý không bị giới hạn. Database cũng chặn (artius_ts_guard). */
-  const phaseOpen = (pid, ph) => !!phaseInfo(ph)?.active && (admin || projBudgets(cfg.projects.find((p) => p.id === pid))[ph] > 0);
+  const phaseOpen = (pid, ph) => !!phaseInfo(ph)?.active && (admin || projPhaseIsOpen(cfg.projects.find((p) => p.id === pid), ph));
+  // giai đoạn quản lý đang mở của dự án (không tính quyền quản lý) — dùng để tự chọn sẵn giai đoạn khi chọn dự án
+  const setOpenPhases = (pid) => activePhases().filter((ph) => projPhaseIsOpen(cfg.projects.find((p) => p.id === pid), ph.id));
   const openPhasesOf = (pid) => activePhases().filter((ph) => phaseOpen(pid, ph.id));
   const fitPhase = (pid, ph) => (pid === NO_PROJECT || phaseOpen(pid, ph) ? ph : openPhasesOf(pid)[0]?.id || ph);
   const projClosed = (r) => !admin && r.projectId !== NO_PROJECT && r.projectId !== ""
     && (!cfg.projects.some((p) => p.id === r.projectId && p.active) || (r.phaseId !== NO_PHASE && !phaseOpen(r.projectId, r.phaseId || DEFAULT_PHASE)));
   // v3.0 — dòng đã chọn đủ Dự án (+ Giai đoạn nếu là dự án) + Hạng mục thì mới nhập giờ / lưu được
+  // v3.1: dự án chỉ mở đúng một giai đoạn và khối đang ở giai đoạn đó → nhân sự không cần (không được) đổi
+  const phaseFixed = (g) => { if (admin) return false; const o = openPhasesOf(g.projectId); return o.length === 1 && o[0].id === g.phaseId; };
   const rowReady = (r) => r.projectId !== "" && !!r.taskId && (r.projectId === NO_PROJECT || r.phaseId !== NO_PHASE);
   const dayTotal = (d) => rows.reduce((s, r) => s + (r.days[d] || 0), 0);
   const dayName = (d) => `${DOW[(parseD(d).getDay() + 6) % 7]} ${dLabel(d)}`;
@@ -1941,7 +1950,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   const updGroup = (gk, patch) => {
     // v2.5: đổi dự án thì giai đoạn tự chuyển sang giai đoạn có giờ dự kiến của dự án mới (nếu giai đoạn cũ không có)
     // v3.0: khối trống chọn dự án lần đầu thì giai đoạn để trống cho người dùng tự chọn ("Khác" thì không có giai đoạn)
-    let next = rows.map((r) => (groupKey(r) === gk ? { ...r, ...patch, ...(patch.projectId ? { phaseId: patch.projectId === NO_PROJECT ? DEFAULT_PHASE : (r.projectId === "" || r.phaseId === NO_PHASE) ? NO_PHASE : fitPhase(patch.projectId, patch.phaseId || r.phaseId || DEFAULT_PHASE) } : {}) } : r));
+    let next = rows.map((r) => (groupKey(r) === gk ? { ...r, ...patch, ...(patch.projectId ? { phaseId: patch.projectId === NO_PROJECT ? DEFAULT_PHASE : (r.projectId === "" || r.phaseId === NO_PHASE) ? (setOpenPhases(patch.projectId)[0]?.id || NO_PHASE) : fitPhase(patch.projectId, patch.phaseId || r.phaseId || DEFAULT_PHASE) } : {}) } : r));
     /* v2.9 — chuyển khối sang "Khác" thì hạng mục phải là tác vụ chung / vắng mặt; chuyển sang dự án thì phải là tác vụ dự án.
        Hạng mục không hợp lệ được đổi sang hạng mục hợp lệ đầu tiên chưa dùng trong khối. */
     if (patch.projectId) {
@@ -2125,7 +2134,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
       {r.projectId === "" && <option value="" disabled>— Chọn dự án —</option>}
       <option value={NO_PROJECT}>Khác</option>
       {activeProjects.map((p) => <option key={p.id} value={p.id}>{p.code ? `[${p.code}] ` : ""}{p.name}</option>)}
-      {r.projectId !== NO_PROJECT && !activeProjects.some((p) => p.id === r.projectId) && <option value={r.projectId}>{projName(r.projectId)} ({cfg.projects.some((p) => p.id === r.projectId && p.active) ? "chưa có giờ dự kiến" : "đã đóng"})</option>}
+      {r.projectId !== NO_PROJECT && r.projectId !== "" && !activeProjects.some((p) => p.id === r.projectId) && <option value={r.projectId}>{projName(r.projectId)} ({cfg.projects.some((p) => p.id === r.projectId && p.active) ? "chưa mở giai đoạn" : "đã đóng"})</option>}
     </>
   );
   // v2.5: chỉ liệt kê giai đoạn có giờ dự kiến của dự án (quản lý thấy mọi giai đoạn đang dùng)
@@ -2136,7 +2145,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
         {cur === NO_PHASE && <option value={NO_PHASE} disabled>— Chọn giai đoạn —</option>}
         {list.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.name}</option>)}
         {cur && cur !== NO_PHASE && !list.some((p) => p.id === cur) && (
-          <option value={cur}>{phaseLabel(cur)}{!phaseInfo(cur) ? "" : !phaseInfo(cur).active ? " (ngừng dùng)" : " (chưa có giờ dự kiến)"}</option>
+          <option value={cur}>{phaseLabel(cur)}{!phaseInfo(cur) ? "" : !phaseInfo(cur).active ? " (ngừng dùng)" : " (đang đóng)"}</option>
         )}
       </>
     );
@@ -2300,7 +2309,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                           </div>
                           <div className="min-w-0" style={{ flexBasis: "42%", flexGrow: 1 }}>
                             {!noProj && (
-                              <select disabled={gLocked || g.projectId === ""} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })}
+                              <select disabled={gLocked || g.projectId === "" || phaseFixed(g)} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })}
                                 title={phaseInfo(g.phaseId)?.desc}
                                 className={`disabled:opacity-50 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>
                             )}
@@ -2425,7 +2434,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                 <div key={g.key} className="rounded-xl border border-slate-800 bg-slate-900 p-3">
                   {/* Đầu thẻ: dự án + giai đoạn dùng chung cho mọi hạng mục bên trong */}
                   <select disabled={gLocked} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })} className={`disabled:opacity-50 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
-                  {!noProj && <select disabled={gLocked || g.projectId === ""} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })} className={`mt-2 disabled:opacity-50 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>}
+                  {!noProj && <select disabled={gLocked || g.projectId === "" || phaseFixed(g)} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })} className={`mt-2 disabled:opacity-50 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>}
 
                   {g.items.map(({ r, i }) => {
                     const rt = days.reduce((s, d) => s + (r.days[d] || 0), 0);
@@ -3834,7 +3843,7 @@ function Projects({ cfg, saveCfg, flash }) {
   const add = async () => {
     if (!name.trim()) return flash("Nhập tên dự án.", "err");
     const bg = cleanBudgets(budgets);
-    await saveCfg({ ...cfg, projects: [...cfg.projects, { id: uid("p"), name: name.trim(), code: code.trim(), client: client.trim(), budgets: bg, budget: budgetTotal({ budgets: bg }), active: true }] });
+    await saveCfg({ ...cfg, projects: [...cfg.projects, { id: uid("p"), name: name.trim(), code: code.trim(), client: client.trim(), budgets: bg, budget: budgetTotal({ budgets: bg }), phaseOpen: Object.fromEntries(PHASES.map((x) => [x.id, (bg[x.id] || 0) > 0])), active: true }] });
     setName(""); setCode(""); setClient(""); setBudgets({}); flash("Đã thêm dự án.");
   };
   const startEdit = (p) => { setEditId(p.id); setDraft({ code: p.code || "", name: p.name, client: p.client || "", budgets: Object.fromEntries(PHASES.map((ph) => [ph.id, projBudgets(p)[ph.id] || ""])) }); };
@@ -3848,13 +3857,30 @@ function Projects({ cfg, saveCfg, flash }) {
     <input type="number" min="0" step="8" value={val ?? ""} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.key === "Enter" && editId && commit()}
       aria-label={`Giờ dự kiến ${ph.id}`} placeholder={withPlaceholder ? ph.id : "0"} className={`px-2 text-right font-mono ${inputCls}`} />
   );
+  // v3.1: bật / tắt cho nhân sự chấm vào giai đoạn này của dự án
+  const togglePhase = async (p, phId) => {
+    const map = Object.fromEntries(PHASES.map((x) => [x.id, projPhaseIsOpen(p, x.id)]));
+    map[phId] = !map[phId];
+    const ok = await saveCfg({ ...cfg, projects: cfg.projects.map((x) => (x.id === p.id ? { ...x, phaseOpen: map } : x)) });
+    if (ok) flash(`${p.code ? `[${p.code}] ` : ""}${p.name} · ${phId}: ${map[phId] ? "đã mở chấm công" : "đã đóng chấm công"}.`);
+  };
+  const PhaseToggle = ({ p, ph }) => {
+    const on = projPhaseIsOpen(p, ph.id);
+    return (
+      <button onClick={() => togglePhase(p, ph.id)} title={on ? "Đang mở — nhân sự chấm được giai đoạn này. Bấm để đóng." : "Đang đóng — nhân sự không chấm được. Bấm để mở."}
+        className={`mt-1.5 inline-flex h-6 items-center gap-1 rounded border px-2 text-[11px] ${on ? "border-teal-700 bg-teal-950 text-teal-300" : "border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-300"}`}>
+        {on ? <Unlock size={10} /> : <Lock size={10} />}{on ? "Đang mở" : "Đóng"}
+      </button>
+    );
+  };
   const PhaseCell = ({ p, ph }) => {
     const b = projBudgets(p)[ph.id], u = usedOf(p, ph.id), over = b > 0 && u > b;
-    if (!b && !u) return <span className="font-mono text-slate-600">—</span>;
+    if (!b && !u) return <div><span className="font-mono text-slate-600">—</span><div><PhaseToggle p={p} ph={ph} /></div></div>;
     return (
       <div>
         <div className={`whitespace-nowrap font-mono text-[13px] ${over ? "text-rose-400" : "text-slate-300"}`}>{fmtH(u)}<span className={over ? "" : "text-slate-500"}> / {b > 0 ? `${fmtH(b)} h` : "—"}</span></div>
         {b > 0 && <div className="mt-1 h-1 overflow-hidden rounded bg-slate-800"><div className="h-full rounded" style={{ width: `${Math.min(100, (u / b) * 100)}%`, background: over ? "#fb7185" : ph.color }} /></div>}
+        <PhaseToggle p={p} ph={ph} />
       </div>
     );
   };
@@ -3995,7 +4021,7 @@ function Projects({ cfg, saveCfg, flash }) {
           </div>
         </>
       )}
-      <p className="mt-4 text-xs text-slate-500">Mỗi ô phase: giờ đã gửi / giờ dự kiến. Phase để trống nghĩa là không theo dõi hạn mức. Dự án đã đóng thì nhân sự không chấm công được nữa — giờ công đã ghi vẫn giữ nguyên trong báo cáo.</p>
+      <p className="mt-4 text-xs text-slate-500">Mỗi ô phase: giờ đã gửi / giờ dự kiến, nút <b className="text-slate-400">Đang mở / Đóng</b> quyết định nhân sự có chấm được giai đoạn đó không (chỉ mở một giai đoạn thì nhân sự khỏi phải chọn). Phase để trống giờ dự kiến nghĩa là không theo dõi hạn mức. Dự án đã đóng thì nhân sự không chấm công được nữa — giờ công đã ghi vẫn giữ nguyên trong báo cáo.</p>
 
       <ConfirmDialog
         open={!!pendingDel}

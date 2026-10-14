@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v3.0 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v3.1 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v3.0`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v3.1`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,16 @@ Ghi chú:
 | `public/` | Service worker + biểu tượng thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v3.1 — quản lý mở / đóng giai đoạn của dự án
+
+- Tab **Dự án**: mỗi ô giai đoạn có nút **Đang mở / Đóng**. Nhân sự chỉ chấm được giai đoạn đang mở.
+- Màn chấm công: chọn dự án là **giai đoạn tự được chọn sẵn** theo cài đặt của quản lý. Dự án chỉ mở **một** giai đoạn thì
+  ô giai đoạn bị khoá (nhân sự không phải chọn); mở nhiều giai đoạn thì tự chọn giai đoạn đầu, nhân sự đổi được trong các
+  giai đoạn đang mở. Dự án không mở giai đoạn nào thì không hiện cho nhân sự.
+- **Giờ dự kiến chỉ còn để theo dõi**, không còn quyết định chấm công được hay không. Dự án chưa từng bấm mở/đóng thì
+  giai đoạn nào có giờ dự kiến > 0 coi như đang mở (giữ nguyên như hiện tại). Dự án mới: giai đoạn có giờ dự kiến được mở sẵn.
+- Database chặn theo cùng luật (`schema.sql` mục 7c). Sửa lỗi nhỏ: dòng trống không còn mục thừa "(dự án đã xoá)".
 
 ## Mới ở v3.0
 
