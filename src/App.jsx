@@ -3731,15 +3731,16 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                       const n = (v, c) => <td className={`py-1.5 text-right ${v ? c : "text-slate-700"}`}>{v ? v.toFixed(1) : "·"}</td>;
                       return (
                         <tr key={x.k} className={x.st === "fut" ? "opacity-40" : ""}>
-                          <td className={`py-1.5 font-sans ${x.st === "miss" ? "text-rose-400" : "text-slate-300"}`}>{shortDays([x.k])}{x.st === "miss" && <span className="ml-1.5 text-[10px]">thiếu</span>}</td>
-                          <td className={`py-1.5 text-right font-semibold ${x.st === "miss" ? "text-rose-400" : x.tot ? "text-slate-100" : "text-slate-700"}`}>{x.tot ? x.tot.toFixed(1) : "—"}</td>
-                          {n(x.std, "text-teal-400")}{n(x.ot, "text-emerald-400")}{n(x.ef, "text-violet-400")}
+                          <td className={`py-1.5 font-sans ${x.st === "miss" ? "text-amber-400" : "text-slate-300"}`}>{shortDays([x.k])}{x.st === "miss" && <span className="ml-1.5 text-[10px]">thiếu</span>}</td>
+                          <td className={`py-1.5 text-right font-semibold ${x.st === "miss" ? "text-amber-400" : x.tot ? "text-slate-100" : "text-slate-700"}`}>{x.tot ? x.tot.toFixed(1) : "—"}</td>
+                          {/* v4.0: giờ chuẩn thiếu (dưới giờ chuẩn của ngày) tô cam như bảng chấm công */}
+                          {x.st === "miss" ? <td className="py-1.5 text-right text-amber-400">{x.std ? x.std.toFixed(1) : "0.0"}</td> : n(x.std, "text-teal-400")}{n(x.ot, "text-emerald-400")}{n(x.ef, "text-violet-400")}
                         </tr>
                       );
                     })}
                     <tr className="border-t border-slate-700 font-semibold">
                       <td className="py-1.5 font-sans text-slate-400">Cả tuần</td><td className="py-1.5 text-right text-slate-50">{sel.tot.toFixed(1)}</td>
-                      <td className="py-1.5 text-right text-teal-400">{sel.std.toFixed(1)}</td><td className="py-1.5 text-right text-emerald-400">{sel.ot.toFixed(1)}</td><td className="py-1.5 text-right text-violet-400">{sel.ef.toFixed(1)}</td>
+                      <td className={`py-1.5 text-right ${sel.miss.length ? "text-amber-400" : "text-teal-400"}`}>{sel.std.toFixed(1)}</td><td className="py-1.5 text-right text-emerald-400">{sel.ot.toFixed(1)}</td><td className="py-1.5 text-right text-violet-400">{sel.ef.toFixed(1)}</td>
                     </tr>
                   </tbody>
                 </table>
