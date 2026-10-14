@@ -113,7 +113,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v3.5";
+const APP_VERSION = "v3.6";
 /* v2.2 — Thư viện Excel nặng nhất app; chỉ tải khi có người bấm xuất / đọc file Excel. */
 let XLSX_MOD = null;
 const loadXlsx = async () => XLSX_MOD || (XLSX_MOD = await import("xlsx"));
@@ -2504,7 +2504,6 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                       </td>
                       <td colSpan={7} className="px-2 pb-1 pt-2.5">
                         <div className="flex items-center justify-end gap-3 text-xs">
-                          {!open && !blank && gHas && <span className="flex items-center gap-1 text-teal-400"><CheckCircle2 size={13} /> Đã chấm</span>}
                         </div>
                       </td>
                       <td className="px-2 pb-1 pt-2.5" />{/* v3.5: bỏ số tổng của khối dự án — tổng chỉ còn ở hàng cuối bảng */}
@@ -2588,7 +2587,13 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                     const t = dayTotal(d);
                     return <td key={d} className={`px-1 py-3 text-center ${dayCol(d)} ${isOverDaily(d) ? "text-rose-400" : isIncomplete(d) ? "text-amber-400" : "text-slate-200"}`}>{t ? t.toFixed(1) : "—"}</td>;
                   })}
-                  <td className="px-2 py-3 text-center font-semibold text-teal-400">{weekTotal.toFixed(1)}</td>
+                  {/* v3.6 — tách tổng tuần: giờ công chuẩn + giờ phát sinh (OT + Giờ cố gắng) */}
+                  <td className="whitespace-nowrap px-1 py-3 text-center font-semibold text-teal-400"
+                    title={otTotal + effortTotal > 0 ? `Tổng ${weekTotal.toFixed(1)} giờ = ${(weekTotal - otTotal - effortTotal).toFixed(1)} giờ công chuẩn + ${(otTotal + effortTotal).toFixed(1)} giờ phát sinh (OT ${otTotal.toFixed(1)} + cố gắng ${effortTotal.toFixed(1)})` : undefined}>
+                    {otTotal + effortTotal > 0
+                      ? <>{(weekTotal - otTotal - effortTotal).toFixed(1)}<span className="text-slate-300"> + {(otTotal + effortTotal).toFixed(1)}</span></>
+                      : weekTotal.toFixed(1)}
+                  </td>
                 </tr>
                 {otTotal > 0 && (
                   <tr className="border-t border-slate-800 font-mono text-xs">
