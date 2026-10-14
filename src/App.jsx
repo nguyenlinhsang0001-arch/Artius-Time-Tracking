@@ -113,7 +113,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v3.3";
+const APP_VERSION = "v3.4";
 /* v2.2 — Thư viện Excel nặng nhất app; chỉ tải khi có người bấm xuất / đọc file Excel. */
 let XLSX_MOD = null;
 const loadXlsx = async () => XLSX_MOD || (XLSX_MOD = await import("xlsx"));
@@ -402,12 +402,14 @@ const otThresholdFor = (s, h = DEFAULT_HOURS) => {
   if (wd === 5) return Math.max(std, Number(h.satOt) || 8);
   return std;
 };
-// Giờ OT của một ngày: ngày lễ, chủ nhật hoặc ngày nghỉ tính toàn bộ; còn lại tính phần vượt ngưỡng
-const otHoursFor = (s, total, h = DEFAULT_HOURS, holidaySet = null) => {
-  if (!total) return 0;
-  if (holidaySet?.has(s)) return total;
+/* v3.4 — OT chỉ là giờ chấm vào hạng mục Tăng ca ([OT]). Giờ làm việc thường vượt ngưỡng của ngày
+   (hoặc làm ngày lễ / ngày nghỉ) KHÔNG phải OT mà là "Giờ cố gắng": ghi nhận nỗ lực của nhân sự,
+   không tính vào chi phí dự án. `regular` = giờ làm việc thường trong ngày (không gồm OT, không gồm vắng mặt). */
+const effortHoursFor = (s, regular, h = DEFAULT_HOURS, holidaySet = null) => {
+  if (!regular) return 0;
+  if (holidaySet?.has(s)) return regular;
   const th = otThresholdFor(s, h);
-  return th <= 0 ? total : Math.max(0, total - th);
+  return th <= 0 ? regular : Math.max(0, regular - th);
 };
 const weeklyTarget = (h = DEFAULT_HOURS) => (Number(h.weekday) || 0) * 5 + (Number(h.sat) || 0) + (Number(h.sun) || 0);
 const dFull = (s) => { const d = parseD(s); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`; };
@@ -660,6 +662,10 @@ const taskText = (t) => (t?.code ? `${t.code} · ${t.name}` : t?.name || "");
 /* v3.2 — hạng mục tăng ca: tên bắt đầu bằng "[OT]" thì tách riêng nhóm "Tăng ca" ở màn chấm công,
    hiển thị bỏ chữ [OT] (VD "[OT] 17:30 - 21:00" → "17:30 – 21:00"). Không cần sửa dữ liệu. */
 const isOtTask = (t) => /^\s*\[\s*ot\s*\]/i.test(t?.name || "");
+// v3.4: bản sống các id hạng mục Tăng ca — App chép từ cfg.tasks mỗi lần render (như ROLES), để mọi hàm tính giờ tra được
+const OT_IDS = new Set();
+const syncOtTasks = (list) => { OT_IDS.clear(); for (const t of Array.isArray(list) ? list : []) if (isOtTask(t)) OT_IDS.add(t.id); };
+const isOtId = (id) => OT_IDS.has(id);
 const otText = (t) => (t?.name || "").replace(/^\s*\[\s*ot\s*\]\s*/i, "").replace(/\s+-\s+/g, " – ");
 // Bỏ dấu để gõ "khao sat" vẫn ra "Khảo sát". NFD không tách được đ nên phải thay tay.
 const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
@@ -874,7 +880,7 @@ function CalendarPanel({ value, onSelect, dayStatus, view: viewProp, onViewChang
                 const inMonth = d.getMonth() === view.m;
                 const selected = s === value;
                 const isToday = s === todayStr;
-                const status = dayStatus ? dayStatus(s) : null; // "under" | "over" | "otHigh" | "holiday" | "leave" | null
+                const status = dayStatus ? dayStatus(s) : null; // "under" | "over" | "effort" | "otHigh" | "holiday" | "leave" | null
                 const isSelected = markSelected && selected;
                 const isEdge = (rangeStart && s === rangeStart) || (rangeEnd && s === rangeEnd);
                 const inRange = rangeStart && rangeEnd && s > rangeStart && s < rangeEnd;
@@ -885,6 +891,7 @@ function CalendarPanel({ value, onSelect, dayStatus, view: viewProp, onViewChang
                     : status === "under" ? "text-amber-400"
                     : status === "otHigh" ? "bg-red-950/50 font-semibold text-red-300"
                     : status === "over" ? "text-emerald-400"
+                    : status === "effort" ? "text-violet-400"
                     : inMonth ? "text-slate-200" : "text-slate-700";
                 const ring =
                   isEdge ? "border-2 border-teal-400 bg-teal-500/15 font-semibold text-teal-100"
@@ -896,7 +903,7 @@ function CalendarPanel({ value, onSelect, dayStatus, view: viewProp, onViewChang
                 return (
                   <button key={s} onClick={() => onSelect(s)}
                     style={status === "holiday" ? holidayRingBg(30) : undefined}
-                    title={isToday ? "Hôm nay" : status === "under" ? "Chưa đủ giờ" : status === "otHigh" ? `OT trên ${OT_ALERT} giờ` : status === "over" ? "Vượt giờ chuẩn" : status === "holiday" ? "Ngày lễ" : status === "leave" ? "Nghỉ phép" : undefined}
+                    title={isToday ? "Hôm nay" : status === "under" ? "Chưa đủ giờ" : status === "otHigh" ? `OT trên ${OT_ALERT} giờ` : status === "over" ? "Có giờ tăng ca" : status === "effort" ? "Có giờ cố gắng (vượt giờ chuẩn)" : status === "holiday" ? "Ngày lễ" : status === "leave" ? "Nghỉ phép" : undefined}
                     className={`flex h-8 items-center justify-center rounded text-xs hover:bg-slate-800 ${tone} ${ring}`}>
                     {d.getDate()}
                   </button>
@@ -1013,6 +1020,7 @@ function WeekPicker({ monday, onChange, empId, hoursCfg = DEFAULT_HOURS, holiday
   const [calView, setCalView] = useState({ y: baseMonth.getFullYear(), m: baseMonth.getMonth() });
   const [monthData, setMonthData] = useState({}); // ym -> { dateStr: tổng giờ }
   const [monthLeave, setMonthLeave] = useState({}); // ym -> { dateStr: loại nghỉ }
+  const [monthParts, setMonthParts] = useState({}); // v3.4: ym -> { dateStr: { ot, reg } } — giờ Tăng ca và giờ làm việc thường
   const todayStr = fmt(new Date());
 
   // Sau mỗi lần lưu bảng công, bỏ bộ nhớ đệm để lịch hiển thị số giờ mới nhất
@@ -1052,6 +1060,19 @@ function WeekPicker({ monday, onChange, empId, hoursCfg = DEFAULT_HOURS, holiday
         }
         return next;
       });
+      setMonthParts((prev) => {
+        const next = { ...prev };
+        for (const [ym, bucket] of entries) {
+          const parts = {};
+          for (const r of bucket?.rows || []) for (const [d, hh] of Object.entries(r.days || {})) {
+            if (!hh || leaveTypeOfTask(r.taskId)) continue;
+            const c = parts[d] || (parts[d] = { ot: 0, reg: 0 });
+            if (isOtId(r.taskId)) c.ot += hh; else c.reg += hh;
+          }
+          next[ym] = parts;
+        }
+        return next;
+      });
       setMonthLeave((prev) => {
         const next = { ...prev };
         for (const [ym, bucket] of entries) {
@@ -1074,9 +1095,11 @@ function WeekPicker({ monday, onChange, empId, hoursCfg = DEFAULT_HOURS, holiday
     if (holidaySet?.has(dateStr)) return "holiday";
     const lv = monthLeave[ymOf(dateStr)]?.[dateStr];
     if (lv && h === 0) return "leave";
-    const ot = otHoursFor(dateStr, h, hoursCfg, holidaySet);
+    const pt = monthParts[ymOf(dateStr)]?.[dateStr];
+    const ot = pt?.ot || 0;
     if (ot > OT_ALERT) return "otHigh";   // OT quá dày trong một ngày — cảnh báo đỏ
     if (ot > 0) return "over";
+    if (effortHoursFor(dateStr, pt?.reg || 0, hoursCfg, holidaySet) > 0) return "effort";   // v3.4: giờ cố gắng, không phải OT
     const min = minHoursFor(dateStr, hoursCfg, holidaySet);
     if (min !== null && dateStr <= todayStr && h < min) return "under";
     return null;
@@ -1160,7 +1183,7 @@ function AppMain() {
       c.depts = Array.isArray(c.depts) && c.depts.length ? c.depts : [...DEFAULT_DEPTS];
       if (!c.depts.includes("Ban giám đốc")) c.depts = [...c.depts, "Ban giám đốc"];
       syncDepts(c.depts);
-      syncRoles(c.roles);
+      syncRoles(c.roles); syncOtTasks(c.tasks);
       syncLeave(c.leaveTypes);
       c.phases = Array.isArray(c.phases) && c.phases.length ? c.phases : DEFAULT_PHASES.map((x) => ({ ...x }));
       syncPhases(c.phases);
@@ -1242,6 +1265,7 @@ function AppMain() {
 
   syncDepts(cfg?.depts);
   syncLeave(cfg?.leaveTypes);
+  syncOtTasks(cfg?.tasks);
   syncRoles(cfg?.roles);   // đồng bộ trước khi các màn con render (cfg còn null lúc app vừa mở)
   syncPhases(cfg?.phases);
 
@@ -2261,9 +2285,13 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
     return min !== null && d <= todayStr && dayTotal(d) < min;
   };
   const isOverDaily = (d) => dayTotal(d) > (Number(hoursCfg.maxDaily) || 12); // vượt ngưỡng cảnh báo/ngày
-  const otTotal = days.reduce((s, d) => s + otHoursFor(d, workHours(d), hoursCfg, holidaySet), 0);
+  // v3.4: OT = chỉ giờ chấm vào hạng mục Tăng ca; Giờ cố gắng = giờ làm việc thường vượt ngưỡng ngày (không tính chi phí dự án)
+  const otHrs = (d) => rows.reduce((s, r) => s + (isOtId(r.taskId) ? (r.days[d] || 0) : 0), 0);
+  const effortHrs = (d) => effortHoursFor(d, Math.max(0, workHours(d) - otHrs(d)), hoursCfg, holidaySet);
+  const otTotal = days.reduce((s, d) => s + otHrs(d), 0);
+  const effortTotal = days.reduce((s, d) => s + effortHrs(d), 0);
   // có ngày nào OT vượt ngưỡng không — dùng để đổi màu ô tổng và dòng OT trên đầu bảng
-  const anyOtHigh = days.some((d) => otHoursFor(d, workHours(d), hoursCfg, holidaySet) > OT_ALERT);
+  const anyOtHigh = days.some((d) => otHrs(d) > OT_ALERT);
   // Target tuần trừ đi phần được miễn do ngày lễ và ngày nghỉ phép
   const weekTarget = days.reduce((s, d) => {
     const min = minHoursFor(d, hoursCfg, holidaySet);
@@ -2330,6 +2358,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Thiếu giờ công</span>
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Tăng ca</span>
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-red-400" /> OT trên {OT_ALERT} giờ/ngày</span>
+        <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-violet-400" /> Giờ cố gắng</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-full border-2 border-red-500" /> Ngày lễ</span>
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-sky-400" /> Nghỉ phép</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-slate-600 bg-slate-700" /> Hôm nay</span>
@@ -2349,6 +2378,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
             <div className="text-right">
               <div className="whitespace-nowrap font-mono text-lg font-semibold text-slate-50 md:text-xl">{weekTotal.toFixed(1)}<span className="ml-1 text-xs font-normal text-slate-500">giờ</span></div>
               {otTotal > 0 && <div className={`flex items-center justify-end gap-1 text-[11px] ${anyOtHigh ? "text-red-400" : "text-emerald-400"}`}><Zap size={11} /> OT {otTotal.toFixed(1)} giờ</div>}
+              {effortTotal > 0 && <div className="flex items-center justify-end gap-1 text-[11px] text-violet-400" title="Giờ làm việc vượt giờ chuẩn — ghi nhận cố gắng, không tính OT và không tính chi phí dự án">Cố gắng {effortTotal.toFixed(1)} giờ</div>}
             </div>
           </div>
         </div>
@@ -2564,12 +2594,22 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                   <tr className="border-t border-slate-800 font-mono text-xs">
                     <td className="px-4 py-2 font-sans text-xs uppercase tracking-wider text-slate-500">Trong đó OT</td>
                     {days.map((d) => {
-                      const ot = otHoursFor(d, workHours(d), hoursCfg, holidaySet);
+                      const ot = otHrs(d);
                       const hot = ot > OT_ALERT; // vượt ngưỡng thì đổi đỏ, khỏi phải nhẩm
                       return <td key={d} title={hot ? `OT vượt ${OT_ALERT} giờ` : undefined}
                         className={`px-1 py-2 text-center ${dayCol(d)} ${hot ? "font-semibold text-red-400" : ot ? "text-emerald-400" : "text-slate-700"}`}>{ot ? ot.toFixed(1) : "·"}</td>;
                     })}
                     <td className={`px-2 py-2 text-center font-semibold ${anyOtHigh ? "text-red-400" : "text-emerald-400"}`}>{otTotal.toFixed(1)}</td>
+                  </tr>
+                )}
+                {effortTotal > 0 && (
+                  <tr className="border-t border-slate-800 font-mono text-xs">
+                    <td className="px-4 py-2 font-sans text-xs uppercase tracking-wider text-slate-500" title="Giờ làm việc vượt giờ chuẩn của ngày. Không phải OT, không tính vào chi phí dự án.">Giờ cố gắng</td>
+                    {days.map((d) => {
+                      const ef = effortHrs(d);
+                      return <td key={d} className={`px-1 py-2 text-center ${dayCol(d)} ${ef ? "text-violet-400" : "text-slate-700"}`}>{ef ? ef.toFixed(1) : "·"}</td>;
+                    })}
+                    <td className="px-2 py-2 text-center font-semibold text-violet-400">{effortTotal.toFixed(1)}</td>
                   </tr>
                 )}
               </tfoot>
@@ -3397,18 +3437,23 @@ function EmployeeDashboard({ cfg, empId }) {
       "Tỷ trọng %": phaseTotal ? +((byPhase.get(p.id) || 0) / phaseTotal * 100).toFixed(1) : 0,
     }))), "Theo giai đoạn");
     // Tổng hợp theo ngày kèm OT — dùng để đối chiếu bảng lương
-    const perDay = new Map();
-    for (const d of data.detail) perDay.set(d.date, (perDay.get(d.date) || 0) + d.hours);
+    const perDay = new Map();   // v3.4: { tot, ot (hạng mục Tăng ca), reg (làm việc thường, không gồm vắng mặt) }
+    for (const d of data.detail) {
+      const c = perDay.get(d.date) || { tot: 0, ot: 0, reg: 0 };
+      c.tot += d.hours;
+      if (isOtId(d.taskId)) c.ot += d.hours; else if (!isLeaveTask(d.taskId)) c.reg += d.hours;
+      perDay.set(d.date, c);
+    }
     const hCfg = cfg.hours || DEFAULT_HOURS;
     const hSet = makeHolidayIndex(cfg.holidays);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-      [...perDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, tot]) => {
-        const ot = otHoursFor(date, tot, hCfg, hSet);
+      [...perDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, c]) => {
+        const ef = effortHoursFor(date, c.reg, hCfg, hSet);
         return {
           "Ngày": date, "Thứ": DOW[(parseD(date).getDay() + 6) % 7],
           "Ngày lễ": hSet.has(date) ? "Có" : "",
           "Giờ chuẩn": hSet.has(date) ? 0 : stdHoursFor(date, hCfg),
-          "Tổng giờ": +tot.toFixed(1), "Giờ OT": +ot.toFixed(1), "Giờ thường": +(tot - ot).toFixed(1),
+          "Tổng giờ": +c.tot.toFixed(1), "Giờ OT": +c.ot.toFixed(1), "Giờ cố gắng": +ef.toFixed(1), "Giờ thường": +(c.tot - c.ot - ef).toFixed(1),
         };
       })), "Theo ngày");
     const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
@@ -3432,6 +3477,9 @@ function EmployeeDashboard({ cfg, empId }) {
       const cur = dayMap.get(d.date) || { date: d.date, total: 0 };
       cur[d.projectId] = (cur[d.projectId] || 0) + d.hours;
       cur.total += d.hours;
+      // v3.4: tách giờ Tăng ca và giờ làm việc thường để tính OT / Giờ cố gắng (khoá có tiền tố _ để không lẫn với id dự án)
+      if (isOtId(d.taskId)) cur._ot = (cur._ot || 0) + d.hours;
+      else if (!isLeaveTask(d.taskId)) cur._reg = (cur._reg || 0) + d.hours;
       dayMap.set(d.date, cur);
     }
     // đánh số thứ tự tuần (0,1,2,...) để tô nền xen kẽ trên biểu đồ — chỉ tính tuần có phát sinh giờ công
@@ -3469,7 +3517,11 @@ function EmployeeDashboard({ cfg, empId }) {
   // OT và target của kỳ đang xem — target bỏ qua ngày lễ, không tính những ngày nằm ngoài khoảng lọc
   const otTotal = useMemo(() => {
     if (!agg) return 0;
-    return agg.daily.reduce((s, d) => s + otHoursFor(d.date, d.total, hoursCfg, holidaySet), 0);
+    return agg.daily.reduce((s, d) => s + (d._ot || 0), 0);
+  }, [agg, hoursCfg, holidaySet]);
+  const effortTotal = useMemo(() => {
+    if (!agg) return 0;
+    return agg.daily.reduce((s, d) => s + effortHoursFor(d.date, d._reg || 0, hoursCfg, holidaySet), 0);
   }, [agg, hoursCfg, holidaySet]);
   const periodTarget = useMemo(() => {
     let s = 0;
@@ -3511,6 +3563,7 @@ function EmployeeDashboard({ cfg, empId }) {
             {[
               ["Tổng giờ trong kỳ", agg.total.toFixed(1), "giờ"],
               ["Trong đó OT", otTotal.toFixed(1), "giờ"],
+              ["Giờ cố gắng", effortTotal.toFixed(1), "giờ"],
               ["Target kỳ này", periodTarget.toFixed(0), "giờ"],
               ["Số dự án tham gia", agg.projIds.length, ""],
               ["Giờ TB / tuần", nWeeks ? (agg.total / nWeeks).toFixed(1) : "0", "giờ"],
@@ -3687,27 +3740,30 @@ function Dashboard({ cfg, flash }) {
       if (!matrix.has(d.empId)) matrix.set(d.empId, new Map());
       const mm = matrix.get(d.empId); mm.set(d.projectId, (mm.get(d.projectId) || 0) + d.hours);
     }
-    // OT phải tính trên tổng giờ của một người trong một ngày, không cộng dồn theo từng dòng dự án
+    /* v3.4 — OT = giờ chấm vào hạng mục Tăng ca. Giờ cố gắng = giờ làm việc thường vượt ngưỡng ngày của MỘT người
+       (tính trên tổng giờ một người trong một ngày, không cộng dồn theo dòng dự án); không tính chi phí dự án. */
     const perEmpDay = new Map();
     for (const d of detail) {
       const k = `${d.empId}|${d.date}`;
-      perEmpDay.set(k, (perEmpDay.get(k) || 0) + d.hours);
+      const c = perEmpDay.get(k) || { ot: 0, reg: 0 };
+      if (isOtId(d.taskId)) c.ot += d.hours; else if (!isLeaveTask(d.taskId)) c.reg += d.hours;
+      perEmpDay.set(k, c);
     }
     const otByEmp = new Map();
-    let otTotal = 0;
-    for (const [k, total] of perEmpDay) {
+    const effortByEmp = new Map();
+    let otTotal = 0, effortTotal = 0;
+    for (const [k, c] of perEmpDay) {
       const [eid, date] = k.split("|");
-      const ot = otHoursFor(date, total, hoursCfg, holidaySet);
-      if (!ot) continue;
-      otByEmp.set(eid, (otByEmp.get(eid) || 0) + ot);
-      otTotal += ot;
+      if (c.ot) { otByEmp.set(eid, (otByEmp.get(eid) || 0) + c.ot); otTotal += c.ot; }
+      const ef = effortHoursFor(date, c.reg, hoursCfg, holidaySet);
+      if (ef) { effortByEmp.set(eid, (effortByEmp.get(eid) || 0) + ef); effortTotal += ef; }
     }
     const leaveTotal = detail.filter((d) => isLeaveTask(d.taskId)).reduce((x, d) => x + d.hours, 0);
     // v2.9: "Khác" (tác vụ chung + vắng mặt) là một cột riêng, đặt cuối; không có giai đoạn
     const byProj0 = by((d) => (isLeaveTask(d.taskId) ? NO_PROJECT : d.projectId));
     const byProj = new Map([...[...byProj0].filter(([k]) => k !== NO_PROJECT), ...[...byProj0].filter(([k]) => k === NO_PROJECT)]);
     const byPhase = by((d) => (d.projectId === NO_PROJECT || isLeaveTask(d.taskId) ? null : d.phaseId || DEFAULT_PHASE));
-    return { detail, leaveTotal, byProj, projCount: [...byProj.keys()].filter((k) => k !== NO_PROJECT).length, byEmp: by((d) => d.empId), byTask: by((d) => d.taskId), byPhase, matrix, otByEmp, otTotal, total: detail.reduce((s, d) => s + d.hours, 0) };
+    return { detail, leaveTotal, byProj, projCount: [...byProj.keys()].filter((k) => k !== NO_PROJECT).length, byEmp: by((d) => d.empId), byTask: by((d) => d.taskId), byPhase, matrix, otByEmp, otTotal, effortByEmp, effortTotal, total: detail.reduce((s, d) => s + d.hours, 0) };
   }, [data, matchEmp, fProj, fPhase, hoursCfg, holidaySet]);
 
   const exportExcel = async () => {
@@ -3715,7 +3771,7 @@ function Dashboard({ cfg, flash }) {
     if (!agg || agg.detail.length === 0) return flash("Không có dữ liệu nào khớp bộ lọc hiện tại.", "err");
     const wb = XLSX.utils.book_new();
     const info = [{
-      "Kỳ báo cáo": `${dFull(from)} – ${dFull(to)}`, "Tổng giờ": agg.total, "Giờ OT": +agg.otTotal.toFixed(1),
+      "Kỳ báo cáo": `${dFull(from)} – ${dFull(to)}`, "Tổng giờ": agg.total, "Giờ OT": +agg.otTotal.toFixed(1), "Giờ cố gắng": +agg.effortTotal.toFixed(1),
       "Số nhân sự": agg.byEmp.size, "Số dự án": agg.projCount,
       "Bộ phận": fDept === "all" ? "Tất cả" : fDept,
       "Dự án lọc": fProj === "all" ? "Tất cả" : projLabel(fProj),
@@ -3756,7 +3812,8 @@ function Dashboard({ cfg, flash }) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sortDesc(agg.byEmp, (k, v) => ({
       "Nhân sự": empName(k), "Bộ phận": empDept(k), "Vai trò": empTitle(k), "Tổng giờ": v,
       "Giờ OT": +(agg.otByEmp.get(k) || 0).toFixed(1),
-      "Giờ thường": +(v - (agg.otByEmp.get(k) || 0)).toFixed(1),
+      "Giờ cố gắng": +(agg.effortByEmp.get(k) || 0).toFixed(1),
+      "Giờ thường": +(v - (agg.otByEmp.get(k) || 0) - (agg.effortByEmp.get(k) || 0)).toFixed(1),
     }))), "Theo nhân sự");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sortDesc(agg.byTask, (k, v) => ({ "Hạng mục": taskLabel(k), "Tổng giờ": v }))), "Theo hạng mục");
     const projIds = [...agg.byProj.keys()];
@@ -3860,6 +3917,7 @@ function Dashboard({ cfg, flash }) {
             {[
               ["Tổng giờ công", agg.total.toFixed(1), "giờ"],
               ["Trong đó OT", agg.otTotal.toFixed(1), "giờ"],
+              ["Giờ cố gắng", agg.effortTotal.toFixed(1), "giờ"],
               ["Giờ vắng mặt", agg.leaveTotal.toFixed(1), "giờ"],
               ["Dự án phát sinh", agg.projCount, ""],
               ["Nhân sự đã chấm", agg.byEmp.size, ""],
@@ -5465,7 +5523,7 @@ function SettingsTab({ cfg, saveCfg, flash }) {
 
   const saveHours = async () => {
     await saveCfg({ ...cfg, hours: { ...h } });
-    flash("Đã lưu. Giờ chuẩn và ngưỡng OT áp dụng ngay cho toàn bộ nhân viên.");
+    flash("Đã lưu. Giờ chuẩn và ngưỡng giờ cố gắng áp dụng ngay cho toàn bộ nhân viên.");
   };
 
   // Lễ lặp hàng năm xếp trước và so theo ngày-tháng; lễ của riêng một năm xếp sau theo ngày đầy đủ
@@ -5513,7 +5571,7 @@ function SettingsTab({ cfg, saveCfg, flash }) {
 
       <Panel title="Giờ chuẩn & ngưỡng cảnh báo">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
-          {[["weekday", "Giờ chuẩn T2–T6"], ["sat", "Giờ chuẩn T7"], ["sun", "Giờ chuẩn CN"], ["satOt", "OT T7 tính từ"], ["maxDaily", "Cảnh báo vượt / ngày"]].map(([k, l]) => (
+          {[["weekday", "Giờ chuẩn T2–T6"], ["sat", "Giờ chuẩn T7"], ["sun", "Giờ chuẩn CN"], ["satOt", "Cố gắng T7 từ"], ["maxDaily", "Cảnh báo vượt / ngày"]].map(([k, l]) => (
             <div key={k}>
               <label className="mb-1 block text-xs text-slate-500">{l}</label>
               <input type="number" inputMode="decimal" min="0" max="24" step="0.5" value={h[k] ?? ""}
@@ -5526,8 +5584,9 @@ function SettingsTab({ cfg, saveCfg, flash }) {
           <button onClick={saveHours} className={`ml-auto ${btnPrimary}`}><Save size={14} /> Lưu giờ chuẩn</button>
         </div>
         <p className="mt-3 text-xs leading-relaxed text-slate-500">
-          <b className="text-slate-400">Giờ chuẩn</b> quyết định target và cảnh báo thiếu giờ. Đặt 0 cho một loại ngày nghĩa là ngày nghỉ — không báo thiếu, mọi giờ chấm vào tính hết thành OT.
-          <br /><b className="text-slate-400">OT T7 tính từ</b> là mốc bắt đầu tính tăng ca riêng cho thứ 7: giờ chuẩn T7 vẫn là {h.sat || 0}h nhưng chỉ phần vượt {h.satOt ?? 8}h mới thành OT. Ngày thường tính OT ngay khi vượt giờ chuẩn.
+          <b className="text-slate-400">Giờ chuẩn</b> quyết định target và cảnh báo thiếu giờ. Đặt 0 cho một loại ngày nghĩa là ngày nghỉ — không báo thiếu, mọi giờ làm việc thường chấm vào tính hết thành Giờ cố gắng (không phải OT).
+          <br /><b className="text-slate-400">Cố gắng T7 từ</b> là mốc bắt đầu tính Giờ cố gắng riêng cho thứ 7: giờ chuẩn T7 vẫn là {h.sat || 0}h nhưng chỉ phần vượt {h.satOt ?? 8}h mới thành Giờ cố gắng. Ngày thường: phần giờ làm việc vượt giờ chuẩn là Giờ cố gắng.
+          <br /><b className="text-slate-400">OT</b> chỉ tính khi nhân sự chấm vào hạng mục Tăng ca (tên bắt đầu bằng [OT]). Giờ cố gắng ghi nhận nỗ lực, không tính vào chi phí dự án.
           <br />Toàn bộ nhân viên lấy các thông số này từ đây — sửa ở đây là áp cho tất cả.
         </p>
       </Panel>
@@ -5583,7 +5642,7 @@ function SettingsTab({ cfg, saveCfg, flash }) {
           </div>
         )}
         <p className="mt-4 text-xs text-slate-500">
-          Ngày lễ áp dụng cho toàn công ty. Giờ công chấm vào ngày lễ được tính là OT toàn bộ.
+          Ngày lễ áp dụng cho toàn công ty. Giờ làm việc thường chấm vào ngày lễ được tính là Giờ cố gắng (OT chỉ khi chấm hạng mục Tăng ca).
           Lễ âm lịch như Tết Nguyên đán hay Giỗ Tổ đổi ngày dương mỗi năm nên để chế độ "Một lần" và khai lại đầu mỗi năm.
         </p>
       </Panel>
