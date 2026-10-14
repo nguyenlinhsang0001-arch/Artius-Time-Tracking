@@ -113,7 +113,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v3.6";
+const APP_VERSION = "v3.7";
 /* v2.2 — Thư viện Excel nặng nhất app; chỉ tải khi có người bấm xuất / đọc file Excel. */
 let XLSX_MOD = null;
 const loadXlsx = async () => XLSX_MOD || (XLSX_MOD = await import("xlsx"));
@@ -2297,7 +2297,11 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
     const min = minHoursFor(d, hoursCfg, holidaySet);
     return s + (min === null ? 0 : min);
   }, 0);
-  const targetPct = weekTarget > 0 ? Math.min(100, (weekTotal / weekTarget) * 100) : 0;
+  /* v3.7 — giờ công chuẩn = tổng − OT − Giờ cố gắng; phát sinh = OT + Giờ cố gắng. Tiến độ tuần tính theo giờ chuẩn. */
+  const extraTotal = otTotal + effortTotal;
+  const stdTotal = Math.max(0, weekTotal - extraTotal);
+  const stdHrs = (d) => Math.max(0, dayTotal(d) - otHrs(d) - effortHrs(d));
+  const targetPct = weekTarget > 0 ? Math.min(100, (stdTotal / weekTarget) * 100) : 0;
   const projOptions = (r) => (
     <>
       {r.projectId === "" && <option value="" disabled>— Chọn dự án —</option>}
@@ -2374,17 +2378,27 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
             <button onClick={() => goWeek(fmt(mondayOf(new Date())))} className="whitespace-nowrap text-xs text-teal-400 hover:text-teal-300">Tuần này</button>
           </div>
           <div className="ml-auto flex items-center gap-2 md:gap-4">
-            {sentDays.length > 0 && !dirty && <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-teal-800 bg-teal-950 px-2 py-1 text-[11px] text-teal-300"><CheckCircle2 size={12} /> {submitted ? <>Đã gửi<span className="hidden md:inline">&nbsp;đủ tuần</span></> : `Đã gửi ${sentDays.length} ngày`}</span>}
-            <div className="text-right">
-              <div className="whitespace-nowrap font-mono text-lg font-semibold text-slate-50 md:text-xl"
-                title={otTotal + effortTotal > 0 ? `Tổng ${weekTotal.toFixed(1)} giờ = ${(weekTotal - otTotal - effortTotal).toFixed(1)} giờ công chuẩn + ${(otTotal + effortTotal).toFixed(1)} giờ phát sinh` : undefined}>
-                {/* v3.6 — tổng tuần tách: giờ công chuẩn + giờ phát sinh (OT + Giờ cố gắng) */}
-                {otTotal + effortTotal > 0
-                  ? <>{(weekTotal - otTotal - effortTotal).toFixed(1)}<span className="text-slate-400"> + {(otTotal + effortTotal).toFixed(1)}</span></>
-                  : weekTotal.toFixed(1)}
-                <span className="ml-1 text-xs font-normal text-slate-500">giờ</span></div>
-              {otTotal > 0 && <div className={`flex items-center justify-end gap-1 text-[11px] ${anyOtHigh ? "text-red-400" : "text-emerald-400"}`}><Zap size={11} /> OT {otTotal.toFixed(1)} giờ</div>}
-              {effortTotal > 0 && <div className="flex items-center justify-end gap-1 text-[11px] text-violet-400" title="Giờ làm việc vượt giờ chuẩn — ghi nhận cố gắng, không tính OT và không tính chi phí dự án">Cố gắng {effortTotal.toFixed(1)} giờ</div>}
+            {/* v3.7 — bỏ nhãn "Đã gửi đủ tuần" (nút dưới bảng đã báo "Đã gửi giờ công"); tổng giờ tách 3 ô: Chuẩn · Phát sinh · Tổng */}
+            <div className="flex overflow-hidden rounded-lg border border-slate-700 text-right">
+              <div className="px-2.5 py-1 md:px-3.5" title="Giờ công chuẩn = tổng − OT − giờ cố gắng">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500">Chuẩn</div>
+                <div className="font-mono text-base font-semibold text-teal-400 md:text-lg">{stdTotal.toFixed(1)}</div>
+                <div className="font-mono text-[10px] text-slate-500">{weekTarget > 0 ? `/ ${weekTarget.toFixed(1)}` : "giờ"}</div>
+              </div>
+              <div className="border-l border-slate-700 px-2.5 py-1 md:px-3.5" title="Giờ phát sinh = OT (hạng mục Tăng ca) + giờ cố gắng (không tính chi phí dự án)">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500">Phát sinh</div>
+                <div className="font-mono text-base font-semibold text-slate-100 md:text-lg">{extraTotal.toFixed(1)}</div>
+                <div className="whitespace-nowrap font-mono text-[10px]">
+                  <span className={anyOtHigh ? "text-red-400" : "text-emerald-400"}>OT {otTotal.toFixed(1)}</span>
+                  <span className="text-slate-600"> · </span>
+                  <span className="text-violet-400">CG {effortTotal.toFixed(1)}</span>
+                </div>
+              </div>
+              <div className="border-l border-slate-700 px-2.5 py-1 md:px-3.5">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500">Tổng</div>
+                <div className="font-mono text-base font-semibold text-slate-50 md:text-lg">{weekTotal.toFixed(1)}</div>
+                <div className="text-[10px] text-slate-500">giờ</div>
+              </div>
             </div>
           </div>
         </div>
@@ -2395,14 +2409,14 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
             <div className="mb-1 flex items-baseline justify-between text-[11px]">
               <span className="text-slate-500">Tiến độ tuần</span>
               <span className="font-mono text-slate-400">
-                {weekTotal.toFixed(1)} / {weekTarget.toFixed(1)} giờ
-                <span className={`ml-2 ${weekTotal >= weekTarget ? "text-teal-400" : "text-amber-400"}`}>
-                  {weekTotal >= weekTarget ? "đủ target" : `còn thiếu ${(weekTarget - weekTotal).toFixed(1)}`}
+                {stdTotal.toFixed(1)} / {weekTarget.toFixed(1)} giờ chuẩn
+                <span className={`ml-2 ${stdTotal >= weekTarget ? "text-teal-400" : "text-amber-400"}`}>
+                  {stdTotal >= weekTarget ? "đủ target" : `còn thiếu ${(weekTarget - stdTotal).toFixed(1)}`}
                 </span>
               </span>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-              <div className={`h-full rounded-full transition-all ${weekTotal >= weekTarget ? "bg-teal-500" : "bg-amber-500"}`} style={{ width: `${targetPct}%` }} />
+              <div className={`h-full rounded-full transition-all ${stdTotal >= weekTarget ? "bg-teal-500" : "bg-amber-500"}`} style={{ width: `${targetPct}%` }} />
             </div>
           </div>
         )}
@@ -2594,13 +2608,19 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                     return <td key={d} className={`px-1 py-3 text-center ${dayCol(d)} ${isOverDaily(d) ? "text-rose-400" : isIncomplete(d) ? "text-amber-400" : "text-slate-200"}`}>{t ? t.toFixed(1) : "—"}</td>;
                   })}
                   {/* v3.6 — tách tổng tuần: giờ công chuẩn + giờ phát sinh (OT + Giờ cố gắng) */}
-                  <td className="whitespace-nowrap px-1 py-3 text-center font-semibold text-teal-400"
-                    title={otTotal + effortTotal > 0 ? `Tổng ${weekTotal.toFixed(1)} giờ = ${(weekTotal - otTotal - effortTotal).toFixed(1)} giờ công chuẩn + ${(otTotal + effortTotal).toFixed(1)} giờ phát sinh (OT ${otTotal.toFixed(1)} + cố gắng ${effortTotal.toFixed(1)})` : undefined}>
-                    {otTotal + effortTotal > 0
-                      ? <>{(weekTotal - otTotal - effortTotal).toFixed(1)}<span className="text-slate-300"> + {(otTotal + effortTotal).toFixed(1)}</span></>
-                      : weekTotal.toFixed(1)}
-                  </td>
+                  <td className="px-2 py-3 text-center font-semibold text-slate-50">{weekTotal.toFixed(1)}</td>
                 </tr>
+                {/* v3.7 — hàng Giờ chuẩn: Giờ chuẩn + OT + Giờ cố gắng = Tổng theo ngày */}
+                {extraTotal > 0 && (
+                  <tr className="border-t border-slate-800 font-mono text-xs">
+                    <td className="px-4 py-2 font-sans text-xs uppercase tracking-wider text-slate-500" title="Tổng theo ngày trừ OT và giờ cố gắng">Giờ chuẩn</td>
+                    {days.map((d) => {
+                      const st = stdHrs(d);
+                      return <td key={d} className={`px-1 py-2 text-center ${dayCol(d)} ${st ? "text-teal-400" : "text-slate-700"}`}>{st ? st.toFixed(1) : "·"}</td>;
+                    })}
+                    <td className="px-2 py-2 text-center font-semibold text-teal-400">{stdTotal.toFixed(1)}</td>
+                  </tr>
+                )}
                 {otTotal > 0 && (
                   <tr className="border-t border-slate-800 font-mono text-xs">
                     <td className="px-4 py-2 font-sans text-xs uppercase tracking-wider text-slate-500">Trong đó OT</td>
