@@ -7,7 +7,7 @@ import {
   Clock, Users, FolderKanban, LayoutDashboard, Download, Plus, Trash2, Save,
   AlertTriangle, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, LogOut, Settings,
   CheckCircle2, Loader2, ListChecks, Lock, RotateCcw, Pencil, Check, X, CalendarDays,
-  Copy, Unlock, Search, Flag, Zap, ClipboardList, MoreHorizontal, Grid3x3, User, Eye, EyeOff, Bell, Send,
+  Copy, Unlock, Search, Flag, Zap, Eraser, ClipboardList, MoreHorizontal, Grid3x3, User, Eye, EyeOff, Bell, Send,
 } from "lucide-react";
 import { fetchConfig, saveConfig, fetchTs, fetchTsChanges, fetchTsStamps, saveTs, deleteAllTs, fetchUsage } from "./data.js";
 import { mergeConfig } from "./merge.js";
@@ -113,7 +113,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v3.2";
+const APP_VERSION = "v3.3";
 /* v2.2 — Thư viện Excel nặng nhất app; chỉ tải khi có người bấm xuất / đọc file Excel. */
 let XLSX_MOD = null;
 const loadXlsx = async () => XLSX_MOD || (XLSX_MOD = await import("xlsx"));
@@ -1640,6 +1640,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   /* ---------- v3.2: khối mở / thu gọn ---------- */
   const poolFor = (pid) => (pid === NO_PROJECT ? [...commonTasks, ...LEAVE_TASKS] : projTasks);
   const rowHasHours = (r) => days.some((d) => (r.days[d] || 0) > 0);
+  const canClear = (r) => !projClosed(r) && days.some((d) => r.days[d] > 0 && !dayLocked(d) && !futureBlocked(r, d));
   // Bảo đảm mọi hạng mục của dự án đều có dòng trong các khối `keys` (dòng trống chưa có giờ), theo đúng thứ tự danh sách tác vụ
   const expandIn = (list, keys) => {
     const out = []; const done = new Set();
@@ -1755,7 +1756,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
         } catch { /* bản tạm hỏng: bỏ qua */ }
       }
       setRows(sortByGroup([...map.values()].filter((r) => days.some((d) => r.days[d] > 0))));
-      setOpenKeys(new Set());
+      setOpenKeys(new Set()); setUndoRow(null);
       setDirty(restored > 0); setLoading(false);
       if (restored > 0) flash("Đã khôi phục giờ tạm lưu chưa gửi trên máy này. Kiểm tra lại rồi bấm Gửi giờ công.");
     })();
@@ -1881,8 +1882,25 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
     mobileInputs.current = []; gridInputs.current = {}; taskSel.current = {};
     setDirty(true);
   };
+  /* v3.3 — xoá hết giờ của một hạng mục trong tuần (chỉ ngày còn sửa được: chưa gửi, không phải ngày tương lai bị chặn) */
+  const clearRow = (i) => {
+    const r = rows[i];
+    if (!r) return;
+    const d2 = { ...r.days };
+    let n = 0;
+    for (const d of days) if (d2[d] > 0 && !dayLocked(d) && !futureBlocked(r, d)) { delete d2[d]; n += 1; }
+    if (!n) return;
+    setUndoRow({ kind: "clear", key: rowKey(r), days: r.days, label: `giờ tuần này của ${taskName(r.taskId)}` });
+    setRows((rs) => rs.map((x, j) => (j === i ? { ...x, days: d2 } : x)));
+    setDirty(true);
+  };
   const undoDelete = () => {
     if (!undoRow) return;
+    if (undoRow.kind === "clear") {
+      setRows((rs) => rs.map((x) => (rowKey(x) === undoRow.key ? { ...x, days: undoRow.days } : x)));
+      setUndoRow(null); setDirty(true);
+      return;
+    }
     const n = [...rows]; n.splice(Math.min(undoRow.at, n.length), 0, ...undoRow.rows);
     const keys = new Set(undoRow.rows.map(groupKey));
     setRows(sortByGroup(undoRow.open ? expandIn(n, keys) : n));
@@ -2015,6 +2033,12 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
     return true;
   };
 
+  // v3.3: dải Hoàn tác tự ẩn sau 10 giây
+  useEffect(() => {
+    if (!undoRow) return undefined;
+    const t = setTimeout(() => setUndoRow(null), 10000);
+    return () => clearTimeout(t);
+  }, [undoRow]);
   /* v2.2 — Có mạng lại mà lần ghi trước hỏng và giờ vẫn còn trên màn hình: tự gửi lại đúng thao tác đó. */
   const net = useNet();
   useEffect(() => {
@@ -2439,15 +2463,18 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                                 className={`disabled:opacity-60 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>
                             )}
                           </div>
+                          {/* v3.3: thùng rác xoá cả khối nằm ngay bên phải ô giai đoạn */}
+                          <div className="shrink-0" style={{ width: GUT }}>
+                            {!gLocked && !locked && (
+                              <button onClick={() => delGroup(g.key)} title="Xoá cả khối dự án này" aria-label="Xoá cả khối dự án này"
+                                className={`${iconBtn} hover:border-rose-800 hover:text-rose-300`}><Trash2 size={16} /></button>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td colSpan={7} className="px-2 pb-1 pt-2.5">
                         <div className="flex items-center justify-end gap-3 text-xs">
-                          {open && <span className="text-slate-400">Nhập giờ rồi bấm <Check size={12} className="inline text-teal-400" /> để tạm lưu</span>}
                           {!open && !blank && gHas && <span className="flex items-center gap-1 text-teal-400"><CheckCircle2 size={13} /> Đã chấm</span>}
-                          {!gLocked && !locked && (
-                            <button onClick={() => delGroup(g.key)} title="Xoá cả khối" className={`${iconBtn} hover:border-rose-800 hover:text-rose-300`}><Trash2 size={14} /></button>
-                          )}
                         </div>
                       </td>
                       <td className="px-2 pb-1 pt-2.5 text-center font-mono text-xs text-slate-500">{gt ? gt.toFixed(1) : ""}</td>
@@ -2493,6 +2520,11 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                                         {r.note && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-teal-400" />}
                                       </button>
                                     )}
+                                    {/* v3.3: chỉ hiện khi hạng mục có giờ còn xoá được trong tuần */}
+                                    {open && canClear(r) && (
+                                      <button onClick={() => clearRow(i)} title="Xoá hết giờ của hạng mục này trong tuần" aria-label="Xoá hết giờ của hạng mục này trong tuần"
+                                        className={`${iconBtn} hover:border-rose-800 hover:text-rose-300`}><Eraser size={14} /></button>
+                                    )}
                                   </div>
                                 </div>
                               </td>
@@ -2500,7 +2532,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                                 <td key={d} className={`px-1 ${open ? "pt-1" : "pt-0.5"} ${pb} ${dayCol(d)}`}>
                                   {open ? (
                                     <input ref={(el) => { gridInputs.current[`${i}:${k}`] = el; }}
-                                      type="number" min="0" max="24" step="0.5" value={r.days[d] ?? ""} placeholder="0" disabled={dayLocked(d) || projClosed(r) || futureBlocked(r, d) || !rowReady(r)}
+                                      type="number" min="0" max="24" step="0.5" value={r.days[d] ?? ""} placeholder="" disabled={dayLocked(d) || projClosed(r) || futureBlocked(r, d) || !rowReady(r)}
                                       onChange={(e) => setHour(i, d, e.target.value)}
                                       onFocus={(e) => e.target.select()}
                                       onKeyDown={(e) => gridKey(e, i, k)}
@@ -2614,7 +2646,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                             <div className="flex shrink-0 items-center gap-2">
                               {open ? (
                                 <input ref={(el) => { mobileInputs.current[i] = el; }}
-                                  type="number" inputMode="decimal" min="0" max="24" step="0.5" placeholder="0" disabled={dayLocked(activeDay) || projClosed(r) || futureBlocked(r, activeDay) || !rowReady(r)}
+                                  type="number" inputMode="decimal" min="0" max="24" step="0.5" placeholder="" disabled={dayLocked(activeDay) || projClosed(r) || futureBlocked(r, activeDay) || !rowReady(r)}
                                   value={r.days[activeDay] ?? ""} onChange={(e) => setHour(i, activeDay, e.target.value)}
                                   onFocus={(e) => e.target.select()}
                                   onKeyDown={(e) => {
@@ -2634,6 +2666,10 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                                   <MoreHorizontal size={16} />
                                   {r.note && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-teal-400" />}
                                 </button>
+                              )}
+                              {open && canClear(r) && (
+                                <button onClick={() => clearRow(i)} title="Xoá hết giờ của hạng mục này trong tuần" aria-label="Xoá hết giờ của hạng mục này trong tuần"
+                                  className={`${iconBtn} h-11 w-11`}><Eraser size={16} /></button>
                               )}
                             </div>
                           </div>
@@ -2698,7 +2734,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
         </div>
       )}
 
-      {undoRow && (
+      {undoRow && !(undoRow.rows && undoRow.rows.some((u) => rows.some((x) => groupKey(x) === groupKey(u)))) && (
         <div className="flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm">
           <span className="min-w-0 flex-1 truncate text-slate-300">Đã xoá {undoRow.label}</span>
           <button onClick={undoDelete} className="shrink-0 text-xs text-teal-400 hover:text-teal-300">Hoàn tác</button>
