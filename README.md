@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v3.8 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v3.9 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v3.8`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v3.9`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,13 @@ Ghi chú:
 | `public/` | Service worker + biểu tượng thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v3.9 — Dashboard cá nhân: nét 44h và chi tiết tuần
+
+- Danh sách từng tuần có **nét dọc định vị giờ chuẩn tuần** (44h, lấy theo Cài đặt → Giờ chuẩn), nhãn "44h chuẩn" ở trên.
+- Khung bên phải đổi thành **Chi tiết tuần**: bấm vào thanh của một tuần (mặc định tuần này) để xem bảng theo ngày (Tổng · Chuẩn · OT · Cố gắng, ngày thiếu tô đỏ) và giờ theo dự án → hạng mục của tuần đó.
+- Dòng "Cả kỳ" chuyển xuống dưới danh sách tuần.
+- Không cần chạy lại `supabase/schema.sql`.
 
 ## Mới ở v3.8 — Dashboard cá nhân của nhân sự (phương án A)
 

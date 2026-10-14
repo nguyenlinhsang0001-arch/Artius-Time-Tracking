@@ -113,7 +113,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v3.8";
+const APP_VERSION = "v3.9";
 /* v2.2 — Thư viện Excel nặng nhất app; chỉ tải khi có người bấm xuất / đọc file Excel. */
 let XLSX_MOD = null;
 const loadXlsx = async () => XLSX_MOD || (XLSX_MOD = await import("xlsx"));
@@ -3562,13 +3562,34 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
       weeks.push(w);
     }
     const sum = (f) => weeks.reduce((a, w) => a + w[f], 0);
-    const scale = Math.max(1, ...weeks.map((w) => Math.max(w.tot, w.target)));
+    // v3.9: giờ chuẩn danh nghĩa một tuần (mặc định 44h) — vẽ nét dọc định vị trên các thanh tuần
+    const weekStd = ["weekday", "weekday", "weekday", "weekday", "weekday", "sat", "sun"].reduce((a, k) => a + (Number(hoursCfg[k]) || 0), 0);
+    const scale = Math.max(1, weekStd * 1.15, ...weeks.map((w) => Math.max(w.tot, w.target)));
     const projTotal = [...byProj.values()].reduce((a, v) => a + v, 0);
     const projects = [...byProj.entries()].sort((a, b) => b[1] - a[1]).map(([id, h]) => ({ id, h, pct: projTotal ? (h / projTotal) * 100 : 0 }));
-    return { weeks, scale, projects, leaveHrs, std: sum("std"), ot: sum("ot"), ef: sum("ef"), tot: sum("tot"), target: sum("target") };
+    return { weeks, scale, weekStd, projects, leaveHrs, std: sum("std"), ot: sum("ot"), ef: sum("ef"), tot: sum("tot"), target: sum("target") };
   }, [data, from, to, todayStr, hoursCfg, holidaySet]);
 
   const cur = view?.weeks.find((w) => w.isCur) || null;
+  // v3.9: tuần đang chọn để xem chi tiết (mặc định tuần này, không có thì tuần mới nhất trong kỳ)
+  const [selWeek, setSelWeek] = useState(null);
+  const sel = view ? (view.weeks.find((w) => w.monday === selWeek) || cur || view.weeks[view.weeks.length - 1] || null) : null;
+  const selDetail = useMemo(() => {
+    if (!sel || !data) return null;
+    const ks = new Set(sel.days.map((x) => x.k));
+    const groups = new Map();   // "proj|phase" hoặc "__leave" -> { label, h, tasks: Map(taskId -> h) }
+    for (const d of data.detail) {
+      if (!ks.has(d.date)) continue;
+      const leave = isLeaveTask(d.taskId);
+      const gk = leave ? "__leave" : `${d.projectId}|${d.projectId === NO_PROJECT ? "" : d.phaseId || DEFAULT_PHASE}`;
+      const g = groups.get(gk) || { key: gk, label: leave ? "Nghỉ phép / vắng mặt" : `${projLabel(d.projectId)}${d.projectId === NO_PROJECT ? "" : ` · ${phaseLabel(d.phaseId || DEFAULT_PHASE)}`}`, leave, h: 0, tasks: new Map() };
+      g.h += d.hours;
+      g.tasks.set(d.taskId, (g.tasks.get(d.taskId) || 0) + d.hours);
+      groups.set(gk, g);
+    }
+    return [...groups.values()].sort((a, b) => (a.leave - b.leave) || b.h - a.h)
+      .map((g) => ({ ...g, tasks: [...g.tasks.entries()].sort((a, b) => (isOtId(a[0]) - isOtId(b[0])) || b[1] - a[1]) }));
+  }, [sel, data]); // eslint-disable-line react-hooks/exhaustive-deps
   const pastMiss = view ? view.weeks.filter((w) => !w.isCur && w.miss.length > 0) : [];
   const anyMiss = !!view && (pastMiss.length > 0 || (cur && cur.miss.length > 0));
   const shortDays = (list) => list.map((k) => `${DOW_SHORT[(parseD(k).getDay() + 6) % 7]} ${dLabel(k)}`).join(", ");
@@ -3625,7 +3646,16 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
           <div className="grid gap-3 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] md:gap-4">
             {/* Từng tuần */}
             <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-900 p-4">
-              <div className="mb-1 text-[11px] uppercase tracking-wider text-slate-500">Từng tuần · giờ chuẩn so với target</div>
+              <div className="mb-1 grid grid-cols-[96px_minmax(0,1fr)_72px] items-end gap-3 md:grid-cols-[110px_minmax(0,1fr)_80px_172px]">
+                <span className="col-span-1 text-[11px] uppercase tracking-wider text-slate-500 md:whitespace-nowrap">Từng tuần</span>
+                {/* nhãn của nét dọc giờ chuẩn tuần */}
+                <div className="relative h-4">
+                  {view.weekStd > 0 && <span className="absolute -translate-x-1/2 whitespace-nowrap rounded bg-slate-800 px-1.5 text-[10px] font-medium text-slate-200"
+                    style={{ left: `${(view.weekStd / view.scale) * 100}%` }}>{view.weekStd}h chuẩn</span>}
+                </div>
+                <span className="text-right text-[10px] text-slate-500">chuẩn / target</span>
+                <span className="hidden text-right text-[10px] text-slate-500 md:block">bấm một tuần để xem chi tiết</span>
+              </div>
               {view.weeks.length === 0 ? <p className="py-3 text-sm text-slate-500">Chưa có tuần nào trong kỳ này.</p> : (
                 <div className="divide-y divide-slate-800">
                   {[...view.weeks].reverse().map((w) => {
@@ -3637,17 +3667,22 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                       : [`Thiếu ${w.miss.length} ngày`, "border-rose-900 bg-rose-950 text-rose-300"];
                     const pct = (v) => `${(v / view.scale) * 100}%`;
                     return (
-                      <div key={w.monday} className="grid grid-cols-[96px_minmax(0,1fr)_72px] items-center gap-3 py-2.5 text-sm md:grid-cols-[110px_minmax(0,1fr)_80px_172px]"
-                        title={`Chuẩn ${w.std.toFixed(1)} · OT ${w.ot.toFixed(1)} · cố gắng ${w.ef.toFixed(1)} · tổng ${w.tot.toFixed(1)} giờ`}>
+                      <button key={w.monday} type="button" onClick={() => setSelWeek(w.monday)} aria-pressed={sel?.monday === w.monday}
+                        className={`-mx-2 grid w-[calc(100%+1rem)] grid-cols-[96px_minmax(0,1fr)_72px] items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm md:grid-cols-[110px_minmax(0,1fr)_80px_172px] ${sel?.monday === w.monday ? "bg-slate-800/80 ring-1 ring-teal-700" : "hover:bg-slate-800/40"}`}
+                        title={`Chuẩn ${w.std.toFixed(1)} · OT ${w.ot.toFixed(1)} · cố gắng ${w.ef.toFixed(1)} · tổng ${w.tot.toFixed(1)} giờ — bấm để xem chi tiết`}>
                         <span className="font-mono text-xs text-slate-300">{w.label}</span>
-                        <div className="flex h-2.5 overflow-hidden rounded-full bg-slate-800">
-                          <i className="block h-full bg-teal-400" style={{ width: pct(w.std) }} />
-                          <i className="block h-full bg-emerald-400" style={{ width: pct(w.ot) }} />
-                          <i className="block h-full bg-violet-400" style={{ width: pct(w.ef) }} />
+                        <div className="relative">
+                          <div className="flex h-2.5 overflow-hidden rounded-full bg-slate-800">
+                            <i className="block h-full bg-teal-400" style={{ width: pct(w.std) }} />
+                            <i className="block h-full bg-emerald-400" style={{ width: pct(w.ot) }} />
+                            <i className="block h-full bg-violet-400" style={{ width: pct(w.ef) }} />
+                          </div>
+                          {/* v3.9: nét dọc định vị giờ chuẩn tuần (44h) */}
+                          {view.weekStd > 0 && <span className="pointer-events-none absolute -bottom-2.5 -top-2.5 w-0.5 -translate-x-1/2 bg-slate-200/80" style={{ left: pct(view.weekStd) }} />}
                         </div>
                         <span className={`text-right font-mono text-xs ${w.miss.length === 0 ? "text-teal-400" : w.isCur ? "text-amber-400" : "text-rose-400"}`}>{w.std.toFixed(1)} / {w.target.toFixed(0)}</span>
                         <span className={`hidden justify-self-end whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] md:inline-block ${pill[1]}`}>{pill[0]}</span>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -3656,41 +3691,76 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                 <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-teal-400" />Giờ chuẩn</span>
                 <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-400" />OT</span>
                 <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-violet-400" />Giờ cố gắng</span>
+                <span className="flex items-center gap-1.5"><span className="h-3 w-0.5 bg-slate-200/80" />{view.weekStd}h chuẩn / tuần</span>
                 <span className="text-slate-600">"+11.5" là giờ phát sinh (OT + cố gắng)</span>
               </div>
-            </div>
-
-            {/* Dự án + cả kỳ */}
-            <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-900 p-4">
-              <div className="mb-1 text-[11px] uppercase tracking-wider text-slate-500">Bạn làm cho dự án nào</div>
-              {view.projects.length === 0 && view.leaveHrs === 0 ? <p className="py-2 text-sm text-slate-500">Chưa có giờ nào trong kỳ.</p> : (
-                <div className="divide-y divide-slate-800">
-                  {view.projects.map((p) => (
-                    <div key={p.id} className="py-2 text-sm">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="min-w-0 truncate text-slate-200">{projLabel(p.id)}</span>
-                        <span className="shrink-0 font-mono text-xs text-slate-300">{p.h.toFixed(1)} h · {Math.round(p.pct)}%</span>
-                      </div>
-                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-teal-500" style={{ width: `${p.pct}%` }} /></div>
-                    </div>
-                  ))}
-                  {view.leaveHrs > 0 && (
-                    <div className="flex items-baseline justify-between py-2 text-sm">
-                      <span className="text-sky-300">Nghỉ phép / vắng mặt</span><span className="font-mono text-xs text-slate-300">{view.leaveHrs.toFixed(1)} h</span>
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="mt-3 border-t border-slate-800 pt-3">
-                <div className="mb-1 text-[11px] uppercase tracking-wider text-slate-500">Cả kỳ</div>
-                <div className="font-mono text-[13px] leading-7">
+              {/* cả kỳ chuyển xuống đây; khung bên phải dành cho chi tiết tuần */}
+              <div className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-slate-800 pt-2.5">
+                <span className="text-[11px] uppercase tracking-wider text-slate-500">Cả kỳ</span>
+                <span className="font-mono text-[13px]">
                   <span className="text-teal-400">{view.std.toFixed(1)}</span> chuẩn <span className="text-slate-600">+</span>{" "}
                   <span className="text-emerald-400">{view.ot.toFixed(1)}</span> OT <span className="text-slate-600">+</span>{" "}
                   <span className="text-violet-400">{view.ef.toFixed(1)}</span> cố gắng <span className="text-slate-600">=</span>{" "}
                   <b className="text-slate-50">{view.tot.toFixed(1)}</b> giờ
-                </div>
-                <div className="text-[11px] text-slate-500">Target đến hôm nay: {view.target.toFixed(0)} giờ chuẩn</div>
+                </span>
+                <span className="text-[11px] text-slate-500">· target đến hôm nay {view.target.toFixed(0)} giờ chuẩn</span>
               </div>
+            </div>
+
+            {/* v3.9 — Chi tiết tuần đang chọn: theo ngày ở trên, theo dự án → hạng mục ở dưới */}
+            <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-900 p-4">
+              {!sel ? <p className="py-2 text-sm text-slate-500">Chọn một tuần bên trái để xem chi tiết.</p> : (<>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[11px] uppercase tracking-wider text-slate-500">Chi tiết tuần <span className="font-mono normal-case tracking-normal text-slate-200">{sel.label}</span></span>
+                  <span className="font-mono text-sm font-semibold text-slate-50">{sel.tot.toFixed(1)} <span className="text-[11px] font-normal text-slate-500">giờ</span></span>
+                </div>
+                <table className="mt-2 w-full font-mono text-xs">
+                  <thead>
+                    <tr className="text-[10px] uppercase tracking-wider text-slate-500">
+                      <th className="py-1 text-left font-sans font-medium">Ngày</th><th className="py-1 text-right font-medium">Tổng</th>
+                      <th className="py-1 text-right font-medium text-teal-500">Chuẩn</th><th className="py-1 text-right font-medium text-emerald-500">OT</th><th className="py-1 text-right font-medium text-violet-400">CG</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    {sel.days.filter((x) => !(x.st === "off" && parseD(x.k).getDay() === 0)).map((x) => {
+                      const n = (v, c) => <td className={`py-1.5 text-right ${v ? c : "text-slate-700"}`}>{v ? v.toFixed(1) : "·"}</td>;
+                      return (
+                        <tr key={x.k} className={x.st === "fut" ? "opacity-40" : ""}>
+                          <td className={`py-1.5 font-sans ${x.st === "miss" ? "text-rose-400" : "text-slate-300"}`}>{shortDays([x.k])}{x.st === "miss" && <span className="ml-1.5 text-[10px]">thiếu</span>}</td>
+                          <td className={`py-1.5 text-right font-semibold ${x.st === "miss" ? "text-rose-400" : x.tot ? "text-slate-100" : "text-slate-700"}`}>{x.tot ? x.tot.toFixed(1) : "—"}</td>
+                          {n(x.std, "text-teal-400")}{n(x.ot, "text-emerald-400")}{n(x.ef, "text-violet-400")}
+                        </tr>
+                      );
+                    })}
+                    <tr className="border-t border-slate-700 font-semibold">
+                      <td className="py-1.5 font-sans text-slate-400">Cả tuần</td><td className="py-1.5 text-right text-slate-50">{sel.tot.toFixed(1)}</td>
+                      <td className="py-1.5 text-right text-teal-400">{sel.std.toFixed(1)}</td><td className="py-1.5 text-right text-emerald-400">{sel.ot.toFixed(1)}</td><td className="py-1.5 text-right text-violet-400">{sel.ef.toFixed(1)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <div className="mt-4 text-[11px] uppercase tracking-wider text-slate-500">Theo dự án · hạng mục</div>
+                {!selDetail || selDetail.length === 0 ? <p className="py-2 text-sm text-slate-500">Tuần này chưa có giờ nào.</p> : (
+                  <div className="mt-1 divide-y divide-slate-800">
+                    {selDetail.map((g) => (
+                      <div key={g.key} className="py-2">
+                        <div className="flex items-baseline justify-between gap-2 text-sm">
+                          <span className={`min-w-0 truncate ${g.leave ? "text-sky-300" : "text-slate-200"}`}>{g.label}</span>
+                          <span className="shrink-0 font-mono text-xs font-semibold text-slate-100">{g.h.toFixed(1)} h · {sel.tot ? Math.round((g.h / sel.tot) * 100) : 0}%</span>
+                        </div>
+                        <div className="mt-1 space-y-0.5">
+                          {g.tasks.map(([tid, h]) => (
+                            <div key={tid} className="flex items-baseline justify-between gap-2 pl-3 text-xs">
+                              <span className={`min-w-0 truncate ${isOtId(tid) ? "text-emerald-400" : "text-slate-400"}`}>{isOtId(tid) && taskMap.get(tid) ? `Tăng ca ${otText(taskMap.get(tid))}` : taskLabel(tid)}</span>
+                              <span className={`shrink-0 font-mono ${isOtId(tid) ? "text-emerald-400" : "text-slate-300"}`}>{h.toFixed(1)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>)}
             </div>
           </div>
         </>
