@@ -634,6 +634,8 @@ const syncRoles = (list) => {
 };
 const roleInfo = (id) => ROLES.find((r) => r.id === id) || null;
 const roleLabel = (id) => { const r = roleInfo(id); return r ? `${r.id} · ${r.name}` : ""; };
+// Tên vai trò hiển thị cho nhân sự (VD "Team Leader"), không kèm mã
+const roleTitle = (id) => roleInfo(id)?.name || "";
 
 /* Hạng mục cũ chưa khai bộ phận thì suy từ nhóm, để dữ liệu có sẵn vẫn dùng được ngay.
    depts rỗng nghĩa là hạng mục dùng chung — mọi bộ phận đều chọn được. */
@@ -2631,7 +2633,7 @@ function HoursMatrix({ cfg, ym, flash, onPickEmp }) {
     const XLSX = await loadXlsx();
     const wb = XLSX.utils.book_new();
     const mtx = shown.map((e) => {
-      const row = { "Mã": e.code || "", "Nhân sự": e.name, "Bộ phận": e.dept, "Vai trò": e.role || "" };
+      const row = { "Mã": e.code || "", "Nhân sự": e.name, "Bộ phận": e.dept, "Vai trò": roleTitle(e.role) };
       const m = view.cell.get(e.id);
       for (const c of allCols) row[projLabel(c)] = m?.get(c) || 0;
       row["Tổng giờ"] = view.empTot.get(e.id) || 0;
@@ -2648,12 +2650,12 @@ function HoursMatrix({ cfg, ym, flash, onPickEmp }) {
       .sort((a, b) => (empMap.get(a.empId)?.name || "").localeCompare(empMap.get(b.empId)?.name || "") || a.date.localeCompare(b.date))
       .map((d) => {
         const e = empMap.get(d.empId);
-        return { "Mã": e?.code || "", "Nhân sự": e?.name || "(đã xoá)", "Bộ phận": e?.dept || "", "Ngày": d.date, "Thứ": DOW[(parseD(d.date).getDay() + 6) % 7],
+        return { "Mã": e?.code || "", "Nhân sự": e?.name || "(đã xoá)", "Bộ phận": e?.dept || "", "Vai trò": roleTitle(e?.role), "Ngày": d.date, "Thứ": DOW[(parseD(d.date).getDay() + 6) % 7],
           "Dự án": projLabel(d.projectId), "Giai đoạn": d.projectId === NO_PROJECT ? "" : phaseLabel(d.phaseId), "Hạng mục": taskLabel(d.taskId), "Ghi chú": d.note || "", "Giờ": d.hours };
       });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), "Chi tiết");
     const need = mondaysDue(ym);
-    const st = shown.map((e) => { const miss = need.filter((m) => !weekDone(e.id, m)); return { "Nhân sự": e.name, "Số tuần cần nộp": need.length, "Đã nộp": need.length - miss.length, "Thiếu": miss.length, "Tuần thiếu": miss.map(dLabel).join(", ") }; });
+    const st = shown.map((e) => { const miss = need.filter((m) => !weekDone(e.id, m)); return { "Nhân sự": e.name, "Vai trò": roleTitle(e.role), "Số tuần cần nộp": need.length, "Đã nộp": need.length - miss.length, "Thiếu": miss.length, "Tuần thiếu": miss.map(dLabel).join(", ") }; });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(st), "Tình trạng nộp");
     const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
@@ -3088,8 +3090,9 @@ function EmployeeSettings({ cfg, empId }) {
           <div><span className="text-slate-500">Họ và tên: </span><span className="text-slate-100">{emp?.name}</span></div>
           {emp?.code && <div><span className="text-slate-500">Mã nhân viên: </span><span className="font-mono text-slate-100">{emp.code}</span></div>}
           <div><span className="text-slate-500">Bộ phận: </span><span className="text-slate-100">{emp?.dept}</span></div>
+          <div><span className="text-slate-500">Vai trò: </span><span className="text-slate-100">{roleTitle(emp?.role) || <span className="text-slate-500">Chưa có</span>}</span></div>
         </div>
-        <p className="mt-3 text-xs text-slate-500">Muốn đổi tên, mã nhân viên hoặc bộ phận, liên hệ Ban quản lý — nhân sự không tự sửa được thông tin này.</p>
+        <p className="mt-3 text-xs text-slate-500">Muốn đổi tên, mã nhân viên, bộ phận hoặc vai trò, liên hệ Ban quản lý — nhân sự không tự sửa được thông tin này.</p>
       </Panel>
 
       <Panel title="Thông báo">
@@ -3451,6 +3454,7 @@ function Dashboard({ cfg, flash }) {
   const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
   const empName = (id) => empMap.get(id)?.name || "(đã xoá)";
   const empDept = (id) => empMap.get(id)?.dept || "";
+  const empTitle = (id) => roleTitle(empMap.get(id)?.role);
   const projLabel = (id) => { if (id === NO_PROJECT) return "Khác"; const p = projMapById.get(id); return p ? (p.code ? `[${p.code}] ${p.name}` : p.name) : "(dự án đã xoá)"; };
   const taskLabel = (id) => { const t = taskMap.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
 
@@ -3514,7 +3518,7 @@ function Dashboard({ cfg, flash }) {
     // sort trên bản sao — tránh sửa trực tiếp mảng đang nằm trong state
     const detail = [...agg.detail].sort((a, b) => a.date.localeCompare(b.date)).map((d) => ({
       "Ngày": d.date, "Thứ": DOW[(parseD(d.date).getDay() + 6) % 7],
-      "Nhân sự": empName(d.empId), "Bộ phận": empDept(d.empId),
+      "Nhân sự": empName(d.empId), "Bộ phận": empDept(d.empId), "Vai trò": empTitle(d.empId),
       "Dự án": projLabel(d.projectId), "Giai đoạn": d.projectId === NO_PROJECT || isLeaveTask(d.taskId) ? "" : phaseLabel(d.phaseId),
       "Hạng mục": taskLabel(d.taskId), "Ghi chú": d.note || "", "Giờ": d.hours,
     }));
@@ -3541,20 +3545,20 @@ function Dashboard({ cfg, flash }) {
       "Nội dung": p.desc,
     }))), "Theo giai đoạn");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sortDesc(agg.byEmp, (k, v) => ({
-      "Nhân sự": empName(k), "Bộ phận": empDept(k), "Tổng giờ": v,
+      "Nhân sự": empName(k), "Bộ phận": empDept(k), "Vai trò": empTitle(k), "Tổng giờ": v,
       "Giờ OT": +(agg.otByEmp.get(k) || 0).toFixed(1),
       "Giờ thường": +(v - (agg.otByEmp.get(k) || 0)).toFixed(1),
     }))), "Theo nhân sự");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sortDesc(agg.byTask, (k, v) => ({ "Hạng mục": taskLabel(k), "Tổng giờ": v }))), "Theo hạng mục");
     const projIds = [...agg.byProj.keys()];
     const mtx = [...agg.matrix.entries()].map(([eid, mm]) => {
-      const row = { "Nhân sự": empName(eid), "Bộ phận": empDept(eid) };
+      const row = { "Nhân sự": empName(eid), "Bộ phận": empDept(eid), "Vai trò": empTitle(eid) };
       let t = 0; for (const pid of projIds) { row[projLabel(pid)] = mm.get(pid) || 0; t += mm.get(pid) || 0; }
       row["Tổng"] = t; return row;
     });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(mtx), "Ma trận NS x DA");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data.status.filter((s) => matchEmp(s.empId)).map((s) => ({
-      "Tháng": s.ym, "Nhân sự": empName(s.empId), "Số tuần cần nộp": s.need,
+      "Tháng": s.ym, "Nhân sự": empName(s.empId), "Vai trò": empTitle(s.empId), "Số tuần cần nộp": s.need,
       "Đã nộp": s.done, "Thiếu": s.need - s.done, "Tuần thiếu": s.missing.map(dLabel).join(", "),
     }))), "Tình trạng nộp");
     const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
@@ -4259,7 +4263,7 @@ function Employees({ cfg, saveCfg, flash }) {
     const XLSX = await loadXlsx();
     const rows = visible.filter((e) => accByEmp.has(e.id)).map((e) => {
       const a = accByEmp.get(e.id);
-      return { "Mã NV": e.code || "", "Họ và tên": e.name, "Phòng ban": e.dept, "Vai trò": e.role ? roleLabel(e.role) : "", "Tên đăng nhập": a.username, "Mật khẩu": a.password, "Trạng thái": a.disabled ? "Đã khoá" : "Đang dùng" };
+      return { "Mã NV": e.code || "", "Họ và tên": e.name, "Phòng ban": e.dept, "Vai trò": roleTitle(e.role), "Tên đăng nhập": a.username, "Mật khẩu": a.password, "Trạng thái": a.disabled ? "Đã khoá" : "Đang dùng" };
     });
     if (!rows.length) return flash("Không có tài khoản nào trong danh sách đang lọc.", "err");
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -4335,7 +4339,7 @@ function Employees({ cfg, saveCfg, flash }) {
   const empTab = (
     <div className={panelCls}>
       <div className="grid grid-cols-2 gap-2 p-3 xl:grid-cols-[minmax(200px,1fr)_200px_200px_auto_auto]">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm theo tên, mã, tên đăng nhập" className={`col-span-2 xl:col-span-1 ${inputCls}`} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm theo tên, mã, vai trò, tên đăng nhập" className={`col-span-2 xl:col-span-1 ${inputCls}`} />
         <select value={fDept} onChange={(e) => setFDept(e.target.value)} className={selectCls}>
           <option value="">Mọi phòng ban</option>
           {deptOrder.map((d) => <option key={d}>{d}</option>)}
