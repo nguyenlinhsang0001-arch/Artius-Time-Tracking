@@ -727,6 +727,7 @@ const DEFAULT_LEAVE_TYPES = [
 ];
 const LEAVE_TASK_PREFIX = "LV_";
 const NO_PROJECT = "__none__";
+const NO_PHASE = "?";   // v3.0: dòng mới, giai đoạn chưa chọn (dự án "" = chưa chọn, hạng mục "" = chưa chọn)
 /* LEAVE_TYPES / LEAVE_TASKS là bản sống: App chép cfg.leaveTypes vào đây ở mỗi lần render (syncLeave),
    quản lý thêm / sửa / xoá loại nghỉ ở tab Tác vụ. */
 const LEAVE_PALETTE = [
@@ -1597,8 +1598,10 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   const phaseOpen = (pid, ph) => !!phaseInfo(ph)?.active && (admin || projBudgets(cfg.projects.find((p) => p.id === pid))[ph] > 0);
   const openPhasesOf = (pid) => activePhases().filter((ph) => phaseOpen(pid, ph.id));
   const fitPhase = (pid, ph) => (pid === NO_PROJECT || phaseOpen(pid, ph) ? ph : openPhasesOf(pid)[0]?.id || ph);
-  const projClosed = (r) => !admin && r.projectId !== NO_PROJECT
-    && (!cfg.projects.some((p) => p.id === r.projectId && p.active) || !phaseOpen(r.projectId, r.phaseId || DEFAULT_PHASE));
+  const projClosed = (r) => !admin && r.projectId !== NO_PROJECT && r.projectId !== ""
+    && (!cfg.projects.some((p) => p.id === r.projectId && p.active) || (r.phaseId !== NO_PHASE && !phaseOpen(r.projectId, r.phaseId || DEFAULT_PHASE)));
+  // v3.0 — dòng đã chọn đủ Dự án (+ Giai đoạn nếu là dự án) + Hạng mục thì mới nhập giờ / lưu được
+  const rowReady = (r) => r.projectId !== "" && !!r.taskId && (r.projectId === NO_PROJECT || r.phaseId !== NO_PHASE);
   const dayTotal = (d) => rows.reduce((s, r) => s + (r.days[d] || 0), 0);
   const dayName = (d) => `${DOW[(parseD(d).getDay() + 6) % 7]} ${dLabel(d)}`;
   const activeProjects = cfg.projects.filter((p) => p.active && (admin || openPhasesOf(p.id).length > 0));
@@ -1690,22 +1693,13 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   };
 
   // Nút "Thêm dòng" nay chỉ đưa con trỏ về ô thêm nhanh; dòng được tạo từ ô đó hoặc từ chip
-  /* v2.9 — "Thêm dòng" thêm ngay một dòng trống: dự án đang làm (hoặc dự án mở đầu tiên) với tác vụ dự án chưa dùng;
-     không có tác vụ dự án nào thì thêm vào "Khác". Sau đó chọn lại Dự án / Giai đoạn / Hạng mục bằng các ô chọn. */
+  /* v3.0 — "Thêm dòng" tạo một khối TRỐNG ở cuối bảng: Dự án, Giai đoạn, Hạng mục đều để trống, người dùng tự chọn.
+     Mỗi lúc chỉ có một khối trống; thêm hạng mục vào khối đã có thì dùng nút + ở đầu khối. */
   const focusQuick = () => {
-    const have = new Set(rows.map(rowKey));
-    const projs = [...myProjects, ...activeProjects.filter((p) => !myProjects.some((m) => m.id === p.id))];
-    for (const p of projs) {
-      for (const t of projTasks) {
-        const c = { projectId: p.id, phaseId: fitPhase(p.id, guessPhase(t.id, cfg.tasks)), taskId: t.id };
-        if (!have.has(rowKey(c))) return addCombo(c, "task");
-      }
-    }
-    for (const t of [...commonTasks, ...LEAVE_TASKS]) {
-      const c = { projectId: NO_PROJECT, phaseId: DEFAULT_PHASE, taskId: t.id };
-      if (!have.has(rowKey(c))) return addCombo(c, "task");
-    }
-    flash("Đã dùng hết các hạng mục có thể chọn trong tuần này.", "err");
+    const at = rows.findIndex((r) => !rowReady(r));
+    if (at >= 0) { flash("Chọn xong Dự án / Giai đoạn / Hạng mục cho dòng đang trống trước đã.", "err"); return; }
+    const next = [...rows, { projectId: "", phaseId: NO_PHASE, taskId: "", note: "", days: {} }];
+    setRows(next); setDirty(true);
   };
 
   /* Tính dòng mới ngoài setRows rồi mới ghi state — không đặt side effect trong hàm cập nhật,
@@ -1840,6 +1834,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
       });
       const map = new Map(keep.map((r) => [rowKey(r), r]));
       for (const r of rows) {
+        if (!rowReady(r)) continue;   // v3.0: dòng chưa chọn đủ thì không ghi
         if (projClosed(r)) continue;
         const k = rowKey(r);
         const had = map.get(k);
@@ -1945,7 +1940,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   // Đổi dự án hoặc giai đoạn ở đầu nhóm thì áp cho toàn bộ hạng mục bên trong
   const updGroup = (gk, patch) => {
     // v2.5: đổi dự án thì giai đoạn tự chuyển sang giai đoạn có giờ dự kiến của dự án mới (nếu giai đoạn cũ không có)
-    let next = rows.map((r) => (groupKey(r) === gk ? { ...r, ...patch, ...(patch.projectId ? { phaseId: patch.projectId === NO_PROJECT ? DEFAULT_PHASE : fitPhase(patch.projectId, patch.phaseId || r.phaseId || DEFAULT_PHASE) } : {}) } : r));
+    // v3.0: khối trống chọn dự án lần đầu thì giai đoạn để trống cho người dùng tự chọn ("Khác" thì không có giai đoạn)
+    let next = rows.map((r) => (groupKey(r) === gk ? { ...r, ...patch, ...(patch.projectId ? { phaseId: patch.projectId === NO_PROJECT ? DEFAULT_PHASE : (r.projectId === "" || r.phaseId === NO_PHASE) ? NO_PHASE : fitPhase(patch.projectId, patch.phaseId || r.phaseId || DEFAULT_PHASE) } : {}) } : r));
     /* v2.9 — chuyển khối sang "Khác" thì hạng mục phải là tác vụ chung / vắng mặt; chuyển sang dự án thì phải là tác vụ dự án.
        Hạng mục không hợp lệ được đổi sang hạng mục hợp lệ đầu tiên chưa dùng trong khối. */
     if (patch.projectId) {
@@ -1958,7 +1954,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
       const used = new Set(next.filter((r, i) => groupKey(r) === newKey && (!moving.has(i) || ok(r.taskId))).map((r) => r.taskId));
       let fail = false;
       next = next.map((r, i) => {
-        if (!moving.has(i) || ok(r.taskId)) return r;
+        if (!moving.has(i) || !r.taskId || ok(r.taskId)) return r;   // hạng mục chưa chọn thì giữ trống
         const t = pool.find((x) => !used.has(x.id));
         if (!t) { fail = true; return r; }
         used.add(t.id);
@@ -2126,6 +2122,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   const targetPct = weekTarget > 0 ? Math.min(100, (weekTotal / weekTarget) * 100) : 0;
   const projOptions = (r) => (
     <>
+      {r.projectId === "" && <option value="" disabled>— Chọn dự án —</option>}
       <option value={NO_PROJECT}>Khác</option>
       {activeProjects.map((p) => <option key={p.id} value={p.id}>{p.code ? `[${p.code}] ` : ""}{p.name}</option>)}
       {r.projectId !== NO_PROJECT && !activeProjects.some((p) => p.id === r.projectId) && <option value={r.projectId}>{projName(r.projectId)} ({cfg.projects.some((p) => p.id === r.projectId && p.active) ? "chưa có giờ dự kiến" : "đã đóng"})</option>}
@@ -2133,11 +2130,12 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   );
   // v2.5: chỉ liệt kê giai đoạn có giờ dự kiến của dự án (quản lý thấy mọi giai đoạn đang dùng)
   const phaseOptions = (cur, pid) => {
-    const list = pid && pid !== NO_PROJECT ? openPhasesOf(pid) : activePhases();
+    const list = pid === "" ? [] : pid && pid !== NO_PROJECT ? openPhasesOf(pid) : activePhases();
     return (
       <>
+        {cur === NO_PHASE && <option value={NO_PHASE} disabled>— Chọn giai đoạn —</option>}
         {list.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.name}</option>)}
-        {cur && !list.some((p) => p.id === cur) && (
+        {cur && cur !== NO_PHASE && !list.some((p) => p.id === cur) && (
           <option value={cur}>{phaseLabel(cur)}{!phaseInfo(cur) ? "" : !phaseInfo(cur).active ? " (ngừng dùng)" : " (chưa có giờ dự kiến)"}</option>
         )}
       </>
@@ -2152,6 +2150,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
     const listed = khac ? [...commonTasks, ...LEAVE_TASKS] : projTasks;
     return (
       <>
+        {!r.taskId && <option value="" disabled>— Chọn hạng mục —</option>}
         {khac ? (
           <>
             <optgroup label="Công việc chung">
@@ -2167,7 +2166,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
           </optgroup>
         )}
         {/* dòng cũ trỏ tới hạng mục không còn trong danh sách vẫn giữ được, không bị đổi ngầm */}
-        {!listed.some((t) => t.id === r.taskId) && (
+        {r.taskId && !listed.some((t) => t.id === r.taskId) && (
           <option value={r.taskId}>{taskName(r.taskId)}{!cfg.tasks.some((t) => t.id === r.taskId) ? "" : commonIds.has(r.taskId) ? " (tác vụ chung — dữ liệu cũ)" : " (ngoài bộ phận)"}</option>
         )}
       </>
@@ -2290,7 +2289,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                         <div className="flex items-center gap-2">
                           {/* nút + mở đầu khối; ô hạng mục bên dưới chừa đúng bề rộng này để thẳng hàng */}
                           <div className="shrink-0" style={{ width: GUT }}>
-                            {!locked && !projClosed(g) && (
+                            {!locked && !projClosed(g) && g.projectId !== "" && g.phaseId !== NO_PHASE && (
                               <button onClick={() => addTaskToGroup(g)} title="Thêm hạng mục vào dự án và giai đoạn này"
                                 className={`${iconBtn} hover:border-teal-700 hover:text-teal-300`}><Plus size={15} /></button>
                             )}
@@ -2301,7 +2300,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                           </div>
                           <div className="min-w-0" style={{ flexBasis: "42%", flexGrow: 1 }}>
                             {!noProj && (
-                              <select disabled={gLocked} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })}
+                              <select disabled={gLocked || g.projectId === ""} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })}
                                 title={phaseInfo(g.phaseId)?.desc}
                                 className={`disabled:opacity-50 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>
                             )}
@@ -2323,10 +2322,10 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                             <div className="flex items-center gap-2">
                               <div className="shrink-0" style={{ width: GUT }} />
                               <div className="min-w-0 flex-1">
-                                <select ref={(el) => { taskSel.current[i] = el; }} disabled={rowLocked(r)} value={r.taskId} onChange={(e) => upd(i, { taskId: e.target.value })} className={`disabled:opacity-60 ${selectCls}`}>{taskOptions(r)}</select>
+                                <select ref={(el) => { taskSel.current[i] = el; }} disabled={rowLocked(r) || r.projectId === ""} value={r.taskId} onChange={(e) => upd(i, { taskId: e.target.value })} className={`disabled:opacity-60 ${selectCls}`}>{taskOptions(r)}</select>
                               </div>
                               <div className="flex shrink-0 items-center gap-1">
-                                <button disabled={locked || projClosed(r) || isLeaveTask(r.taskId)} onClick={() => fillStandard(i)} title="Điền giờ chuẩn cho cả tuần vào các ô còn trống"
+                                <button disabled={locked || projClosed(r) || isLeaveTask(r.taskId) || !rowReady(r)} onClick={() => fillStandard(i)} title="Điền giờ chuẩn cho cả tuần vào các ô còn trống"
                                   className={`${iconBtn} disabled:opacity-40`}><Zap size={14} /></button>
                                 <button onClick={() => setNoteRow(i)} title={r.note || "Thêm mô tả"}
                                   className={`${iconBtn} relative ${r.note ? "border-teal-800 text-teal-400" : ""}`}>
@@ -2340,7 +2339,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                           {days.map((d, k) => (
                             <td key={d} className={`px-1 pt-1.5 ${pb} ${dayCol(d)}`}>
                               <input ref={(el) => { gridInputs.current[`${i}:${k}`] = el; }}
-                                type="number" min="0" max="24" step="0.5" value={r.days[d] ?? ""} placeholder="0" disabled={dayLocked(d) || projClosed(r) || futureBlocked(r, d)}
+                                type="number" min="0" max="24" step="0.5" value={r.days[d] ?? ""} placeholder="0" disabled={dayLocked(d) || projClosed(r) || futureBlocked(r, d) || !rowReady(r)}
                                 onChange={(e) => setHour(i, d, e.target.value)}
                                 onFocus={(e) => e.target.select()}
                                 onKeyDown={(e) => gridKey(e, i, k)}
@@ -2426,13 +2425,13 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                 <div key={g.key} className="rounded-xl border border-slate-800 bg-slate-900 p-3">
                   {/* Đầu thẻ: dự án + giai đoạn dùng chung cho mọi hạng mục bên trong */}
                   <select disabled={gLocked} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })} className={`disabled:opacity-50 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
-                  {!noProj && <select disabled={gLocked} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })} className={`mt-2 disabled:opacity-50 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>}
+                  {!noProj && <select disabled={gLocked || g.projectId === ""} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })} className={`mt-2 disabled:opacity-50 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>}
 
                   {g.items.map(({ r, i }) => {
                     const rt = days.reduce((s, d) => s + (r.days[d] || 0), 0);
                     return (
                       <div key={i} className="mt-3 border-t border-slate-800 pt-3">
-                        <select ref={(el) => { taskSel.current[i] = el; }} disabled={rowLocked(r)} value={r.taskId} onChange={(e) => upd(i, { taskId: e.target.value })} className={`disabled:opacity-60 ${selectCls}`}>{taskOptions(r)}</select>
+                        <select ref={(el) => { taskSel.current[i] = el; }} disabled={rowLocked(r) || r.projectId === ""} value={r.taskId} onChange={(e) => upd(i, { taskId: e.target.value })} className={`disabled:opacity-60 ${selectCls}`}>{taskOptions(r)}</select>
                         <div className="mt-2 flex items-center justify-between gap-3">
                           <div className="min-w-0">
                             <div className="text-xs text-slate-500">Giờ ngày {dLabel(activeDay)}</div>
@@ -2440,7 +2439,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                           </div>
                           <div className="flex shrink-0 items-center gap-2">
                             <input ref={(el) => { mobileInputs.current[i] = el; }}
-                              type="number" inputMode="decimal" min="0" max="24" step="0.5" placeholder="0" disabled={dayLocked(activeDay) || projClosed(r) || futureBlocked(r, activeDay)}
+                              type="number" inputMode="decimal" min="0" max="24" step="0.5" placeholder="0" disabled={dayLocked(activeDay) || projClosed(r) || futureBlocked(r, activeDay) || !rowReady(r)}
                               value={r.days[activeDay] ?? ""} onChange={(e) => setHour(i, activeDay, e.target.value)}
                               onFocus={(e) => e.target.select()}
                               onKeyDown={(e) => {
@@ -2463,7 +2462,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                     );
                   })}
 
-                  {!locked && !projClosed(g) && (
+                  {!locked && !projClosed(g) && g.projectId !== "" && g.phaseId !== NO_PHASE && (
                     <button onClick={() => addTaskToGroup(g)}
                       className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-slate-700 py-2 text-xs text-slate-400 hover:border-teal-700 hover:text-teal-300">
                       <Plus size={14} /> Hạng mục
