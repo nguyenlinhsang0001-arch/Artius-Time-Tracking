@@ -1602,7 +1602,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   const gridInputs = useRef({});                // ô nhập trên lưới desktop, khoá "dòng:cột"
   const taskSel = useRef({});                   // ô chọn hạng mục của từng dòng, để nhảy con trỏ vào sau khi bấm +
   // báo lên App để chặn đổi tab khi còn thay đổi chưa lưu
-  const [undoRow, setUndoRow] = useState(null); // khối/dòng vừa xoá { rows, at, label }, giữ lại để hoàn tác
+  const [undoRow, setUndoRow] = useState(null);
+  const [showSplit, setShowSplit] = useState(false); // v3.7: chân bảng — mở/thu gọn 3 hàng Giờ chuẩn · OT · Giờ cố gắng // khối/dòng vừa xoá { rows, at, label }, giữ lại để hoàn tác
   /* v3.2 — khối đang MỞ (đang nhập giờ): hiện toàn bộ hạng mục của dự án để gõ giờ thẳng vào, không chọn từ danh sách.
      Bấm ✓ thì khối thu gọn, chỉ giữ hạng mục có giờ, và giờ được tạm lưu trên máy (localStorage) tới khi Gửi. */
   const [openKeys, setOpenKeys] = useState(() => new Set());
@@ -2600,49 +2601,64 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                   </tbody>
                 );
               })}
+              {/* v3.7 (phương án A) — chân bảng đọc như phép cộng: Giờ chuẩn + OT + Giờ cố gắng = Tổng theo ngày.
+                  Ba hàng chi tiết thu gọn mặc định; bấm nút mũi tên cạnh "Tổng theo ngày" để mở ra. */}
               <tfoot>
-                <tr className="border-t border-slate-700 font-mono text-sm">
-                  <td className="px-4 py-3 font-sans text-xs uppercase tracking-wider text-slate-500">Tổng theo ngày</td>
-                  {days.map((d) => {
-                    const t = dayTotal(d);
-                    return <td key={d} className={`px-1 py-3 text-center ${dayCol(d)} ${isOverDaily(d) ? "text-rose-400" : isIncomplete(d) ? "text-amber-400" : "text-slate-200"}`}>{t ? t.toFixed(1) : "—"}</td>;
-                  })}
-                  {/* v3.6 — tách tổng tuần: giờ công chuẩn + giờ phát sinh (OT + Giờ cố gắng) */}
-                  <td className="px-2 py-3 text-center font-semibold text-slate-50">{weekTotal.toFixed(1)}</td>
-                </tr>
-                {/* v3.7 — hàng Giờ chuẩn: Giờ chuẩn + OT + Giờ cố gắng = Tổng theo ngày */}
-                {extraTotal > 0 && (
-                  <tr className="border-t border-slate-800 font-mono text-xs">
-                    <td className="px-4 py-2 font-sans text-xs uppercase tracking-wider text-slate-500" title="Tổng theo ngày trừ OT và giờ cố gắng">Giờ chuẩn</td>
+                {showSplit && extraTotal > 0 && (<>
+                  <tr className="border-t border-slate-700 font-mono text-xs">
+                    <td className="px-4 py-2 font-sans text-xs text-slate-400" title="Tổng theo ngày trừ OT và giờ cố gắng">
+                      <span className="mr-2 inline-block h-2 w-2 rounded-sm bg-teal-400" />Giờ chuẩn</td>
                     {days.map((d) => {
                       const st = stdHrs(d);
                       return <td key={d} className={`px-1 py-2 text-center ${dayCol(d)} ${st ? "text-teal-400" : "text-slate-700"}`}>{st ? st.toFixed(1) : "·"}</td>;
                     })}
                     <td className="px-2 py-2 text-center font-semibold text-teal-400">{stdTotal.toFixed(1)}</td>
                   </tr>
-                )}
-                {otTotal > 0 && (
-                  <tr className="border-t border-slate-800 font-mono text-xs">
-                    <td className="px-4 py-2 font-sans text-xs uppercase tracking-wider text-slate-500">Trong đó OT</td>
-                    {days.map((d) => {
-                      const ot = otHrs(d);
-                      const hot = ot > OT_ALERT; // vượt ngưỡng thì đổi đỏ, khỏi phải nhẩm
-                      return <td key={d} title={hot ? `OT vượt ${OT_ALERT} giờ` : undefined}
-                        className={`px-1 py-2 text-center ${dayCol(d)} ${hot ? "font-semibold text-red-400" : ot ? "text-emerald-400" : "text-slate-700"}`}>{ot ? ot.toFixed(1) : "·"}</td>;
-                    })}
-                    <td className={`px-2 py-2 text-center font-semibold ${anyOtHigh ? "text-red-400" : "text-emerald-400"}`}>{otTotal.toFixed(1)}</td>
-                  </tr>
-                )}
-                {effortTotal > 0 && (
-                  <tr className="border-t border-slate-800 font-mono text-xs">
-                    <td className="px-4 py-2 font-sans text-xs uppercase tracking-wider text-slate-500" title="Giờ làm việc vượt giờ chuẩn của ngày. Không phải OT, không tính vào chi phí dự án.">Giờ cố gắng</td>
-                    {days.map((d) => {
-                      const ef = effortHrs(d);
-                      return <td key={d} className={`px-1 py-2 text-center ${dayCol(d)} ${ef ? "text-violet-400" : "text-slate-700"}`}>{ef ? ef.toFixed(1) : "·"}</td>;
-                    })}
-                    <td className="px-2 py-2 text-center font-semibold text-violet-400">{effortTotal.toFixed(1)}</td>
-                  </tr>
-                )}
+                  {otTotal > 0 && (
+                    <tr className="border-t border-slate-800 font-mono text-xs">
+                      <td className="px-4 py-2 font-sans text-xs text-slate-400">
+                        <span className="mr-2 inline-block h-2 w-2 rounded-sm bg-emerald-400" />+ OT<span className="ml-1.5 text-[11px] text-slate-600">hạng mục Tăng ca</span></td>
+                      {days.map((d) => {
+                        const ot = otHrs(d);
+                        const hot = ot > OT_ALERT; // vượt ngưỡng thì đổi đỏ, khỏi phải nhẩm
+                        return <td key={d} title={hot ? `OT vượt ${OT_ALERT} giờ` : undefined}
+                          className={`px-1 py-2 text-center ${dayCol(d)} ${hot ? "font-semibold text-red-400" : ot ? "text-emerald-400" : "text-slate-700"}`}>{ot ? ot.toFixed(1) : "·"}</td>;
+                      })}
+                      <td className={`px-2 py-2 text-center font-semibold ${anyOtHigh ? "text-red-400" : "text-emerald-400"}`}>{otTotal.toFixed(1)}</td>
+                    </tr>
+                  )}
+                  {effortTotal > 0 && (
+                    <tr className="border-t border-slate-800 font-mono text-xs">
+                      <td className="px-4 py-2 font-sans text-xs text-slate-400" title="Giờ làm việc vượt giờ chuẩn của ngày. Không phải OT, không tính vào chi phí dự án.">
+                        <span className="mr-2 inline-block h-2 w-2 rounded-sm bg-violet-400" />+ Giờ cố gắng<span className="ml-1.5 text-[11px] text-slate-600">vượt giờ chuẩn</span></td>
+                      {days.map((d) => {
+                        const ef = effortHrs(d);
+                        return <td key={d} className={`px-1 py-2 text-center ${dayCol(d)} ${ef ? "text-violet-400" : "text-slate-700"}`}>{ef ? ef.toFixed(1) : "·"}</td>;
+                      })}
+                      <td className="px-2 py-2 text-center font-semibold text-violet-400">{effortTotal.toFixed(1)}</td>
+                    </tr>
+                  )}
+                </>)}
+                <tr className={`${showSplit && extraTotal > 0 ? "border-t-2 border-slate-600" : "border-t border-slate-700"} bg-slate-900/60 font-mono text-[15px] font-semibold`}>
+                  <td className="px-4 py-3 font-sans text-xs uppercase tracking-wider text-slate-200">
+                    <span className="flex items-center gap-2">
+                      {extraTotal > 0 && (
+                        <button onClick={() => setShowSplit((v) => !v)} aria-expanded={showSplit}
+                          aria-label={showSplit ? "Thu gọn giờ chuẩn, OT, giờ cố gắng" : "Mở giờ chuẩn, OT, giờ cố gắng"}
+                          title={showSplit ? "Thu gọn" : "Xem giờ chuẩn · OT · giờ cố gắng"}
+                          className="flex h-6 w-6 items-center justify-center rounded border border-slate-700 text-slate-400 hover:border-teal-600 hover:text-teal-300">
+                          {showSplit ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                      )}
+                      {showSplit && extraTotal > 0 ? "= Tổng theo ngày" : "Tổng theo ngày"}
+                    </span>
+                  </td>
+                  {days.map((d) => {
+                    const t = dayTotal(d);
+                    return <td key={d} className={`px-1 py-3 text-center ${dayCol(d)} ${isOverDaily(d) ? "text-rose-400" : isIncomplete(d) ? "text-amber-400" : "text-slate-100"}`}>{t ? t.toFixed(1) : "—"}</td>;
+                  })}
+                  <td className="px-2 py-3 text-center text-slate-50">{weekTotal.toFixed(1)}</td>
+                </tr>
               </tfoot>
             </table>
           </div>
