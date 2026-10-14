@@ -253,7 +253,12 @@ declare
   pid text;
 begin
   if auth.uid() is not null and not public.artius_is_admin() then
-    o  := case when tg_op = 'INSERT' then '{}'::jsonb else old.value::jsonb end;
+    /* v3.4 — App ghi bằng upsert (INSERT … ON CONFLICT DO UPDATE). Postgres chạy trigger BEFORE INSERT trước khi biết
+       dòng đã tồn tại, nên ở bước INSERT phải lấy bản đang có trên server làm "bản cũ"; nếu coi là rỗng thì giờ sẵn có
+       ở ngày chưa tới / dự án đã đóng / giai đoạn chưa mở bị hiểu nhầm là vừa thêm và bị chặn sai. */
+    o  := case when tg_op = 'INSERT'
+               then coalesce((select t.value::jsonb from public.artius_ts t where t.emp_id = new.emp_id and t.ym = new.ym), '{}'::jsonb)
+               else old.value::jsonb end;
     os := case when jsonb_typeof(o -> 'sent') = 'object' then o -> 'sent' else '{}'::jsonb end;
     if tg_op = 'DELETE' then
       if os <> '{}'::jsonb then

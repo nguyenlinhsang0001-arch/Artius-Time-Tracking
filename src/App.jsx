@@ -113,7 +113,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v3.4";
+const APP_VERSION = "v3.5";
 /* v2.2 — Thư viện Excel nặng nhất app; chỉ tải khi có người bấm xuất / đọc file Excel. */
 let XLSX_MOD = null;
 const loadXlsx = async () => XLSX_MOD || (XLSX_MOD = await import("xlsx"));
@@ -359,7 +359,7 @@ const VN_FIXED_HOLIDAYS = [
   { md: "05-01", name: "Quốc tế Lao động" },
   { md: "09-02", name: "Quốc khánh" },
 ];
-const DEFAULT_HOURS = { weekday: 8, sat: 4, sun: 0, satOt: 8, maxDaily: 12 };
+const DEFAULT_HOURS = { weekday: 8, sat: 4, sun: 0, satOt: 8, maxDaily: 13.5 };   // v3.5: tổng ngày chỉ đỏ khi vượt 13.5h
 const OT_ALERT = 3.5; // OT một ngày vượt mốc này thì chuyển đỏ cảnh báo thay vì xanh
 
 /* Ngày lễ được khoanh bằng một vòng cọ đỏ vẽ tay — nét không khép kín, hai đầu vuốt lệch,
@@ -2284,7 +2284,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
     const min = minHoursFor(d, hoursCfg, holidaySet);
     return min !== null && d <= todayStr && dayTotal(d) < min;
   };
-  const isOverDaily = (d) => dayTotal(d) > (Number(hoursCfg.maxDaily) || 12); // vượt ngưỡng cảnh báo/ngày
+  const isOverDaily = (d) => dayTotal(d) > (Number(hoursCfg.maxDaily) || 13.5); // vượt ngưỡng cảnh báo/ngày
   // v3.4: OT = chỉ giờ chấm vào hạng mục Tăng ca; Giờ cố gắng = giờ làm việc thường vượt ngưỡng ngày (không tính chi phí dự án)
   const otHrs = (d) => rows.reduce((s, r) => s + (isOtId(r.taskId) ? (r.days[d] || 0) : 0), 0);
   const effortHrs = (d) => effortHoursFor(d, Math.max(0, workHours(d) - otHrs(d)), hoursCfg, holidaySet);
@@ -2507,7 +2507,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                           {!open && !blank && gHas && <span className="flex items-center gap-1 text-teal-400"><CheckCircle2 size={13} /> Đã chấm</span>}
                         </div>
                       </td>
-                      <td className="px-2 pb-1 pt-2.5 text-center font-mono text-xs text-slate-500">{gt ? gt.toFixed(1) : ""}</td>
+                      <td className="px-2 pb-1 pt-2.5" />{/* v3.5: bỏ số tổng của khối dự án — tổng chỉ còn ở hàng cuối bảng */}
                     </tr>
 
                     {blank && (
@@ -2572,7 +2572,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                                   )}
                                 </td>
                               ))}
-                              <td className={`px-2 ${open ? "pt-1" : "pt-0.5"} text-center font-mono text-sm font-semibold text-teal-400 ${pb}`}>{rt ? rt.toFixed(1) : <span className="text-slate-700">—</span>}</td>
+                              <td className={`px-2 ${open ? "pt-1" : "pt-0.5"} ${pb}`} />{/* v3.5: bỏ số tổng từng hạng mục */}
                             </tr>
                           );
                         })}
@@ -2752,9 +2752,17 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
             <Unlock size={15} /> Mở khoá tuần này
           </button>
         )}
-        <button onClick={() => (admin ? save("submit") : askSubmitWeek())} disabled={saving || locked} className={`col-span-2 w-full md:w-auto ${btnPrimary} disabled:opacity-40`}>
-          {saving && !admin ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} {admin ? "Đánh dấu đã gửi" : "Gửi giờ công"}
-        </button>
+        {/* v3.5 — nhân sự đã gửi và không còn giờ mới nào chờ gửi: nút đổi thành "Đã gửi giờ công" (không bấm được).
+            Nhập thêm giờ vào ngày chưa gửi thì nút quay lại "Gửi giờ công". */}
+        {!admin && sentDays.length > 0 && toSend.length === 0 && !saving ? (
+          <button disabled className={`col-span-2 w-full md:w-auto ${btnBase} cursor-default border border-teal-800 bg-teal-950 text-teal-300`}>
+            <CheckCircle2 size={15} /> Đã gửi giờ công
+          </button>
+        ) : (
+          <button onClick={() => (admin ? save("submit") : askSubmitWeek())} disabled={saving || locked} className={`col-span-2 w-full md:w-auto ${btnPrimary} disabled:opacity-40`}>
+            {saving && !admin ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} {admin ? "Đánh dấu đã gửi" : "Gửi giờ công"}
+          </button>
+        )}
         {atRisk && <span className="col-span-2 text-center text-xs text-amber-400 md:text-left">{admin ? "Có thay đổi chưa lưu" : "Có giờ chưa gửi"}</span>}
       </div>
 

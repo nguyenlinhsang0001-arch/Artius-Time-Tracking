@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v3.4 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v3.5 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v3.4`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v3.5`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,13 @@ Ghi chú:
 | `public/` | Service worker + biểu tượng thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v3.5 — chỉnh màn chấm công
+
+- **Tổng theo ngày** chỉ hiện đỏ khi vượt **13.5 giờ** (mặc định mới của "Cảnh báo vượt / ngày" trong Cài đặt → Giờ chuẩn; nếu Cài đặt đang lưu 12 thì sửa thành 13.5 rồi bấm Lưu giờ chuẩn).
+- Đã gửi xong và không còn giờ mới chờ gửi: nút **Gửi giờ công** đổi thành **Đã gửi giờ công** (không bấm được). Nhập thêm giờ vào ngày chưa gửi thì nút quay lại như cũ.
+- Bỏ số tổng ở dòng dự án và từng hạng mục; tổng chỉ còn ở hàng Tổng theo ngày, Trong đó OT, Giờ cố gắng.
+- Không cần chạy lại `supabase/schema.sql` (nếu đã chạy bản của v3.4).
 
 ## Mới ở v3.4 — OT và Giờ cố gắng
 
