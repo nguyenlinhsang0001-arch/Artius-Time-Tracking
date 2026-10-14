@@ -30,7 +30,7 @@ Ghi chú:
 
 - Ô tổng giờ ở đầu trang chấm công thành 3 ô: **Chuẩn** (kèm target tuần) · **Phát sinh** (OT + Cố gắng) · **Tổng**.
 - Tiến độ tuần tính theo giờ chuẩn ("44.0 / 44.0 giờ chuẩn").
-- Chân bảng thêm hàng **Giờ chuẩn** (chỉ hiện khi tuần có giờ phát sinh): Giờ chuẩn + OT + Giờ cố gắng = Tổng theo ngày. Cột Tổng trở lại một số.
+- Chân bảng đọc như phép cộng: **Giờ chuẩn**, **+ OT**, **+ Giờ cố gắng**, rồi **= Tổng theo ngày** in đậm ở dưới cùng. Ba hàng chi tiết thu gọn mặc định, bấm nút mũi tên cạnh "Tổng theo ngày" để mở/thu (nút chỉ hiện khi tuần có giờ phát sinh). Cột Tổng trở lại một số.
 - Bỏ nhãn "Đã gửi đủ tuần" / "Đã gửi N ngày" ở đầu trang (nút dưới bảng đã báo "Đã gửi giờ công").
 - Không cần chạy lại `supabase/schema.sql`.
 
