@@ -29,7 +29,7 @@ Ghi chú:
 ## Mới ở v3.6 — hiển thị bảng chấm công
 
 - Bỏ nhãn "Đã chấm" ở dòng dự án trên bảng chấm công của nhân sự.
-- Ô Tổng của hàng Tổng theo ngày tách thành **giờ công chuẩn + giờ phát sinh**, ví dụ `44.0 + 9.5` (phát sinh = OT + Giờ cố gắng). Rê chuột vào ô để xem chi tiết. Tuần không có phát sinh thì vẫn hiện một số.
+- Ô Tổng của hàng Tổng theo ngày tách thành **giờ công chuẩn + giờ phát sinh**, ví dụ `44.0 + 9.5` (phát sinh = OT + Giờ cố gắng). Ô tổng giờ ở góc phải trên (cạnh "Đã gửi đủ tuần") cũng hiện cùng kiểu. Rê chuột vào để xem chi tiết. Tuần không có phát sinh thì vẫn hiện một số.
 - Không cần chạy lại `supabase/schema.sql`.
 
 ## Mới ở v3.5 — chỉnh màn chấm công
