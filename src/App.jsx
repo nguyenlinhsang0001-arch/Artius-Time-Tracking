@@ -2376,7 +2376,13 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
           <div className="ml-auto flex items-center gap-2 md:gap-4">
             {sentDays.length > 0 && !dirty && <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-teal-800 bg-teal-950 px-2 py-1 text-[11px] text-teal-300"><CheckCircle2 size={12} /> {submitted ? <>Đã gửi<span className="hidden md:inline">&nbsp;đủ tuần</span></> : `Đã gửi ${sentDays.length} ngày`}</span>}
             <div className="text-right">
-              <div className="whitespace-nowrap font-mono text-lg font-semibold text-slate-50 md:text-xl">{weekTotal.toFixed(1)}<span className="ml-1 text-xs font-normal text-slate-500">giờ</span></div>
+              <div className="whitespace-nowrap font-mono text-lg font-semibold text-slate-50 md:text-xl"
+                title={otTotal + effortTotal > 0 ? `Tổng ${weekTotal.toFixed(1)} giờ = ${(weekTotal - otTotal - effortTotal).toFixed(1)} giờ công chuẩn + ${(otTotal + effortTotal).toFixed(1)} giờ phát sinh` : undefined}>
+                {/* v3.6 — tổng tuần tách: giờ công chuẩn + giờ phát sinh (OT + Giờ cố gắng) */}
+                {otTotal + effortTotal > 0
+                  ? <>{(weekTotal - otTotal - effortTotal).toFixed(1)}<span className="text-slate-400"> + {(otTotal + effortTotal).toFixed(1)}</span></>
+                  : weekTotal.toFixed(1)}
+                <span className="ml-1 text-xs font-normal text-slate-500">giờ</span></div>
               {otTotal > 0 && <div className={`flex items-center justify-end gap-1 text-[11px] ${anyOtHigh ? "text-red-400" : "text-emerald-400"}`}><Zap size={11} /> OT {otTotal.toFixed(1)} giờ</div>}
               {effortTotal > 0 && <div className="flex items-center justify-end gap-1 text-[11px] text-violet-400" title="Giờ làm việc vượt giờ chuẩn — ghi nhận cố gắng, không tính OT và không tính chi phí dự án">Cố gắng {effortTotal.toFixed(1)} giờ</div>}
             </div>
