@@ -113,7 +113,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v3.1";
+const APP_VERSION = "v3.2";
 /* v2.2 — Thư viện Excel nặng nhất app; chỉ tải khi có người bấm xuất / đọc file Excel. */
 let XLSX_MOD = null;
 const loadXlsx = async () => XLSX_MOD || (XLSX_MOD = await import("xlsx"));
@@ -657,6 +657,10 @@ const taskVisibleTo = (t, dept, role) => {
 const tasksForDept = (tasks = [], dept, role) => tasks.filter((t) => taskVisibleTo(t, dept, role));
 // nhãn hiển thị: có mã thì đưa mã lên trước cho dễ đối chiếu với bảng vai trò
 const taskText = (t) => (t?.code ? `${t.code} · ${t.name}` : t?.name || "");
+/* v3.2 — hạng mục tăng ca: tên bắt đầu bằng "[OT]" thì tách riêng nhóm "Tăng ca" ở màn chấm công,
+   hiển thị bỏ chữ [OT] (VD "[OT] 17:30 - 21:00" → "17:30 – 21:00"). Không cần sửa dữ liệu. */
+const isOtTask = (t) => /^\s*\[\s*ot\s*\]/i.test(t?.name || "");
+const otText = (t) => (t?.name || "").replace(/^\s*\[\s*ot\s*\]\s*/i, "").replace(/\s+-\s+/g, " – ");
 // Bỏ dấu để gõ "khao sat" vẫn ra "Khảo sát". NFD không tách được đ nên phải thay tay.
 const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
 // bảng màu lặp lại theo thứ tự dự án, dùng cho biểu đồ cột chồng theo dự án
@@ -1574,7 +1578,10 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   const gridInputs = useRef({});                // ô nhập trên lưới desktop, khoá "dòng:cột"
   const taskSel = useRef({});                   // ô chọn hạng mục của từng dòng, để nhảy con trỏ vào sau khi bấm +
   // báo lên App để chặn đổi tab khi còn thay đổi chưa lưu
-  const [undoRow, setUndoRow] = useState(null); // dòng vừa xoá, giữ lại để hoàn tác
+  const [undoRow, setUndoRow] = useState(null); // khối/dòng vừa xoá { rows, at, label }, giữ lại để hoàn tác
+  /* v3.2 — khối đang MỞ (đang nhập giờ): hiện toàn bộ hạng mục của dự án để gõ giờ thẳng vào, không chọn từ danh sách.
+     Bấm ✓ thì khối thu gọn, chỉ giữ hạng mục có giờ, và giờ được tạm lưu trên máy (localStorage) tới khi Gửi. */
+  const [openKeys, setOpenKeys] = useState(() => new Set());
   const [q, setQ] = useState("");               // ô thêm nhanh: chuỗi đang gõ
   const [qOpen, setQOpen] = useState(false);
   const [qIdx, setQIdx] = useState(0);          // mục đang được chọn trong danh sách gợi ý
@@ -1630,6 +1637,84 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   const projFull = (id) => { if (id === NO_PROJECT) return "Khác"; const p = cfg.projects.find((x) => x.id === id); return p ? `${p.code ? `[${p.code}] ` : ""}${p.name}` : "(dự án đã xoá)"; };
   const taskName = (id) => { const t = taskById.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
 
+  /* ---------- v3.2: khối mở / thu gọn ---------- */
+  const poolFor = (pid) => (pid === NO_PROJECT ? [...commonTasks, ...LEAVE_TASKS] : projTasks);
+  const rowHasHours = (r) => days.some((d) => (r.days[d] || 0) > 0);
+  // Bảo đảm mọi hạng mục của dự án đều có dòng trong các khối `keys` (dòng trống chưa có giờ), theo đúng thứ tự danh sách tác vụ
+  const expandIn = (list, keys) => {
+    const out = []; const done = new Set();
+    for (const r of list) {
+      const k = groupKey(r);
+      if (!keys.has(k) || r.projectId === "") { out.push(r); continue; }
+      if (done.has(k)) continue;
+      done.add(k);
+      const mine = list.filter((x) => groupKey(x) === k);
+      if (projClosed(r)) { out.push(...mine); continue; }
+      const pool = poolFor(r.projectId);
+      const byTask = new Map(mine.map((x) => [x.taskId, x]));
+      for (const t of pool) out.push(byTask.get(t.id) || { projectId: r.projectId, phaseId: r.phaseId || DEFAULT_PHASE, taskId: t.id, note: "", days: {} });
+      for (const x of mine) if (!pool.some((t) => t.id === x.taskId)) out.push(x);   // hạng mục cũ ngoài danh sách vẫn giữ
+    }
+    return out;
+  };
+  // Thu gọn: bỏ các dòng chưa có giờ trong những khối `keys`
+  const collapseIn = (list, keys) => list.filter((r) => !keys.has(groupKey(r)) || r.projectId === "" || rowHasHours(r));
+  // Tạm lưu trên máy này: chỉ giờ của ngày chưa gửi. Gửi thành công thì xoá. Quản lý không dùng.
+  const draftKeyOf = (m) => `artius_draft_${empId}_${m}`;
+  const writeDraft = (list) => {
+    if (admin) return;
+    try {
+      const keep = list.filter((r) => rowReady(r) && days.some((d) => !isSent(d) && r.days[d] > 0))
+        .map((r) => ({ projectId: r.projectId, phaseId: r.phaseId, taskId: r.taskId, note: r.note || "", days: r.days }));
+      if (keep.length) localStorage.setItem(draftKeyOf(monday), JSON.stringify(keep));
+      else localStorage.removeItem(draftKeyOf(monday));
+    } catch { /* trình duyệt chặn lưu trữ: vẫn giữ trên màn hình như cũ */ }
+  };
+  const doneGroup = (gk) => {
+    const g0 = rows.find((r) => groupKey(r) === gk);
+    const next = collapseIn(rows, new Set([gk]));
+    setRows(next);
+    setOpenKeys((s) => { const n = new Set(s); n.delete(gk); return n; });
+    gridInputs.current = {}; mobileInputs.current = [];
+    writeDraft(next);
+    if (!next.some((r) => groupKey(r) === gk)) flash("Khối này chưa có giờ nào nên đã bỏ khỏi bảng.", "err");
+    else flash(`Đã tạm lưu giờ ${g0 ? projFull(g0.projectId) : ""}. Thêm dòng cho dự án khác, xong hết thì bấm Gửi giờ công.`);
+  };
+  const editGroup = (gk) => {
+    setRows(expandIn(rows, new Set([gk])));
+    setOpenKeys((s) => new Set([...s, gk]));
+  };
+  const delGroup = (gk) => {
+    const at = rows.findIndex((r) => groupKey(r) === gk);
+    const mine = rows.filter((r) => groupKey(r) === gk);
+    const next = rows.filter((r) => groupKey(r) !== gk);
+    if (mine.some(rowHasHours)) setUndoRow({ rows: mine, at, label: projFull(mine[0].projectId), open: openKeys.has(gk) });
+    setRows(next);
+    setOpenKeys((s) => { const n = new Set(s); n.delete(gk); return n; });
+    gridInputs.current = {}; mobileInputs.current = [];
+    writeDraft(next);
+    setDirty(true);
+  };
+  // Nhóm hiển thị trong một khối: dự án → Công việc dự án / Tăng ca; Khác → Công việc chung / Vắng mặt
+  const sectionsOf = (g) => {
+    const khac = g.projectId === NO_PROJECT;
+    const s2 = khac
+      ? [{ label: "Công việc chung", items: [] }, { label: "Vắng mặt", items: [] }]
+      : [{ label: "Công việc dự án", items: [] }, { label: "Tăng ca", ot: true, items: [] }];
+    for (const it of g.items) {
+      const t = taskById.get(it.r.taskId);
+      s2[khac ? (isLeaveTask(it.r.taskId) ? 1 : 0) : (isOtTask(t) ? 1 : 0)].items.push(it);
+    }
+    return s2.filter((x) => x.items.length);
+  };
+  const rowLabel = (r, open) => {
+    const t = taskById.get(r.taskId);
+    if (!t) return "(tác vụ đã xoá)";
+    if (isOtTask(t)) return open ? otText(t) : `Tăng ca ${otText(t)}`;
+    const inPool = poolFor(r.projectId).some((x) => x.id === r.taskId);
+    return `${isLeaveTask(r.taskId) ? t.name : taskText(t)}${inPool ? "" : commonIds.has(r.taskId) ? " (tác vụ chung — dữ liệu cũ)" : " (ngoài bộ phận)"}`;
+  };
+
   useEffect(() => { if (!days.includes(activeDay)) setActiveDay(days[0]); }, [monday]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -1651,8 +1736,28 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
         for (const d of days) if (r.days?.[d] != null) cur.days[d] = r.days[d];
         map.set(k, cur);
       }
+      // v3.2: giờ đã tạm lưu (bấm ✓) trên máy này mà chưa gửi thì khôi phục lại, chỉ cho ngày chưa gửi
+      let restored = 0;
+      if (!admin) {
+        try {
+          const dr = JSON.parse(localStorage.getItem(`artius_draft_${empId}_${monday}`) || "null");
+          if (Array.isArray(dr)) for (const x of dr) {
+            if (!x || typeof x !== "object" || !x.days) continue;
+            const k = rowKey(x);
+            const cur = map.get(k) || { projectId: x.projectId, phaseId: x.phaseId || DEFAULT_PHASE, taskId: x.taskId, note: "", days: {} };
+            for (const d of days) {
+              const v = Number(x.days[d]) || 0;
+              if (v > 0 && !loaded[ymOf(d)]?.sent?.[d] && cur.days[d] !== v) { cur.days[d] = v; restored += 1; }
+            }
+            if (x.note && !cur.note) cur.note = x.note;
+            map.set(k, cur);
+          }
+        } catch { /* bản tạm hỏng: bỏ qua */ }
+      }
       setRows(sortByGroup([...map.values()].filter((r) => days.some((d) => r.days[d] > 0))));
-      setDirty(false); setLoading(false);
+      setOpenKeys(new Set());
+      setDirty(restored > 0); setLoading(false);
+      if (restored > 0) flash("Đã khôi phục giờ tạm lưu chưa gửi trên máy này. Kiểm tra lại rồi bấm Gửi giờ công.");
     })();
     return () => { alive = false; };
   }, [empId, monday, reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1707,10 +1812,13 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   /* v3.0 — "Thêm dòng" tạo một khối TRỐNG ở cuối bảng: Dự án, Giai đoạn, Hạng mục đều để trống, người dùng tự chọn.
      Mỗi lúc chỉ có một khối trống; thêm hạng mục vào khối đã có thì dùng nút + ở đầu khối. */
   const focusQuick = () => {
-    const at = rows.findIndex((r) => !rowReady(r));
-    if (at >= 0) { flash("Chọn xong Dự án / Giai đoạn / Hạng mục cho dòng đang trống trước đã.", "err"); return; }
-    const next = [...rows, { projectId: "", phaseId: NO_PHASE, taskId: "", note: "", days: {} }];
-    setRows(next); setDirty(true);
+    if (rows.some((r) => r.projectId === "")) { flash("Chọn dự án cho khối đang trống trước đã.", "err"); return; }
+    // v3.2: khối đang mở thì tự bấm ✓ giúp (thu gọn + tạm lưu) trước khi tạo khối mới
+    const base = openKeys.size ? collapseIn(rows, openKeys) : rows;
+    if (openKeys.size) writeDraft(base);
+    setOpenKeys(new Set());
+    gridInputs.current = {}; mobileInputs.current = [];
+    setRows([...base, { projectId: "", phaseId: NO_PHASE, taskId: "", note: "", days: {} }]); setDirty(true);
   };
 
   /* Tính dòng mới ngoài setRows rồi mới ghi state — không đặt side effect trong hàm cập nhật,
@@ -1756,8 +1864,11 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
     const have = new Set(rows.map(rowKey));
     const toAdd = [...found.entries()].filter(([k]) => !have.has(k)).map(([, v]) => v);
     if (toAdd.length === 0) return flash("Các dòng của tuần trước đều đã có trong tuần này.");
-    setRows((r) => sortByGroup([...r, ...toAdd])); setDirty(true);
-    flash(`Đã chép ${toAdd.length} dòng từ tuần trước. Nhập giờ rồi lưu lại.`);
+    // v3.2: các khối vừa chép được mở sẵn, hiện đủ hạng mục để nhập giờ
+    const keys = new Set(toAdd.map(groupKey));
+    setRows(expandIn(sortByGroup([...rows, ...toAdd]), keys)); setDirty(true);
+    setOpenKeys((s) => new Set([...s, ...keys]));
+    flash(`Đã chép ${keys.size} khối từ tuần trước. Nhập giờ rồi bấm ✓ ở từng khối.`);
   };
   const setHour = (i, d, v) => {
     const n = v === "" ? undefined : Math.max(0, Math.min(24, Number(v)));
@@ -1765,14 +1876,18 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
     setDirty(true);
   };
   const delRow = (i) => {
-    setUndoRow({ row: rows[i], at: i });   // giữ lại để hoàn tác, xoá nhầm không mất công gõ lại
+    setUndoRow({ rows: [rows[i]], at: i, label: `${projName(rows[i].projectId)} · ${taskName(rows[i].taskId)}` });   // giữ lại để hoàn tác
     setRows((r) => r.filter((_, j) => j !== i));
     mobileInputs.current = []; gridInputs.current = {}; taskSel.current = {};
     setDirty(true);
   };
   const undoDelete = () => {
     if (!undoRow) return;
-    setRows((r) => { const n = [...r]; n.splice(Math.min(undoRow.at, n.length), 0, undoRow.row); return sortByGroup(n); });
+    const n = [...rows]; n.splice(Math.min(undoRow.at, n.length), 0, ...undoRow.rows);
+    const keys = new Set(undoRow.rows.map(groupKey));
+    setRows(sortByGroup(undoRow.open ? expandIn(n, keys) : n));
+    if (undoRow.open) setOpenKeys((s) => new Set([...s, ...keys]));
+    else writeDraft(n);
     setUndoRow(null); setDirty(true);
   };
 
@@ -1889,6 +2004,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
     }
 
     setBuckets(next); setSaving(false); setDirty(false); setSaveFailed(false); setSavedTick((t) => t + 1);
+    if (!admin && submitMode === "submit") { try { localStorage.removeItem(draftKeyOf(monday)); } catch { /* bỏ qua */ } }
     if (submitMode) setReloadKey((k) => k + 1);   // nạp lại để màn hình khớp đúng bản vừa ghi
     const sentLabel = newly.sort().map(dayName).join(", ");
     if (!silent) flash(
@@ -1948,40 +2064,39 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
     return [...m.values()];
   }, [rows]);
 
-  // Đổi dự án hoặc giai đoạn ở đầu nhóm thì áp cho toàn bộ hạng mục bên trong
+  /* v3.2 — Đổi dự án / giai đoạn ở đầu khối.
+     Chọn dự án: khối hiện ngay TOÀN BỘ hạng mục của dự án (dòng trống) để nhập giờ thẳng, giai đoạn tự chọn theo quản lý.
+     Khối đã có giờ thì không đổi dự án nữa (xoá giờ hoặc xoá khối trước). */
   const updGroup = (gk, patch) => {
-    // v2.5: đổi dự án thì giai đoạn tự chuyển sang giai đoạn có giờ dự kiến của dự án mới (nếu giai đoạn cũ không có)
-    // v3.0: khối trống chọn dự án lần đầu thì giai đoạn để trống cho người dùng tự chọn ("Khác" thì không có giai đoạn)
-    let next = rows.map((r) => (groupKey(r) === gk ? { ...r, ...patch, ...(patch.projectId ? { phaseId: patch.projectId === NO_PROJECT ? DEFAULT_PHASE : (r.projectId === "" || r.phaseId === NO_PHASE) ? (setOpenPhases(patch.projectId)[0]?.id || NO_PHASE) : fitPhase(patch.projectId, patch.phaseId || r.phaseId || DEFAULT_PHASE) } : {}) } : r));
-    /* v2.9 — chuyển khối sang "Khác" thì hạng mục phải là tác vụ chung / vắng mặt; chuyển sang dự án thì phải là tác vụ dự án.
-       Hạng mục không hợp lệ được đổi sang hạng mục hợp lệ đầu tiên chưa dùng trong khối. */
-    if (patch.projectId) {
-      const toKhac = patch.projectId === NO_PROJECT;
-      const pool = toKhac ? [...commonTasks, ...LEAVE_TASKS] : projTasks;
-      const ok = (id) => (toKhac ? isKhacTask(id) : !isKhacTask(id));
-      const moving = new Set(rows.map((r, i) => (groupKey(r) === gk ? i : -1)).filter((i) => i >= 0));
-      const newKey = groupKey(next[[...moving][0]]);
-      // hạng mục đã có ở khối đích (kể cả khối đích có sẵn từ trước) thì không lấy trùng
-      const used = new Set(next.filter((r, i) => groupKey(r) === newKey && (!moving.has(i) || ok(r.taskId))).map((r) => r.taskId));
-      let fail = false;
-      next = next.map((r, i) => {
-        if (!moving.has(i) || !r.taskId || ok(r.taskId)) return r;   // hạng mục chưa chọn thì giữ trống
-        const t = pool.find((x) => !used.has(x.id));
-        if (!t) { fail = true; return r; }
-        used.add(t.id);
-        return { ...r, taskId: t.id };
-      });
-      if (fail) return flash(toKhac ? "Không còn tác vụ chung nào để chuyển sang Khác." : "Bạn chưa có tác vụ dự án nào cho vai trò của mình. Báo quản lý bổ sung trong tab Tác vụ.", "err");
+    const mine = rows.filter((r) => groupKey(r) === gk);
+    if (!mine.length) return;
+    const first = rows.findIndex((r) => groupKey(r) === gk);
+    if (patch.projectId !== undefined) {
+      const pid = patch.projectId;
+      if (mine.some(rowHasHours)) return flash("Khối đã có giờ. Xoá giờ trong khối (hoặc xoá khối) trước khi đổi dự án.", "err");
+      const phaseId = pid === NO_PROJECT ? DEFAULT_PHASE : ((admin ? openPhasesOf(pid) : setOpenPhases(pid))[0]?.id || NO_PHASE);
+      const nk = groupKey({ projectId: pid, phaseId });
+      if (nk !== gk && rows.some((r) => groupKey(r) === nk)) {
+        return flash(`${projFull(pid)}${pid === NO_PROJECT ? "" : ` · ${phaseLabel(phaseId)}`} đã có ở khối khác — bấm nút Sửa ở khối đó để chấm thêm.`, "err");
+      }
+      const pool = poolFor(pid);
+      if (!pool.length) return flash(pid === NO_PROJECT ? "Chưa có tác vụ chung nào." : "Bạn chưa có tác vụ dự án nào cho vai trò của mình. Báo quản lý bổ sung trong tab Tác vụ.", "err");
+      const next = rows.filter((r) => groupKey(r) !== gk);
+      next.splice(first, 0, ...pool.map((t) => ({ projectId: pid, phaseId, taskId: t.id, note: "", days: {} })));
+      gridInputs.current = {}; mobileInputs.current = [];
+      setRows(next);
+      setOpenKeys((s) => { const n = new Set(s); n.delete(gk); n.add(nk); return n; });
+      setDirty(true);
+      return;
     }
-    const seen = new Set();
-    for (const r of next) {
-      const k = rowKey(r);
-      // dồn sang nhóm đã tồn tại mà đụng đúng hạng mục đang có ở đó thì phải chặn
-      if (seen.has(k)) return flash(`Nhóm kia đã có hạng mục "${taskName(r.taskId)}".`, "err");
-      seen.add(k);
+    if (patch.phaseId !== undefined) {
+      const nk = groupKey({ projectId: mine[0].projectId, phaseId: patch.phaseId });
+      if (nk === gk) return;
+      if (rows.some((r) => groupKey(r) === nk)) return flash(`${phaseLabel(patch.phaseId)} của dự án này đã có ở khối khác — bấm nút Sửa ở khối đó.`, "err");
+      setRows(rows.map((r) => (groupKey(r) === gk ? { ...r, phaseId: patch.phaseId } : r)));
+      setOpenKeys((s) => { if (!s.has(gk)) return s; const n = new Set(s); n.delete(gk); n.add(nk); return n; });
+      setDirty(true);
     }
-    setRows(sortByGroup(next));
-    setDirty(true);
   };
 
   /* Dự án nhân sự đang làm — suy từ giờ đã chấm tháng này + tháng trước, cùng cách tab
@@ -2290,77 +2405,117 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                   selectCls đã có sẵn w-full nên tỉ lệ rộng phải đặt ở div bọc ngoài bằng flexBasis. */}
               {groups.map((g) => {
                 const noProj = g.projectId === NO_PROJECT; // v2.9: khối "Khác" — không có giai đoạn
+                const blank = g.projectId === "";
+                const open = openKeys.has(g.key);
                 const gLocked = g.items.some(({ r }) => rowLocked(r)); // khối có giờ của ngày đã gửi: không đổi dự án/giai đoạn
+                const gHas = g.items.some(({ r }) => rowHasHours(r));
+                const canEdit = !locked && !blank && !projClosed(g.items[0].r);
                 const gt = g.items.reduce((s, { r }) => s + days.reduce((a, d) => a + (r.days[d] || 0), 0), 0);
+                const secs = blank ? [] : sectionsOf(g);
                 return (
-                  <tbody key={g.key} className="hover:bg-slate-800">
-                    {/* Đầu khối: dự án + giai đoạn, hiện đúng một lần cho cả nhóm */}
+                  <tbody key={g.key} className={`border-b border-slate-800 ${open ? "bg-slate-800/40" : ""}`}>
+                    {/* Đầu khối: nút ✓ / Sửa + dự án + giai đoạn */}
                     <tr>
-                      <td className="px-3 pt-2.5">
+                      <td className="px-3 pb-1 pt-2.5">
                         <div className="flex items-center gap-2">
-                          {/* nút + mở đầu khối; ô hạng mục bên dưới chừa đúng bề rộng này để thẳng hàng */}
                           <div className="shrink-0" style={{ width: GUT }}>
-                            {!locked && !projClosed(g) && g.projectId !== "" && g.phaseId !== NO_PHASE && (
-                              <button onClick={() => addTaskToGroup(g)} title="Thêm hạng mục vào dự án và giai đoạn này"
-                                className={`${iconBtn} hover:border-teal-700 hover:text-teal-300`}><Plus size={15} /></button>
-                            )}
+                            {open ? (
+                              <button onClick={() => doneGroup(g.key)} title="Xong — tạm lưu giờ của khối này"
+                                className={`${iconBtn} border-teal-600 bg-teal-600 text-white hover:border-teal-500 hover:bg-teal-500 hover:text-white`}><Check size={16} /></button>
+                            ) : canEdit ? (
+                              <button onClick={() => editGroup(g.key)} title="Sửa giờ của khối này"
+                                className={`${iconBtn} hover:border-teal-700 hover:text-teal-300`}><Pencil size={14} /></button>
+                            ) : null}
                           </div>
                           <div className="min-w-0" style={{ flexBasis: "58%", flexGrow: 1 }}>
-                            <select disabled={gLocked} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })}
-                              className={`disabled:opacity-50 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
+                            <select disabled={gLocked || (!blank && (!open || gHas))} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })}
+                              title={!blank && gHas ? "Khối đã có giờ — xoá giờ hoặc xoá khối để đổi dự án" : undefined}
+                              className={`disabled:opacity-60 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
                           </div>
                           <div className="min-w-0" style={{ flexBasis: "42%", flexGrow: 1 }}>
                             {!noProj && (
-                              <select disabled={gLocked || g.projectId === "" || phaseFixed(g)} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })}
+                              <select disabled={gLocked || blank || !open || phaseFixed(g)} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })}
                                 title={phaseInfo(g.phaseId)?.desc}
-                                className={`disabled:opacity-50 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>
+                                className={`disabled:opacity-60 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>
                             )}
                           </div>
                         </div>
                       </td>
-                      <td colSpan={7} />
-                      {/* tổng của cả khối, chỉ hiện khi khối có từ 2 hạng mục trở lên */}
-                      <td className="px-2 pt-2.5 text-center font-mono text-xs text-slate-500">{g.items.length > 1 && gt ? gt.toFixed(1) : ""}</td>
+                      <td colSpan={7} className="px-2 pb-1 pt-2.5">
+                        <div className="flex items-center justify-end gap-3 text-xs">
+                          {open && <span className="text-slate-400">Nhập giờ rồi bấm <Check size={12} className="inline text-teal-400" /> để tạm lưu</span>}
+                          {!open && !blank && gHas && <span className="flex items-center gap-1 text-teal-400"><CheckCircle2 size={13} /> Đã chấm</span>}
+                          {!gLocked && !locked && (
+                            <button onClick={() => delGroup(g.key)} title="Xoá cả khối" className={`${iconBtn} hover:border-rose-800 hover:text-rose-300`}><Trash2 size={14} /></button>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-2 pb-1 pt-2.5 text-center font-mono text-xs text-slate-500">{gt ? gt.toFixed(1) : ""}</td>
                     </tr>
 
-                    {g.items.map(({ r, i }, n) => {
-                      const rt = days.reduce((s, d) => s + (r.days[d] || 0), 0);
-                      const last = n === g.items.length - 1;
-                      const pb = last ? "pb-2.5" : "pb-0";
-                      return (
-                        <tr key={i} className={last ? "border-b border-slate-800" : ""}>
-                          <td className={`px-3 pt-1.5 ${pb}`}>
-                            <div className="flex items-center gap-2">
-                              <div className="shrink-0" style={{ width: GUT }} />
-                              <div className="min-w-0 flex-1">
-                                <select ref={(el) => { taskSel.current[i] = el; }} disabled={rowLocked(r) || r.projectId === ""} value={r.taskId} onChange={(e) => upd(i, { taskId: e.target.value })} className={`disabled:opacity-60 ${selectCls}`}>{taskOptions(r)}</select>
-                              </div>
-                              <div className="flex shrink-0 items-center gap-1">
-                                <button disabled={locked || projClosed(r) || isLeaveTask(r.taskId) || !rowReady(r)} onClick={() => fillStandard(i)} title="Điền giờ chuẩn cho cả tuần vào các ô còn trống"
-                                  className={`${iconBtn} disabled:opacity-40`}><Zap size={14} /></button>
-                                <button onClick={() => setNoteRow(i)} title={r.note || "Thêm mô tả"}
-                                  className={`${iconBtn} relative ${r.note ? "border-teal-800 text-teal-400" : ""}`}>
-                                  <MoreHorizontal size={14} />
-                                  {r.note && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-teal-400" />}
-                                </button>
-                                <button disabled={rowLocked(r)} onClick={() => delRow(i)} className={`${iconBtn} disabled:opacity-40`}><Trash2 size={14} /></button>
-                              </div>
+                    {blank && (
+                      <tr><td colSpan={9} className="px-3 pb-3 pt-1">
+                        <div className="text-xs text-slate-500" style={{ paddingLeft: GUT + 8 }}>Chọn dự án (hoặc Khác) — toàn bộ hạng mục sẽ hiện ra để nhập giờ.</div>
+                      </td></tr>
+                    )}
+
+                    {secs.map((sec, si) => (
+                      <React.Fragment key={sec.label}>
+                        {open && (
+                          <tr><td colSpan={9} className="px-3 pb-0.5 pt-2.5">
+                            <div className={`flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider ${sec.ot ? "text-emerald-400" : "text-slate-500"}`} style={{ paddingLeft: GUT + 8 }}>
+                              {sec.ot && <Zap size={11} />}{sec.label}
                             </div>
-                          </td>
-                          {days.map((d, k) => (
-                            <td key={d} className={`px-1 pt-1.5 ${pb} ${dayCol(d)}`}>
-                              <input ref={(el) => { gridInputs.current[`${i}:${k}`] = el; }}
-                                type="number" min="0" max="24" step="0.5" value={r.days[d] ?? ""} placeholder="0" disabled={dayLocked(d) || projClosed(r) || futureBlocked(r, d) || !rowReady(r)}
-                                onChange={(e) => setHour(i, d, e.target.value)}
-                                onFocus={(e) => e.target.select()}
-                                onKeyDown={(e) => gridKey(e, i, k)}
-                                className={`${CTRL} w-full rounded-md border bg-slate-950 px-1 text-center font-mono text-base font-medium text-slate-100 focus:border-teal-500 focus:outline-none disabled:opacity-60 ${isIncomplete(d) ? "border-amber-700/60" : k >= 5 ? "border-slate-800" : "border-slate-700"}`} />
-                            </td>
-                          ))}
-                          <td className={`px-2 pt-1.5 text-center font-mono text-sm font-semibold text-teal-400 ${pb}`}>{rt ? rt.toFixed(1) : <span className="text-slate-700">—</span>}</td>
-                        </tr>
-                      );
-                    })}
+                          </td></tr>
+                        )}
+                        {sec.items.map(({ r, i }, n) => {
+                          const rt = days.reduce((s, d) => s + (r.days[d] || 0), 0);
+                          const last = si === secs.length - 1 && n === sec.items.length - 1;
+                          const pb = last ? "pb-2.5" : "pb-0";
+                          const ot = isOtTask(taskById.get(r.taskId));
+                          return (
+                            <tr key={i}>
+                              <td className={`px-3 ${open ? "pt-1" : "pt-0.5"} ${pb}`}>
+                                <div className="flex items-center gap-2">
+                                  <div className="shrink-0" style={{ width: GUT }} />
+                                  <div className={`min-w-0 flex-1 truncate text-sm ${rt ? "text-slate-100" : "text-slate-400"} ${ot && !open ? "text-emerald-300" : ""}`} title={rowLabel(r, open)}>
+                                    {rowLabel(r, open)}
+                                  </div>
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    {open && !ot && !isLeaveTask(r.taskId) && (
+                                      <button disabled={locked || projClosed(r) || !rowReady(r)} onClick={() => fillStandard(i)} title="Điền giờ chuẩn cho cả tuần vào các ô còn trống"
+                                        className={`${iconBtn} disabled:opacity-40`}><Zap size={14} /></button>
+                                    )}
+                                    {(open || r.note) && (
+                                      <button onClick={() => setNoteRow(i)} title={r.note || "Thêm mô tả"}
+                                        className={`${iconBtn} relative ${r.note ? "border-teal-800 text-teal-400" : ""}`}>
+                                        <MoreHorizontal size={14} />
+                                        {r.note && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-teal-400" />}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              {days.map((d, k) => (
+                                <td key={d} className={`px-1 ${open ? "pt-1" : "pt-0.5"} ${pb} ${dayCol(d)}`}>
+                                  {open ? (
+                                    <input ref={(el) => { gridInputs.current[`${i}:${k}`] = el; }}
+                                      type="number" min="0" max="24" step="0.5" value={r.days[d] ?? ""} placeholder="0" disabled={dayLocked(d) || projClosed(r) || futureBlocked(r, d) || !rowReady(r)}
+                                      onChange={(e) => setHour(i, d, e.target.value)}
+                                      onFocus={(e) => e.target.select()}
+                                      onKeyDown={(e) => gridKey(e, i, k)}
+                                      className={`${CTRL} w-full rounded-md border bg-slate-950 px-1 text-center font-mono text-base font-medium text-slate-100 focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot ? "border-emerald-900" : isIncomplete(d) ? "border-amber-700/60" : k >= 5 ? "border-slate-800" : "border-slate-700"}`} />
+                                  ) : (
+                                    <div className={`py-1.5 text-center font-mono text-sm ${r.days[d] > 0 ? (ot ? "text-emerald-300" : "text-slate-200") : "text-slate-700"}`}>{r.days[d] > 0 ? r.days[d] : "·"}</div>
+                                  )}
+                                </td>
+                              ))}
+                              <td className={`px-2 ${open ? "pt-1" : "pt-0.5"} text-center font-mono text-sm font-semibold text-teal-400 ${pb}`}>{rt ? rt.toFixed(1) : <span className="text-slate-700">—</span>}</td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    ))}
                   </tbody>
                 );
               })}
@@ -2431,54 +2586,72 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
               </div>
             ) : groups.map((g) => {
               const noProj = g.projectId === NO_PROJECT;
+              const blank = g.projectId === "";
+              const open = openKeys.has(g.key);
               const gLocked = g.items.some(({ r }) => rowLocked(r));
+              const gHas = g.items.some(({ r }) => rowHasHours(r));
+              const canEdit = !locked && !blank && !projClosed(g.items[0].r);
+              const secs = blank ? [] : sectionsOf(g);
               return (
-                <div key={g.key} className="rounded-xl border border-slate-800 bg-slate-900 p-3">
+                <div key={g.key} className={`rounded-xl border p-3 ${open ? "border-teal-800 bg-slate-800/60" : "border-slate-800 bg-slate-900"}`}>
                   {/* Đầu thẻ: dự án + giai đoạn dùng chung cho mọi hạng mục bên trong */}
-                  <select disabled={gLocked} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })} className={`disabled:opacity-50 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
-                  {!noProj && <select disabled={gLocked || g.projectId === "" || phaseFixed(g)} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })} className={`mt-2 disabled:opacity-50 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>}
+                  <select disabled={gLocked || (!blank && (!open || gHas))} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })} className={`disabled:opacity-60 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
+                  {!noProj && !blank && <select disabled={gLocked || !open || phaseFixed(g)} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })} className={`mt-2 disabled:opacity-60 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>}
+                  {blank && <div className="mt-2 text-xs text-slate-500">Chọn dự án (hoặc Khác) — toàn bộ hạng mục sẽ hiện ra để nhập giờ.</div>}
 
-                  {g.items.map(({ r, i }) => {
-                    const rt = days.reduce((s, d) => s + (r.days[d] || 0), 0);
-                    return (
-                      <div key={i} className="mt-3 border-t border-slate-800 pt-3">
-                        <select ref={(el) => { taskSel.current[i] = el; }} disabled={rowLocked(r) || r.projectId === ""} value={r.taskId} onChange={(e) => upd(i, { taskId: e.target.value })} className={`disabled:opacity-60 ${selectCls}`}>{taskOptions(r)}</select>
-                        <div className="mt-2 flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-xs text-slate-500">Giờ ngày {dLabel(activeDay)}</div>
-                            <div className="text-[11px] text-slate-600">Cả tuần: <span className="font-mono text-slate-400">{rt.toFixed(1)}</span> giờ</div>
+                  {secs.map((sec) => (
+                    <div key={sec.label}>
+                      {open && <div className={`mt-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider ${sec.ot ? "text-emerald-400" : "text-slate-500"}`}>{sec.ot && <Zap size={11} />}{sec.label}</div>}
+                      {sec.items.map(({ r, i }) => {
+                        const rt = days.reduce((s, d) => s + (r.days[d] || 0), 0);
+                        const ot = isOtTask(taskById.get(r.taskId));
+                        return (
+                          <div key={i} className={`flex items-center justify-between gap-2 ${open ? "mt-2" : "mt-2 border-t border-slate-800 pt-2"}`}>
+                            <div className="min-w-0">
+                              <div className={`truncate text-sm ${ot && !open ? "text-emerald-300" : rt ? "text-slate-100" : "text-slate-400"}`}>{rowLabel(r, open)}</div>
+                              <div className="text-[11px] text-slate-600">Cả tuần: <span className="font-mono text-slate-400">{rt.toFixed(1)}</span> giờ</div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-2">
+                              {open ? (
+                                <input ref={(el) => { mobileInputs.current[i] = el; }}
+                                  type="number" inputMode="decimal" min="0" max="24" step="0.5" placeholder="0" disabled={dayLocked(activeDay) || projClosed(r) || futureBlocked(r, activeDay) || !rowReady(r)}
+                                  value={r.days[activeDay] ?? ""} onChange={(e) => setHour(i, activeDay, e.target.value)}
+                                  onFocus={(e) => e.target.select()}
+                                  onKeyDown={(e) => {
+                                    // Enter nhảy xuống ô của dòng kế tiếp, nhập liền mạch cả ngày
+                                    if (e.key !== "Enter") return;
+                                    e.preventDefault();
+                                    const next = mobileInputs.current[i + 1];
+                                    if (next) { next.focus(); next.select?.(); } else e.target.blur();
+                                  }}
+                                  className={`${CTRL} w-20 rounded-md border bg-slate-950 px-2 text-center font-mono text-lg text-slate-100 focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot ? "border-emerald-900" : "border-slate-700"}`} />
+                              ) : (
+                                <span className={`w-12 text-right font-mono text-base ${r.days[activeDay] > 0 ? "text-slate-100" : "text-slate-700"}`}>{r.days[activeDay] > 0 ? r.days[activeDay] : "·"}</span>
+                              )}
+                              {(open || r.note) && (
+                                <button onClick={() => setNoteRow(i)} title={r.note || "Thêm mô tả"}
+                                  className={`${iconBtn} relative h-11 w-11 ${r.note ? "border-teal-800 text-teal-400" : ""}`}>
+                                  <MoreHorizontal size={16} />
+                                  {r.note && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-teal-400" />}
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex shrink-0 items-center gap-2">
-                            <input ref={(el) => { mobileInputs.current[i] = el; }}
-                              type="number" inputMode="decimal" min="0" max="24" step="0.5" placeholder="0" disabled={dayLocked(activeDay) || projClosed(r) || futureBlocked(r, activeDay) || !rowReady(r)}
-                              value={r.days[activeDay] ?? ""} onChange={(e) => setHour(i, activeDay, e.target.value)}
-                              onFocus={(e) => e.target.select()}
-                              onKeyDown={(e) => {
-                                // Enter nhảy xuống ô của dòng kế tiếp, nhập liền mạch cả ngày
-                                if (e.key !== "Enter") return;
-                                e.preventDefault();
-                                const next = mobileInputs.current[i + 1];
-                                if (next) { next.focus(); next.select?.(); } else e.target.blur();
-                              }}
-                              className={`${CTRL} w-20 rounded-md border border-slate-700 bg-slate-950 px-2 text-center font-mono text-lg text-slate-100 focus:border-teal-500 focus:outline-none disabled:opacity-60`} />
-                            <button onClick={() => setNoteRow(i)} title={r.note || "Thêm mô tả"}
-                              className={`${iconBtn} relative h-11 w-11 ${r.note ? "border-teal-800 text-teal-400" : ""}`}>
-                              <MoreHorizontal size={16} />
-                              {r.note && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-teal-400" />}
-                            </button>
-                            <button disabled={rowLocked(r)} onClick={() => delRow(i)} className={`${iconBtn} h-11 w-11 disabled:opacity-40`}><Trash2 size={16} /></button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                        );
+                      })}
+                    </div>
+                  ))}
 
-                  {!locked && !projClosed(g) && g.projectId !== "" && g.phaseId !== NO_PHASE && (
-                    <button onClick={() => addTaskToGroup(g)}
-                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-slate-700 py-2 text-xs text-slate-400 hover:border-teal-700 hover:text-teal-300">
-                      <Plus size={14} /> Hạng mục
-                    </button>
-                  )}
+                  <div className="mt-3 flex gap-2">
+                    {open ? (
+                      <button onClick={() => doneGroup(g.key)} className={`flex-1 ${btnPrimary}`}><Check size={15} /> Xong, tạm lưu</button>
+                    ) : canEdit ? (
+                      <button onClick={() => editGroup(g.key)} className={`flex-1 ${btnGhost}`}><Pencil size={14} /> Sửa</button>
+                    ) : <div className="flex-1" />}
+                    {!gLocked && !locked && (
+                      <button onClick={() => delGroup(g.key)} title="Xoá cả khối" className={`${iconBtn} h-11 w-11`}><Trash2 size={16} /></button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -2527,7 +2700,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
 
       {undoRow && (
         <div className="flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm">
-          <span className="min-w-0 flex-1 truncate text-slate-300">Đã xoá dòng {projName(undoRow.row.projectId)} · {taskName(undoRow.row.taskId)}</span>
+          <span className="min-w-0 flex-1 truncate text-slate-300">Đã xoá {undoRow.label}</span>
           <button onClick={undoDelete} className="shrink-0 text-xs text-teal-400 hover:text-teal-300">Hoàn tác</button>
           <button onClick={() => setUndoRow(null)} className="shrink-0 text-slate-500 hover:text-slate-300"><X size={14} /></button>
         </div>

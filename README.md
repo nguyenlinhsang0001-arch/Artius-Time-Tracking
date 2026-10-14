@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v3.1 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v3.2 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v3.1`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v3.2`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -26,6 +26,19 @@ Ghi chú:
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
 
+## Mới ở v3.2 — chấm công không cần chọn hạng mục
+
+Không đổi database: **không cần chạy lại `schema.sql`** nếu đã chạy bản v3.1.
+
+- **Thêm dòng → chọn dự án** là hiện ngay **toàn bộ hạng mục** của dự án (theo vai trò), nhân sự gõ giờ thẳng vào,
+  không còn ô sổ xuống để chọn hạng mục. Giai đoạn vẫn tự chọn theo cài đặt Mở/Đóng của quản lý.
+- Hạng mục có tên bắt đầu bằng `[OT]` được tách riêng nhóm **Tăng ca** ở cuối khối, hiển thị bỏ chữ `[OT]`
+  (VD "17:30 – 21:00"). Khối "Khác" chia nhóm **Công việc chung / Vắng mặt**.
+- Nhập xong bấm **✓** ở đầu khối: khối thu gọn, chỉ còn hạng mục có giờ, giờ được **tạm lưu trên máy** (tải lại
+  trang vẫn còn). Bấm **bút chì (Sửa)** để mở lại đủ hạng mục. Bấm Thêm dòng khi còn khối đang mở thì app tự ✓ khối đó.
+- Xong hết các dự án thì bấm **Gửi giờ công** như cũ — gửi toàn bộ giờ đã chấm, ngày đã gửi bị khoá. Gửi xong bản tạm lưu tự xoá.
+- Nút thùng rác ở đầu khối xoá cả khối (có Hoàn tác). Khối đã có giờ thì không đổi dự án nữa.
+
 ## Mới ở v3.1 — quản lý mở / đóng giai đoạn của dự án
 
 - Tab **Dự án**: mỗi ô giai đoạn có nút **Đang mở / Đóng**. Nhân sự chỉ chấm được giai đoạn đang mở.
@@ -35,6 +48,8 @@ Ghi chú:
 - **Giờ dự kiến chỉ còn để theo dõi**, không còn quyết định chấm công được hay không. Dự án chưa từng bấm mở/đóng thì
   giai đoạn nào có giờ dự kiến > 0 coi như đang mở (giữ nguyên như hiện tại). Dự án mới: giai đoạn có giờ dự kiến được mở sẵn.
 - Database chặn theo cùng luật (`schema.sql` mục 7c). Sửa lỗi nhỏ: dòng trống không còn mục thừa "(dự án đã xoá)".
+- **Vai trò** của nhân sự: trang Cài đặt của nhân sự hiện thêm dòng "Vai trò" (tên vai trò quản lý đã gán). Ô tìm kiếm ở
+  danh sách Nhân sự tìm được theo vai trò. Các file Excel xuất ra có thêm cột "Vai trò" (tên đầy đủ).
 
 ## Mới ở v3.0
 
