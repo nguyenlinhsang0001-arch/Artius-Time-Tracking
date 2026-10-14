@@ -30,7 +30,7 @@ Ghi chú:
 
 - Một ngày bị tính **Thiếu giờ công** khi **giờ chuẩn** (tổng − OT − giờ cố gắng) nhỏ hơn giờ chuẩn của ngày (mặc định 8h T2–T6, 4h T7). Ví dụ 6h làm việc + 2h OT = 8h vẫn thiếu 2h.
 - Ngày thiếu: chữ màu cam ở hàng Tổng theo ngày và hàng Giờ chuẩn, chấm cam trên tiêu đề ngày, ô nhập viền cam, lịch chọn tuần tô cam (ưu tiên hơn dấu tăng ca).
-- Dashboard cá nhân dùng cùng quy tắc: ngày/tuần "thiếu" tính theo giờ chuẩn.
+- Dashboard cá nhân dùng cùng quy tắc: ngày/tuần "thiếu" tính theo giờ chuẩn; trong khung Chi tiết tuần, ngày thiếu và số giờ chuẩn của ngày đó (cùng dòng Cả tuần nếu tuần còn thiếu) tô cam.
 - Không cần chạy lại `supabase/schema.sql`.
 
 ## Mới ở v3.9 — Dashboard cá nhân: nét 44h và chi tiết tuần
