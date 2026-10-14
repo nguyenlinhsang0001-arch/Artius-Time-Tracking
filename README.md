@@ -31,7 +31,7 @@ Ghi chú:
 - **OT chỉ tính khi chấm vào hạng mục Tăng ca** (tên bắt đầu bằng `[OT]`). Chấm 9h vào hạng mục làm việc thường sẽ không còn tự tách thành 8h + 1h OT.
 - **Giờ cố gắng**: giờ làm việc thường vượt giờ chuẩn của ngày (và toàn bộ giờ làm việc thường vào Chủ nhật / ngày lễ / ngày nghỉ). Hiện thành một dòng riêng bên dưới "Trong đó OT". Không tính vào chi phí dự án.
 - Áp dụng cho: màn chấm công nhân sự, dấu cảnh báo trên lịch, Dashboard, Báo cáo và toàn bộ file Excel (thêm cột "Giờ cố gắng").
-- Không cần chạy lại `supabase/schema.sql`.
+- **Phải chạy lại `supabase/schema.sql`** trong Supabase SQL Editor: sửa lỗi "Chưa tới ngày, chưa chấm giờ làm việc được" báo sai khi bảng công trong tháng đã có giờ ở ngày sau hôm nay (do quản lý nhập). Lỗi có từ v2.3, do kiểu ghi upsert làm trigger coi bản cũ là rỗng.
 
 ## Mới ở v3.3 — chỉnh màn chấm công
 
