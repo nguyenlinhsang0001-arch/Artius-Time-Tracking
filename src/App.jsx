@@ -113,7 +113,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v3.7";
+const APP_VERSION = "v3.8";
 /* v2.2 — Thư viện Excel nặng nhất app; chỉ tải khi có người bấm xuất / đọc file Excel. */
 let XLSX_MOD = null;
 const loadXlsx = async () => XLSX_MOD || (XLSX_MOD = await import("xlsx"));
@@ -1392,7 +1392,7 @@ desc={me?.type === "admin" ? "Giờ vừa sửa sẽ mất. Bấm Giữ lại đ
             ) : (
               <>
                 {tab === "ts" && <EmployeeArea cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} />}
-                {tab === "edash" && <EmployeeDashboard cfg={cfg} empId={me.empId} />}
+                {tab === "edash" && <EmployeeDashboard cfg={cfg} empId={me.empId} onGoTimesheet={() => setTab("ts")} />}
                 {tab === "eset" && <EmployeeSettings cfg={cfg} empId={me.empId} />}
               </>
             )}
@@ -3424,7 +3424,7 @@ function EmployeeSettings({ cfg, empId }) {
 }
 
 
-function EmployeeDashboard({ cfg, empId }) {
+function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
   const emp = cfg.employees.find((e) => e.id === empId);
   const now = new Date();
   const [from, setFrom] = useState(fmt(addDays(mondayOf(now), -21))); // mặc định: 4 tuần gần nhất
@@ -3458,7 +3458,7 @@ function EmployeeDashboard({ cfg, empId }) {
     setData({ detail }); setLoading(false);
   }, [from, to, empId]);
 
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [load]);   // v3.8: đổi kỳ (hoặc bấm nút nhanh) là tải lại ngay, bỏ nút Cập nhật
 
   const projMapById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
   const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
@@ -3518,187 +3518,181 @@ function EmployeeDashboard({ cfg, empId }) {
     URL.revokeObjectURL(url);
   };
 
-  const agg = useMemo(() => {
-    if (!data) return null;
-    // danh sách dự án xuất hiện trong kỳ, thứ tự ổn định theo cfg.projects để màu không nhảy lung tung
-    const seenIds = new Set(data.detail.map((d) => d.projectId));
-    const projIds = cfg.projects.filter((p) => seenIds.has(p.id)).map((p) => p.id);
-    for (const id of seenIds) if (!projIds.includes(id)) projIds.push(id); // dự án đã xoá vẫn giữ lại để không mất dữ liệu
-    const colorOf = (id) => PROJECT_COLORS[projIds.indexOf(id) % PROJECT_COLORS.length];
-
-    // gộp theo NGÀY, giữ nguyên breakdown theo dự án cho từng ngày
-    const dayMap = new Map(); // dateStr -> { total, [projId]: hours }
-    for (const d of data.detail) {
-      const cur = dayMap.get(d.date) || { date: d.date, total: 0 };
-      cur[d.projectId] = (cur[d.projectId] || 0) + d.hours;
-      cur.total += d.hours;
-      // v3.4: tách giờ Tăng ca và giờ làm việc thường để tính OT / Giờ cố gắng (khoá có tiền tố _ để không lẫn với id dự án)
-      if (isOtId(d.taskId)) cur._ot = (cur._ot || 0) + d.hours;
-      else if (!isLeaveTask(d.taskId)) cur._reg = (cur._reg || 0) + d.hours;
-      dayMap.set(d.date, cur);
-    }
-    // đánh số thứ tự tuần (0,1,2,...) để tô nền xen kẽ trên biểu đồ — chỉ tính tuần có phát sinh giờ công
-    const mondaysInData = [...new Set([...dayMap.keys()].map((dt) => fmt(mondayOf(parseD(dt)))))].sort();
-    const weekIndexOf = new Map(mondaysInData.map((m, i) => [m, i]));
-    const daily = [...dayMap.values()].sort((a, b) => a.date.localeCompare(b.date)).map((d) => ({
-      ...d, label: dLabel(d.date), weekIdx: weekIndexOf.get(fmt(mondayOf(parseD(d.date)))),
-    }));
-
-    // tổng theo tuần — dùng cho danh sách nhận biết tuần bên dưới biểu đồ ngày
-    const weekMap = new Map();
-    for (const d of daily) {
-      const wk = fmt(mondayOf(parseD(d.date)));
-      const cur = weekMap.get(wk) || { monday: wk, total: 0 };
-      cur.total += d.total;
-      weekMap.set(wk, cur);
-    }
-    const weekly = [...weekMap.values()].sort((a, b) => a.monday.localeCompare(b.monday)).map((w) => ({
-      ...w, label: `${dLabel(w.monday)} – ${dLabel(fmt(addDays(parseD(w.monday), 6)))}`,
-    }));
-
-    // dải nền xen kẽ theo tuần: mỗi dải là [nhãn ngày đầu, nhãn ngày cuối] của các ngày cùng weekIdx, liền kề nhau trong mảng daily
-    const weekBands = [];
-    for (const d of daily) {
-      const last = weekBands[weekBands.length - 1];
-      if (last && last.weekIdx === d.weekIdx) last.x2 = d.label;
-      else weekBands.push({ weekIdx: d.weekIdx, x1: d.label, x2: d.label });
-    }
-
-    return { projIds, colorOf, daily, weekly, weekBands, total: data.detail.reduce((s, d) => s + d.hours, 0) };
-  }, [data, cfg.projects]);
-
+  /* v3.8 — Dashboard cá nhân kiểu "tóm tắt tuần" (phương án A): một câu nói thẳng trạng thái, danh sách từng tuần
+     có nhãn Đủ / Thiếu / Đang chấm và thanh 3 màu (giờ chuẩn · OT · giờ cố gắng), cùng tỷ trọng theo dự án.
+     Giờ chuẩn của ngày = tổng − OT − giờ cố gắng (giống màn chấm công v3.7). Ngày thiếu = ngày làm việc đã qua
+     (có giờ chuẩn, không phải ngày lễ) mà tổng giờ chấm < giờ chuẩn. */
   const hoursCfg = cfg.hours || DEFAULT_HOURS;
   const holidaySet = useMemo(() => makeHolidayIndex(cfg.holidays), [cfg.holidays]);
-  // OT và target của kỳ đang xem — target bỏ qua ngày lễ, không tính những ngày nằm ngoài khoảng lọc
-  const otTotal = useMemo(() => {
-    if (!agg) return 0;
-    return agg.daily.reduce((s, d) => s + (d._ot || 0), 0);
-  }, [agg, hoursCfg, holidaySet]);
-  const effortTotal = useMemo(() => {
-    if (!agg) return 0;
-    return agg.daily.reduce((s, d) => s + effortHoursFor(d.date, d._reg || 0, hoursCfg, holidaySet), 0);
-  }, [agg, hoursCfg, holidaySet]);
-  const periodTarget = useMemo(() => {
-    let s = 0;
-    for (let d = parseD(from); fmt(d) <= to; d = addDays(d, 1)) {
-      const key = fmt(d);
-      if (holidaySet.has(key)) continue;
-      s += stdHoursFor(key, hoursCfg);
-    }
-    return s;
-  }, [from, to, hoursCfg, holidaySet]);
+  const todayStr = fmt(new Date());
+  const DOW_SHORT = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 
-  const nWeeks = agg ? agg.weekly.length : 0;
+  const view = useMemo(() => {
+    if (!data) return null;
+    const day = new Map();      // dateStr -> { tot, ot, reg }
+    const byProj = new Map();   // projectId -> giờ (không gồm vắng mặt)
+    let leaveHrs = 0;
+    for (const d of data.detail) {
+      const c = day.get(d.date) || { tot: 0, ot: 0, reg: 0 };
+      c.tot += d.hours;
+      if (isOtId(d.taskId)) c.ot += d.hours; else if (!isLeaveTask(d.taskId)) c.reg += d.hours;
+      day.set(d.date, c);
+      if (isLeaveTask(d.taskId)) leaveHrs += d.hours;
+      else byProj.set(d.projectId, (byProj.get(d.projectId) || 0) + d.hours);
+    }
+    const info = (s) => {
+      const c = day.get(s) || { tot: 0, ot: 0, reg: 0 };
+      const ef = effortHoursFor(s, c.reg, hoursCfg, holidaySet);
+      return { tot: c.tot, ot: c.ot, ef, std: Math.max(0, c.tot - c.ot - ef), min: minHoursFor(s, hoursCfg, holidaySet) };
+    };
+    const weeks = [];
+    for (let m = mondayOf(parseD(from)); fmt(m) <= to; m = addDays(m, 7)) {
+      const ds = [];
+      for (let i = 0; i < 7; i++) { const k = fmt(addDays(m, i)); if (k >= from && k <= to) ds.push(k); }
+      if (ds.length === 0 || ds[0] > todayStr) continue;   // tuần chưa tới thì không liệt kê
+      const w = { monday: fmt(m), label: `${dLabel(ds[0])} – ${dLabel(ds[ds.length - 1])}`, std: 0, ot: 0, ef: 0, tot: 0, target: 0, miss: [],
+        isCur: ds.includes(todayStr), days: [] };
+      for (const k of ds) {
+        const x = info(k);
+        w.std += x.std; w.ot += x.ot; w.ef += x.ef; w.tot += x.tot;
+        const due = k <= todayStr && x.min !== null;
+        if (due) { w.target += x.min; if (x.tot < x.min) w.miss.push(k); }
+        w.days.push({ k, ...x, st: k > todayStr ? "fut" : x.min === null ? (x.tot > 0 ? "ok" : "off") : x.tot < x.min ? "miss" : "ok" });
+      }
+      weeks.push(w);
+    }
+    const sum = (f) => weeks.reduce((a, w) => a + w[f], 0);
+    const scale = Math.max(1, ...weeks.map((w) => Math.max(w.tot, w.target)));
+    const projTotal = [...byProj.values()].reduce((a, v) => a + v, 0);
+    const projects = [...byProj.entries()].sort((a, b) => b[1] - a[1]).map(([id, h]) => ({ id, h, pct: projTotal ? (h / projTotal) * 100 : 0 }));
+    return { weeks, scale, projects, leaveHrs, std: sum("std"), ot: sum("ot"), ef: sum("ef"), tot: sum("tot"), target: sum("target") };
+  }, [data, from, to, todayStr, hoursCfg, holidaySet]);
+
+  const cur = view?.weeks.find((w) => w.isCur) || null;
+  const pastMiss = view ? view.weeks.filter((w) => !w.isCur && w.miss.length > 0) : [];
+  const anyMiss = !!view && (pastMiss.length > 0 || (cur && cur.miss.length > 0));
+  const shortDays = (list) => list.map((k) => `${DOW_SHORT[(parseD(k).getDay() + 6) % 7]} ${dLabel(k)}`).join(", ");
 
   return (
     <div className="space-y-3 md:space-y-4">
-      <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div className="md:w-96">
-            <DateRangeField label="Kỳ báo cáo" from={from} to={to} onChange={setRange} />
-          </div>
-          <div className="flex items-center gap-2 md:gap-3">
-            {loading && <Loader2 className="animate-spin text-slate-500" size={16} />}
-            <button onClick={load} className={`flex-1 md:flex-none ${btnGhost}`}>Cập nhật</button>
-            <button onClick={exportMine} disabled={!data || data.detail.length === 0}
-              className={`flex-1 md:flex-none ${btnPrimary} disabled:opacity-40`}><Download size={15} /> Xuất Excel</button>
-          </div>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3">
-          {[["w4", "4 tuần gần nhất"], ["thisMonth", "Tháng này"], ["lastMonth", "Tháng trước"]].map(([k, l]) => (
-            <button key={k} onClick={() => preset(k)} className="rounded-md border border-slate-800 px-3 py-1.5 text-xs text-slate-400 hover:border-slate-600 hover:text-slate-200">{l}</button>
-          ))}
-          <span className="ml-auto text-xs text-slate-500">{emp?.name} · {emp?.dept}</span>
+      {/* Kỳ báo cáo + Xuất Excel gọn một hàng */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 p-2.5">
+        <div className="w-full sm:w-80"><DateRangeField label="" from={from} to={to} onChange={setRange} /></div>
+        {[["w4", "4 tuần gần nhất"], ["thisMonth", "Tháng này"], ["lastMonth", "Tháng trước"]].map(([k, l]) => (
+          <button key={k} onClick={() => preset(k)} className="rounded-md border border-slate-800 px-3 py-1.5 text-xs text-slate-400 hover:border-slate-600 hover:text-slate-200">{l}</button>
+        ))}
+        <div className="ml-auto flex items-center gap-2">
+          {loading && <Loader2 className="animate-spin text-slate-500" size={16} />}
+          <button onClick={exportMine} disabled={!data || data.detail.length === 0}
+            className={`${btnGhost} disabled:opacity-40`}><Download size={15} /> Xuất Excel</button>
         </div>
       </div>
 
-      {agg && (
+      {view && (
         <>
-          <div className="grid grid-cols-2 gap-2 md:flex md:gap-3">
-            {[
-              ["Tổng giờ trong kỳ", agg.total.toFixed(1), "giờ"],
-              ["Trong đó OT", otTotal.toFixed(1), "giờ"],
-              ["Giờ cố gắng", effortTotal.toFixed(1), "giờ"],
-              ["Target kỳ này", periodTarget.toFixed(0), "giờ"],
-              ["Số dự án tham gia", agg.projIds.length, ""],
-              ["Giờ TB / tuần", nWeeks ? (agg.total / nWeeks).toFixed(1) : "0", "giờ"],
-            ].map(([l, v, u]) => (
-              <div key={l} className="min-w-0" style={{ flexBasis: 0, flexGrow: 1 }}>
-                <Kpi label={l} value={v} unit={u} />
+          {/* Câu tóm tắt: nói thẳng còn thiếu gì */}
+          <div className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4 md:flex-row md:items-center md:gap-5">
+            <div className="min-w-0 flex-1 text-base font-semibold leading-relaxed text-slate-100 md:text-lg" style={{ textWrap: "balance" }}>
+              {!anyMiss ? (
+                <span className="text-teal-300">Bạn đã chấm đủ giờ {cur ? "đến hôm nay" : "trong kỳ này"}.</span>
+              ) : (
+                <>
+                  {cur && cur.miss.length > 0 && (cur.tot === 0
+                    ? <>Tuần này bạn chưa chấm giờ nào. <span className="text-rose-400">Còn thiếu {cur.miss.length} ngày</span>{pastMiss.length ? "" : "."} </>
+                    : <>Tuần này <span className="text-rose-400">còn thiếu giờ {cur.miss.length} ngày</span> ({shortDays(cur.miss)}){pastMiss.length ? "" : "."} </>)}
+                  {cur && cur.miss.length === 0 && <>Tuần này đã đủ giờ đến hôm nay. </>}
+                  {pastMiss.length > 0 && <>{cur && cur.miss.length > 0 ? "và " : ""}<span className="text-rose-400">
+                    {pastMiss.length === 1 ? `tuần ${pastMiss[0].label}` : `${pastMiss.length} tuần trước`}</span> chưa đủ giờ.</>}
+                </>
+              )}
+            </div>
+            {cur && (
+              <div className="flex gap-1.5">
+                {cur.days.filter((x) => !(x.st === "off" && (parseD(x.k).getDay() === 0))).map((x) => (
+                  <div key={x.k} title={`${shortDays([x.k])}: ${x.tot ? `${x.tot.toFixed(1)} giờ` : "chưa chấm"}`}
+                    className={`w-11 rounded-lg border py-1.5 text-center text-[11px] ${x.st === "miss" ? "border-rose-900 text-rose-400" : x.st === "ok" ? "border-teal-800 text-teal-400" : x.st === "fut" ? "border-slate-800 text-slate-600 opacity-60" : "border-slate-800 text-slate-600"}`}>
+                    {DOW_SHORT[(parseD(x.k).getDay() + 6) % 7]}
+                    <b className="block font-mono text-[13px] font-medium text-slate-200">{parseD(x.k).getDate()}</b>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+            {anyMiss && onGoTimesheet && (
+              <button onClick={onGoTimesheet} className={`${btnPrimary} shrink-0`}><Clock size={15} /> Chấm công ngay</button>
+            )}
           </div>
 
-          {periodTarget > 0 && (
-            <div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2">
-              <span className="shrink-0 text-xs text-slate-500">Tiến độ target kỳ</span>
-              <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-800">
-                <div className={`h-full rounded-full ${agg.total >= periodTarget ? "bg-teal-500" : "bg-amber-500"}`}
-                  style={{ width: `${Math.min(100, (agg.total / periodTarget) * 100)}%` }} />
-              </div>
-              <span className={`shrink-0 font-mono text-xs ${agg.total >= periodTarget ? "text-teal-400" : "text-amber-400"}`}>
-                {agg.total >= periodTarget ? `vượt ${(agg.total - periodTarget).toFixed(1)}h` : `thiếu ${(periodTarget - agg.total).toFixed(1)}h`}
-              </span>
-            </div>
-          )}
-
-          {/* Biểu đồ, tổng theo tuần và chú giải gộp trong một panel, xếp ngang để vừa một màn hình */}
-          <Panel title="Giờ công theo ngày — theo từng dự án">
-            {agg.daily.length === 0 ? <p className="text-sm text-slate-500">Chưa có dữ liệu trong kỳ này.</p> : (
-              <>
-                <div className="flex flex-col gap-3 md:flex-row md:gap-4">
-                  <div className="min-w-0" style={{ flexBasis: "74%", flexGrow: 1 }}>
-                    <ResponsiveContainer width="100%" height={isMobile ? 180 : 210}>
-                      <BarChart data={agg.daily} margin={{ left: 0, right: 8, top: 4 }}>
-                        <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="#1e293b" />
-                        {/* dải nền xen kẽ theo tuần — dấu hiệu nhận biết ranh giới các tuần ngay trên biểu đồ ngày */}
-                        {agg.weekBands.map((b) => (
-                          <ReferenceArea key={b.weekIdx} x1={b.x1} x2={b.x2}
-                            fill={b.weekIdx % 2 === 0 ? "rgba(148,163,184,0.06)" : "transparent"} stroke="none" ifOverflow="visible" />
-                        ))}
-                        <XAxis dataKey="label" tick={{ fontSize: isMobile ? 9 : 10, fill: "#94a3b8" }} axisLine={{ stroke: "#1e293b" }} tickLine={false} />
-                        <YAxis width={28} tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                        <Tooltip
-                          cursor={{ fill: "#1e293b" }}
-                          contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "6px 10px" }}
-                          labelStyle={{ color: "#ffffff", fontSize: 14, fontWeight: 600, marginBottom: 2 }}
-                          itemStyle={{ color: "#ffffff", fontSize: 14 }}
-                          formatter={(v, name) => [`${Number(v).toFixed(1)} giờ`, name]}
-                        />
-                        {agg.projIds.map((pid) => (
-                          <Bar key={pid} dataKey={pid} name={projLabel(pid)} stackId="dy" fill={agg.colorOf(pid)} radius={[0, 0, 0, 0]} />
-                        ))}
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-
-                  {/* tổng theo tuần chuyển sang cột bên phải thay vì nằm dưới, tiết kiệm chiều cao */}
-                  <div className="min-w-0 md:border-l md:border-slate-800 md:pl-4" style={{ flexBasis: "26%" }}>
-                    <div className="mb-1 text-[11px] uppercase tracking-wider text-slate-500">Tổng theo tuần</div>
-                    <div className="divide-y divide-slate-800">
-                      {agg.weekly.map((w) => (
-                        <div key={w.monday} className="flex items-center justify-between py-1 text-xs">
-                          <span className="text-slate-400">{w.label}</span>
-                          <span className="font-mono font-semibold text-teal-400">{w.total.toFixed(1)}</span>
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] md:gap-4">
+            {/* Từng tuần */}
+            <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-900 p-4">
+              <div className="mb-1 text-[11px] uppercase tracking-wider text-slate-500">Từng tuần · giờ chuẩn so với target</div>
+              {view.weeks.length === 0 ? <p className="py-3 text-sm text-slate-500">Chưa có tuần nào trong kỳ này.</p> : (
+                <div className="divide-y divide-slate-800">
+                  {[...view.weeks].reverse().map((w) => {
+                    const extra = w.ot + w.ef;
+                    const pill = w.target === 0 && w.tot === 0 ? ["Nghỉ", "border-slate-700 text-slate-500"]
+                      : w.miss.length === 0 ? [`Đủ${extra > 0 ? ` · +${extra.toFixed(1)}` : ""}`, "border-teal-800 bg-teal-950 text-teal-300"]
+                      : w.isCur ? [`Đang chấm · thiếu ${w.miss.length} ngày`, "border-amber-800 bg-amber-950 text-amber-300"]
+                      : w.tot === 0 ? ["Chưa chấm", "border-rose-900 bg-rose-950 text-rose-300"]
+                      : [`Thiếu ${w.miss.length} ngày`, "border-rose-900 bg-rose-950 text-rose-300"];
+                    const pct = (v) => `${(v / view.scale) * 100}%`;
+                    return (
+                      <div key={w.monday} className="grid grid-cols-[96px_minmax(0,1fr)_72px] items-center gap-3 py-2.5 text-sm md:grid-cols-[110px_minmax(0,1fr)_80px_172px]"
+                        title={`Chuẩn ${w.std.toFixed(1)} · OT ${w.ot.toFixed(1)} · cố gắng ${w.ef.toFixed(1)} · tổng ${w.tot.toFixed(1)} giờ`}>
+                        <span className="font-mono text-xs text-slate-300">{w.label}</span>
+                        <div className="flex h-2.5 overflow-hidden rounded-full bg-slate-800">
+                          <i className="block h-full bg-teal-400" style={{ width: pct(w.std) }} />
+                          <i className="block h-full bg-emerald-400" style={{ width: pct(w.ot) }} />
+                          <i className="block h-full bg-violet-400" style={{ width: pct(w.ef) }} />
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                        <span className={`text-right font-mono text-xs ${w.miss.length === 0 ? "text-teal-400" : w.isCur ? "text-amber-400" : "text-rose-400"}`}>{w.std.toFixed(1)} / {w.target.toFixed(0)}</span>
+                        <span className={`hidden justify-self-end whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] md:inline-block ${pill[1]}`}>{pill[0]}</span>
+                      </div>
+                    );
+                  })}
                 </div>
+              )}
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-800 pt-2.5 text-[11px] text-slate-400">
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-teal-400" />Giờ chuẩn</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-400" />OT</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-violet-400" />Giờ cố gắng</span>
+                <span className="text-slate-600">"+11.5" là giờ phát sinh (OT + cố gắng)</span>
+              </div>
+            </div>
 
-                {/* chú giải màu dự án gộp vào đây, bỏ panel riêng phía dưới */}
-                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-800 pt-2.5">
-                  {agg.projIds.map((pid) => (
-                    <div key={pid} className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                      <span className="h-2.5 w-2.5 rounded-sm" style={{ background: agg.colorOf(pid) }} />
-                      {projLabel(pid)}
+            {/* Dự án + cả kỳ */}
+            <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-900 p-4">
+              <div className="mb-1 text-[11px] uppercase tracking-wider text-slate-500">Bạn làm cho dự án nào</div>
+              {view.projects.length === 0 && view.leaveHrs === 0 ? <p className="py-2 text-sm text-slate-500">Chưa có giờ nào trong kỳ.</p> : (
+                <div className="divide-y divide-slate-800">
+                  {view.projects.map((p) => (
+                    <div key={p.id} className="py-2 text-sm">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="min-w-0 truncate text-slate-200">{projLabel(p.id)}</span>
+                        <span className="shrink-0 font-mono text-xs text-slate-300">{p.h.toFixed(1)} h · {Math.round(p.pct)}%</span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-teal-500" style={{ width: `${p.pct}%` }} /></div>
                     </div>
                   ))}
-                  <span className="ml-auto text-[11px] text-slate-600">Dải nền xám mờ đánh dấu các tuần xen kẽ</span>
+                  {view.leaveHrs > 0 && (
+                    <div className="flex items-baseline justify-between py-2 text-sm">
+                      <span className="text-sky-300">Nghỉ phép / vắng mặt</span><span className="font-mono text-xs text-slate-300">{view.leaveHrs.toFixed(1)} h</span>
+                    </div>
+                  )}
                 </div>
-              </>
-            )}
-          </Panel>
+              )}
+              <div className="mt-3 border-t border-slate-800 pt-3">
+                <div className="mb-1 text-[11px] uppercase tracking-wider text-slate-500">Cả kỳ</div>
+                <div className="font-mono text-[13px] leading-7">
+                  <span className="text-teal-400">{view.std.toFixed(1)}</span> chuẩn <span className="text-slate-600">+</span>{" "}
+                  <span className="text-emerald-400">{view.ot.toFixed(1)}</span> OT <span className="text-slate-600">+</span>{" "}
+                  <span className="text-violet-400">{view.ef.toFixed(1)}</span> cố gắng <span className="text-slate-600">=</span>{" "}
+                  <b className="text-slate-50">{view.tot.toFixed(1)}</b> giờ
+                </div>
+                <div className="text-[11px] text-slate-500">Target đến hôm nay: {view.target.toFixed(0)} giờ chuẩn</div>
+              </div>
+            </div>
+          </div>
         </>
       )}
     </div>

@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v3.7 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v3.8 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v3.7`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v3.8`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,14 @@ Ghi chú:
 | `public/` | Service worker + biểu tượng thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v3.8 — Dashboard cá nhân của nhân sự (phương án A)
+
+- Một câu tóm tắt ở đầu trang nói thẳng trạng thái, ví dụ "Tuần này bạn chưa chấm giờ nào. Còn thiếu 3 ngày và tuần 21/09 – 27/09 chưa đủ giờ.", kèm các ô ngày của tuần này (đỏ = thiếu, xanh = đủ, mờ = chưa tới) và nút **Chấm công ngay**.
+- Danh sách **từng tuần** (mới nhất ở trên): thanh 3 màu giờ chuẩn · OT · cố gắng, số "giờ chuẩn / target" và nhãn Đủ / Thiếu / Đang chấm / Chưa chấm.
+- Khung **Bạn làm cho dự án nào**: giờ và % theo dự án, giờ nghỉ phép tách riêng; dòng **Cả kỳ**: chuẩn + OT + cố gắng = tổng.
+- Bỏ 6 ô số, thanh tiến độ và biểu đồ cột theo ngày. Kỳ báo cáo và Xuất Excel gọn một hàng; đổi kỳ là tải lại ngay (bỏ nút Cập nhật). File Excel giữ nguyên.
+- Dashboard của quản lý không đổi. Không cần chạy lại `supabase/schema.sql`.
 
 ## Mới ở v3.7 — tổng giờ tuần (phương án A)
 
