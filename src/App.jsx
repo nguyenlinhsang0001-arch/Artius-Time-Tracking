@@ -113,7 +113,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v3.9";
+const APP_VERSION = "v4.0";
 /* v2.2 — Thư viện Excel nặng nhất app; chỉ tải khi có người bấm xuất / đọc file Excel. */
 let XLSX_MOD = null;
 const loadXlsx = async () => XLSX_MOD || (XLSX_MOD = await import("xlsx"));
@@ -1097,11 +1097,13 @@ function WeekPicker({ monday, onChange, empId, hoursCfg = DEFAULT_HOURS, holiday
     if (lv && h === 0) return "leave";
     const pt = monthParts[ymOf(dateStr)]?.[dateStr];
     const ot = pt?.ot || 0;
+    const ef = effortHoursFor(dateStr, pt?.reg || 0, hoursCfg, holidaySet);
     if (ot > OT_ALERT) return "otHigh";   // OT quá dày trong một ngày — cảnh báo đỏ
-    if (ot > 0) return "over";
-    if (effortHoursFor(dateStr, pt?.reg || 0, hoursCfg, holidaySet) > 0) return "effort";   // v3.4: giờ cố gắng, không phải OT
+    // v4.0: thiếu giờ tính theo giờ chuẩn (tổng − OT − cố gắng), ưu tiên hơn dấu tăng ca
     const min = minHoursFor(dateStr, hoursCfg, holidaySet);
-    if (min !== null && dateStr <= todayStr && h < min) return "under";
+    if (min !== null && dateStr <= todayStr && h - ot - ef < min) return "under";
+    if (ot > 0) return "over";
+    if (ef > 0) return "effort";   // v3.4: giờ cố gắng, không phải OT
     return null;
   };
 
@@ -2281,9 +2283,11 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   const leaveHours = (d) => rows.reduce((s2, r) => s2 + (isLeaveTask(r.taskId) ? (r.days[d] || 0) : 0), 0);
   const workHours = (d) => dayTotal(d) - leaveHours(d);
 
+  /* v4.0 — thiếu giờ công tính theo GIỜ CHUẨN (tổng − OT − giờ cố gắng), không tính theo tổng:
+     chấm 6h làm việc + 2h OT = 8h vẫn là thiếu 2h giờ chuẩn. */
   const isIncomplete = (d) => {
     const min = minHoursFor(d, hoursCfg, holidaySet);
-    return min !== null && d <= todayStr && dayTotal(d) < min;
+    return min !== null && d <= todayStr && dayTotal(d) - otHrs(d) - effortHrs(d) < min;
   };
   const isOverDaily = (d) => dayTotal(d) > (Number(hoursCfg.maxDaily) || 13.5); // vượt ngưỡng cảnh báo/ngày
   // v3.4: OT = chỉ giờ chấm vào hạng mục Tăng ca; Giờ cố gắng = giờ làm việc thường vượt ngưỡng ngày (không tính chi phí dự án)
@@ -2610,7 +2614,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                       <span className="mr-2 inline-block h-2 w-2 rounded-sm bg-teal-400" />Giờ chuẩn</td>
                     {days.map((d) => {
                       const st = stdHrs(d);
-                      return <td key={d} className={`px-1 py-2 text-center ${dayCol(d)} ${st ? "text-teal-400" : "text-slate-700"}`}>{st ? st.toFixed(1) : "·"}</td>;
+                      return <td key={d} className={`px-1 py-2 text-center ${dayCol(d)} ${isIncomplete(d) ? "text-amber-400" : st ? "text-teal-400" : "text-slate-700"}`}>{st ? st.toFixed(1) : "·"}</td>;
                     })}
                     <td className="px-2 py-2 text-center font-semibold text-teal-400">{stdTotal.toFixed(1)}</td>
                   </tr>
@@ -3556,8 +3560,9 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
         const x = info(k);
         w.std += x.std; w.ot += x.ot; w.ef += x.ef; w.tot += x.tot;
         const due = k <= todayStr && x.min !== null;
-        if (due) { w.target += x.min; if (x.tot < x.min) w.miss.push(k); }
-        w.days.push({ k, ...x, st: k > todayStr ? "fut" : x.min === null ? (x.tot > 0 ? "ok" : "off") : x.tot < x.min ? "miss" : "ok" });
+        // v4.0: thiếu = giờ chuẩn (không tính OT, cố gắng) < giờ chuẩn của ngày
+        if (due) { w.target += x.min; if (x.std < x.min) w.miss.push(k); }
+        w.days.push({ k, ...x, st: k > todayStr ? "fut" : x.min === null ? (x.tot > 0 ? "ok" : "off") : x.std < x.min ? "miss" : "ok" });
       }
       weeks.push(w);
     }

@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v3.9 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v4.0 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v3.9`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.0`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,13 @@ Ghi chú:
 | `public/` | Service worker + biểu tượng thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v4.0 — thiếu giờ công tính theo giờ chuẩn
+
+- Một ngày bị tính **Thiếu giờ công** khi **giờ chuẩn** (tổng − OT − giờ cố gắng) nhỏ hơn giờ chuẩn của ngày (mặc định 8h T2–T6, 4h T7). Ví dụ 6h làm việc + 2h OT = 8h vẫn thiếu 2h.
+- Ngày thiếu: chữ màu cam ở hàng Tổng theo ngày và hàng Giờ chuẩn, chấm cam trên tiêu đề ngày, ô nhập viền cam, lịch chọn tuần tô cam (ưu tiên hơn dấu tăng ca).
+- Dashboard cá nhân dùng cùng quy tắc: ngày/tuần "thiếu" tính theo giờ chuẩn.
+- Không cần chạy lại `supabase/schema.sql`.
 
 ## Mới ở v3.9 — Dashboard cá nhân: nét 44h và chi tiết tuần
 
