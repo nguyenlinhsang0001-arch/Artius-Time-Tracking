@@ -7,7 +7,7 @@ import {
   Clock, Users, FolderKanban, LayoutDashboard, Download, Plus, Trash2, Save,
   AlertTriangle, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, LogOut, Settings,
   CheckCircle2, Loader2, ListChecks, Lock, RotateCcw, Pencil, Check, X, CalendarDays,
-  Copy, Unlock, Search, Flag, Zap, Eraser, ClipboardList, MoreHorizontal, Grid3x3, User, Eye, EyeOff, Bell, Send, Printer, QrCode, Share,
+  Copy, Unlock, Search, Flag, Zap, Eraser, ClipboardList, MoreHorizontal, Grid3x3, User, Eye, EyeOff, Bell, Send, Printer, QrCode, Share, GripVertical,
 } from "lucide-react";
 import { fetchConfig, saveConfig, fetchTs, fetchTsChanges, fetchTsStamps, saveTs, deleteAllTs, fetchUsage } from "./data.js";
 import { mergeConfig } from "./merge.js";
@@ -17,6 +17,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v4.4
    Mới ở v4.4 — mô tả ngắn cho tác vụ: quản lý ghi ở tab Tác vụ (bút chì), nhân sự thấy dưới tên hạng mục khi nhập giờ
+     + kéo thả để đổi thứ tự tác vụ (máy tính); màn Chấm công hiện đúng thứ tự đó
    Mới ở v4.3 — chỉ sửa database: khoá bảng cũ artius_kv (xem supabase/schema.sql mục 8b)
    Mới ở v4.2 — nhắc lại mỗi 1 giờ
    · Sau lần nhắc đầu tiên (giờ trong Thiết lập), người chưa gửi đủ được nhắc lại mỗi 1 giờ trong chính ngày nhắc,
@@ -1759,6 +1760,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   const commonIds = useMemo(() => new Set(cfg.tasks.filter((t) => taskRoles(t).length === 0).map((t) => t.id)), [cfg.tasks]);
   const isKhacTask = (id) => isLeaveTask(id) || commonIds.has(id);
   const commonTasks = myTasks.filter((t) => commonIds.has(t.id));
+  const taskOrder = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t, k) => [t.id, k])), [cfg.tasks]);
   const projTasks = myTasks.filter((t) => !commonIds.has(t.id));
   const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
   const projName = (id) => cfg.projects.find((p) => p.id === id)?.name || "(dự án đã xoá)";
@@ -1835,6 +1837,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
       const t = taskById.get(it.r.taskId);
       s2[khac ? (isLeaveTask(it.r.taskId) ? 1 : 0) : (isOtTask(t) ? 1 : 0)].items.push(it);
     }
+    // v4.4: hạng mục hiện theo thứ tự quản lý sắp ở tab Tác vụ (kéo thả); hạng mục không còn trong danh sách xếp cuối
+    for (const x of s2) x.items.sort((a, b) => (taskOrder.get(a.r.taskId) ?? 1e9) - (taskOrder.get(b.r.taskId) ?? 1e9));
     return s2.filter((x) => x.items.length);
   };
   // v4.4: mô tả ngắn quản lý ghi cho tác vụ — hiện dưới tên hạng mục khi khối đang mở để nhập giờ
@@ -5004,6 +5008,8 @@ function Tasks({ cfg, saveCfg, flash }) {
   const [editName, setEditName] = useState("");
   const [editOwner, setEditOwner] = useState("");
   const [editDesc, setEditDesc] = useState("");          // v4.4: mô tả ngắn của tác vụ
+  const [dragTask, setDragTask] = useState(null);        // v4.4: id tác vụ đang kéo để đổi thứ tự (chỉ máy tính)
+  const [dropAt, setDropAt] = useState(null);            // { id, after } — chỗ sẽ thả: trước/sau tác vụ id
   const [pendingDel, setPendingDel] = useState(null);
   const [roleCode, setRoleCode] = useState("");
   const [roleName, setRoleName] = useState("");
@@ -5078,6 +5084,25 @@ function Tasks({ cfg, saveCfg, flash }) {
     await saveCfg({ ...cfg, tasks: cfg.tasks.filter((x) => x.id !== t.id) });
     flash("Đã xoá tác vụ.");
   };
+
+  /* v4.4 — Đổi thứ tự tác vụ bằng kéo thả. Chỉ sắp lại các tác vụ của ô đang xem; trong mảng cfg.tasks chúng được đặt lại
+     đúng vào các vị trí cũ của chính chúng, nên tác vụ của vai trò khác không xê dịch. Màn Chấm công hiện theo thứ tự này. */
+  const moveTask = async (fromId, toId, after) => {
+    if (!fromId || fromId === toId) return;
+    const list = listOf(cur);
+    const moving = list.find((t) => t.id === fromId);
+    if (!moving) return;
+    const rest = list.filter((t) => t.id !== fromId);
+    let at = rest.findIndex((t) => t.id === toId);
+    if (at < 0) return;
+    if (after) at += 1;
+    const order = [...rest.slice(0, at), moving, ...rest.slice(at)];
+    if (order.every((t, k) => t.id === list[k].id)) return;   // thả về đúng chỗ cũ
+    const mine = new Set(list.map((t) => t.id));
+    let k = 0;
+    await saveCfg({ ...cfg, tasks: cfg.tasks.map((t) => (mine.has(t.id) ? order[k++] : t)) });
+  };
+  const endDrag = () => { setDragTask(null); setDropAt(null); };
 
   const ROLE_CODE_RE = /^[A-Z0-9_-]{1,8}$/;
   const ROLE_CODE_MSG = "Mã vai trò chỉ gồm chữ không dấu, số, - hoặc _, tối đa 8 ký tự.";
@@ -5331,7 +5356,22 @@ function Tasks({ cfg, saveCfg, flash }) {
           {curList.length === 0 ? <div className="px-1 pt-4 text-sm text-slate-500">Chưa có tác vụ.</div> : (
             <div className="mt-2 divide-y divide-slate-800">
               {curList.map((t) => (
-                <div key={t.id} className="py-2 text-sm">
+                <div key={t.id}
+                  draggable={editId !== t.id && curList.length > 1}
+                  onDragStart={(e) => { setDragTask(t.id); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", t.id); } catch { /* bỏ qua */ } }}
+                  onDragOver={(e) => {
+                    if (!dragTask) return;
+                    e.preventDefault();
+                    const b = e.currentTarget.getBoundingClientRect();
+                    const after = e.clientY > b.top + b.height / 2;
+                    if (dropAt?.id !== t.id || dropAt?.after !== after) setDropAt({ id: t.id, after });
+                  }}
+                  onDrop={(e) => { e.preventDefault(); const d = dropAt; const from = dragTask; endDrag(); if (d) moveTask(from, d.id, d.after); }}
+                  onDragEnd={endDrag}
+                  className={`relative py-2 text-sm ${dragTask === t.id ? "opacity-40" : ""}`}>
+                  {dragTask && dropAt?.id === t.id && dragTask !== t.id && (
+                    <div className={`pointer-events-none absolute left-0 right-0 h-0.5 rounded-full bg-teal-400 ${dropAt.after ? "-bottom-px" : "-top-px"}`} />
+                  )}
                   {editId === t.id ? (
                     <div className="flex flex-col gap-2">
                       <div className="flex flex-col gap-2 md:flex-row">
@@ -5351,7 +5391,12 @@ function Tasks({ cfg, saveCfg, flash }) {
                     </div>
                   ) : (
                     <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
+                      {curList.length > 1 && (
+                        <span className="-ml-1 hidden shrink-0 cursor-grab text-slate-600 hover:text-slate-300 active:cursor-grabbing md:block" title="Kéo để đổi thứ tự">
+                          <GripVertical size={15} />
+                        </span>
+                      )}
+                      <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 items-baseline gap-1.5">
                           {t.code && <span className="shrink-0 font-mono text-[10px] text-teal-500">{t.code}</span>}
                           <span className="min-w-0 text-slate-200">{t.name}</span>
