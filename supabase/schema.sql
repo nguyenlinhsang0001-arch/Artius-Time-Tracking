@@ -324,17 +324,16 @@ alter table public.artius_ts       enable row level security;
 revoke all on public.artius_accounts from anon, authenticated;
 grant all on public.artius_accounts to service_role;
 
--- 8b. Bảng cũ: chỉ còn đọc. Bản v1.7 nào còn mở trên máy nhân viên sẽ báo lỗi khi lưu
---     (thay vì lặng lẽ ghi vào bảng không còn dùng), tải lại trang là lên v1.8.
+-- 8b. Bảng cũ artius_kv (dữ liệu trước v1.8).
+--     v4.3: KHOÁ HẲN với mọi tài khoản đăng nhập. Trước đây ai đăng nhập cũng đọc được bảng này, mà trong đó còn
+--     khối dữ liệu cũ gồm bảng công của MỌI người và mã PIN quản lý cũ -> nhân viên xem được giờ công người khác.
+--     Từ v1.8 app không còn đọc bảng này. Dữ liệu cũ KHÔNG bị xoá: chỉ service_role (hàm server /api/accounts,
+--     Supabase dashboard) đọc được.
 revoke all on public.artius_kv from anon, authenticated;
-grant select on public.artius_kv to authenticated;
 grant all on public.artius_kv to service_role;
 drop policy if exists "artius_kv_anon_all" on public.artius_kv;
 drop policy if exists "artius_kv_member_all" on public.artius_kv;
 drop policy if exists "artius_kv_member_read" on public.artius_kv;
-create policy "artius_kv_member_read" on public.artius_kv
-  for select to authenticated
-  using ((select public.artius_is_member()));
 
 -- 8c. Thiết lập: mọi tài khoản hợp lệ đọc được, chỉ tài khoản quản lý sửa được
 revoke all on public.artius_config from anon, authenticated;

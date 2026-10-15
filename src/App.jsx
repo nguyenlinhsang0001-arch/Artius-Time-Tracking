@@ -15,7 +15,8 @@ import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus 
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v4.2
+   ARTIUS — Quản lý giờ công theo dự án · v4.3
+   Mới ở v4.3 — chỉ sửa database: khoá bảng cũ artius_kv (xem supabase/schema.sql mục 8b)
    Mới ở v4.2 — nhắc lại mỗi 1 giờ
    · Sau lần nhắc đầu tiên (giờ trong Thiết lập), người chưa gửi đủ được nhắc lại mỗi 1 giờ trong chính ngày nhắc,
      tới 17:30 thì dừng; gửi đủ là hết nhận. Áp dụng cho cả nhắc tuần và nhắc chốt tháng (xem api/_reminders.js).
@@ -124,7 +125,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v4.2";
+const APP_VERSION = "v4.3";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
