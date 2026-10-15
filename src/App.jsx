@@ -15,7 +15,8 @@ import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus 
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v4.3
+   ARTIUS — Quản lý giờ công theo dự án · v4.4
+   Mới ở v4.4 — mô tả ngắn cho tác vụ: quản lý ghi ở tab Tác vụ (bút chì), nhân sự thấy dưới tên hạng mục khi nhập giờ
    Mới ở v4.3 — chỉ sửa database: khoá bảng cũ artius_kv (xem supabase/schema.sql mục 8b)
    Mới ở v4.2 — nhắc lại mỗi 1 giờ
    · Sau lần nhắc đầu tiên (giờ trong Thiết lập), người chưa gửi đủ được nhắc lại mỗi 1 giờ trong chính ngày nhắc,
@@ -125,7 +126,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v4.3";
+const APP_VERSION = "v4.4";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1836,6 +1837,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
     }
     return s2.filter((x) => x.items.length);
   };
+  // v4.4: mô tả ngắn quản lý ghi cho tác vụ — hiện dưới tên hạng mục khi khối đang mở để nhập giờ
+  const rowDesc = (r) => (taskById.get(r.taskId)?.desc || "").trim();
   const rowLabel = (r, open) => {
     const t = taskById.get(r.taskId);
     if (!t) return "(tác vụ đã xoá)";
@@ -2668,8 +2671,11 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                               <td className={`px-3 ${open ? "pt-1" : "pt-0.5"} ${pb}`}>
                                 <div className="flex items-center gap-2">
                                   <div className="shrink-0" style={{ width: GUT }} />
-                                  <div className={`min-w-0 flex-1 truncate text-sm ${rt ? "text-slate-100" : "text-slate-400"} ${ot && !open ? "text-emerald-300" : ""}`} title={rowLabel(r, open)}>
-                                    {rowLabel(r, open)}
+                                  <div className="min-w-0 flex-1">
+                                    <div className={`truncate text-sm ${rt ? "text-slate-100" : "text-slate-400"} ${ot && !open ? "text-emerald-300" : ""}`} title={rowLabel(r, open)}>
+                                      {rowLabel(r, open)}
+                                    </div>
+                                    {open && rowDesc(r) && <div className="truncate text-[11px] leading-tight text-slate-500" title={rowDesc(r)}>{rowDesc(r)}</div>}
                                   </div>
                                   <div className="flex shrink-0 items-center gap-1">
                                     {open && !ot && !isLeaveTask(r.taskId) && (
@@ -2841,6 +2847,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                           <div key={i} className={`flex items-center justify-between gap-2 ${open ? "mt-2" : "mt-2 border-t border-slate-800 pt-2"}`}>
                             <div className="min-w-0">
                               <div className={`truncate text-sm ${ot && !open ? "text-emerald-300" : rt ? "text-slate-100" : "text-slate-400"}`}>{rowLabel(r, open)}</div>
+                              {open && rowDesc(r) && <div className="text-[11px] leading-tight text-slate-500">{rowDesc(r)}</div>}
                               <div className="text-[11px] text-slate-600">Cả tuần: <span className="font-mono text-slate-400">{rt.toFixed(1)}</span> giờ</div>
                             </div>
                             <div className="flex shrink-0 items-center gap-2">
@@ -4996,6 +5003,7 @@ function Tasks({ cfg, saveCfg, flash }) {
   const [editId, setEditId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editOwner, setEditOwner] = useState("");
+  const [editDesc, setEditDesc] = useState("");          // v4.4: mô tả ngắn của tác vụ
   const [pendingDel, setPendingDel] = useState(null);
   const [roleCode, setRoleCode] = useState("");
   const [roleName, setRoleName] = useState("");
@@ -5054,10 +5062,15 @@ function Tasks({ cfg, saveCfg, flash }) {
 
   const commit = async () => {
     if (!editName.trim()) return flash("Tên tác vụ không được để trống.", "err");
-    await saveCfg({ ...cfg, tasks: cfg.tasks.map((t) => (t.id === editId ? { ...t, name: editName.trim(), ...patchFor(editOwner) } : t)) });
+    const desc = editDesc.trim();
+    await saveCfg({ ...cfg, tasks: cfg.tasks.map((t) => {
+      if (t.id !== editId) return t;
+      const { desc: _old, ...rest } = t;                  // mô tả rỗng thì bỏ hẳn trường, không lưu chuỗi trống
+      return { ...rest, name: editName.trim(), ...patchFor(editOwner), ...(desc ? { desc } : {}) };
+    }) });
     setEditId(null);
   };
-  const startEdit = (t) => { setEditId(t.id); setEditName(t.name); setEditOwner(ownerOf(t)); };
+  const startEdit = (t) => { setEditId(t.id); setEditName(t.name); setEditOwner(ownerOf(t)); setEditDesc(t.desc || ""); };
 
   const confirmDel = async () => {
     const t = pendingDel; setPendingDel(null);
@@ -5320,22 +5333,30 @@ function Tasks({ cfg, saveCfg, flash }) {
               {curList.map((t) => (
                 <div key={t.id} className="py-2 text-sm">
                   {editId === t.id ? (
-                    <div className="flex flex-col gap-2 md:flex-row">
-                      <input autoFocus value={editName} onChange={(e) => setEditName(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditId(null); }} className={`min-w-0 md:flex-1 ${inputCls}`} />
-                      <div className="flex gap-2">
-                        <select value={editOwner} onChange={(e) => setEditOwner(e.target.value)} className={`min-w-0 flex-1 md:w-56 md:flex-none ${selectCls}`}>
-                          {boxes.map((x) => <option key={x.key} value={x.key}>{x.title}</option>)}
-                        </select>
-                        <button onClick={commit} className={`${sqBtn} border-teal-800 text-teal-400`}><Check size={15} /></button>
-                        <button onClick={() => setEditId(null)} className={`${sqBtn}`}><X size={15} /></button>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-2 md:flex-row">
+                        <input autoFocus value={editName} onChange={(e) => setEditName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditId(null); }} className={`min-w-0 md:flex-1 ${inputCls}`} />
+                        <div className="flex gap-2">
+                          <select value={editOwner} onChange={(e) => setEditOwner(e.target.value)} className={`min-w-0 flex-1 md:w-56 md:flex-none ${selectCls}`}>
+                            {boxes.map((x) => <option key={x.key} value={x.key}>{x.title}</option>)}
+                          </select>
+                          <button onClick={commit} className={`${sqBtn} border-teal-800 text-teal-400`}><Check size={15} /></button>
+                          <button onClick={() => setEditId(null)} className={`${sqBtn}`}><X size={15} /></button>
+                        </div>
                       </div>
+                      <input value={editDesc} onChange={(e) => setEditDesc(e.target.value)} maxLength={200}
+                        onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditId(null); }}
+                        placeholder="Mô tả" className={inputCls} />
                     </div>
                   ) : (
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex min-w-0 items-baseline gap-1.5">
-                        {t.code && <span className="shrink-0 font-mono text-[10px] text-teal-500">{t.code}</span>}
-                        <span className="min-w-0 text-slate-200">{t.name}</span>
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-baseline gap-1.5">
+                          {t.code && <span className="shrink-0 font-mono text-[10px] text-teal-500">{t.code}</span>}
+                          <span className="min-w-0 text-slate-200">{t.name}</span>
+                        </div>
+                        {t.desc && <div className="mt-0.5 text-xs text-slate-500">{t.desc}</div>}
                       </div>
                       <div className="flex shrink-0 gap-1.5">
                         <button onClick={() => startEdit(t)} className={iconBtn}><Pencil size={13} /></button>
