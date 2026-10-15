@@ -15,7 +15,10 @@ import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus 
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v4.1
+   ARTIUS — Quản lý giờ công theo dự án · v4.2
+   Mới ở v4.2 — nhắc lại mỗi 1 giờ
+   · Sau lần nhắc đầu tiên (giờ trong Thiết lập), người chưa gửi đủ được nhắc lại mỗi 1 giờ trong chính ngày nhắc,
+     tới 17:30 thì dừng; gửi đủ là hết nhận. Áp dụng cho cả nhắc tuần và nhắc chốt tháng (xem api/_reminders.js).
    Mới ở v4.1 — nhân viên vào app dễ hơn
    · Cài app từ trình duyệt (PWA): nút "Cài app" trên thanh đầu trang (Chrome/Edge, Android);
      iPhone hiện hướng dẫn "Thêm vào MH chính". Cài xong có icon ARTIUS TIME, mở cửa sổ riêng.
@@ -121,7 +124,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v4.1";
+const APP_VERSION = "v4.2";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -5766,7 +5769,7 @@ function ReminderPanel({ cfg, saveCfg, flash }) {
           <TimePick value={r.monthTime} disabled={!r.monthOn} onChange={(v) => set({ monthTime: v })} />
         </div>
         <div className="flex flex-wrap items-center gap-3 border-t border-slate-800 pt-3">
-          <span className="text-xs text-slate-500">Chỉ gửi cho nhân sự còn ngày chưa gửi. Gửi trong vòng 15 phút sau giờ đã chọn.</span>
+          <span className="text-xs text-slate-500">Chỉ gửi cho nhân sự còn ngày chưa gửi. Lần đầu trong vòng 15 phút sau giờ đã chọn, sau đó nhắc lại mỗi 1 giờ tới 17:30 cho tới khi gửi đủ.</span>
           <button onClick={test} disabled={testing} className={`ml-auto ${btnGhost} disabled:opacity-40`}>{testing ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />} Gửi thử tới máy này</button>
           <button onClick={save} disabled={!dirty} className={`${btnPrimary} disabled:opacity-40`}><Save size={14} /> Lưu lịch nhắc</button>
         </div>

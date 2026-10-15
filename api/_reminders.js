@@ -11,6 +11,11 @@
    ============================================================ */
 
 export const DEFAULT_HOURS = { weekday: 8, sat: 4, sun: 0 };
+/* v4.2 — Sau lần nhắc đầu tiên (giờ đặt trong Thiết lập), cứ 1 giờ nhắc lại cho người CHƯA gửi đủ, chỉ trong chính
+   ngày nhắc đó, tới REPEAT_UNTIL thì dừng. Gửi đủ là hết nhận (người đủ giờ không bao giờ bị nhắc). */
+export const REPEAT_EVERY_MIN = 60;
+export const REPEAT_UNTIL = "17:30";
+
 export const DEFAULT_REMINDERS = {
   weekOn: true, weekDow: 1, weekTime: "09:30",          // 1 = thứ Hai … 7 = Chủ nhật
   monthOn: true, monthTo: 2, monthTime: "09:30",        // từ ngày cuối tháng tới ngày monthTo của tháng sau
@@ -47,7 +52,20 @@ export function normReminders(r) {
   };
 }
 
+const toMin = (hhmm) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
+/* v4.2 — Lượt nhắc trong ngày: lượt 0 ở đúng giờ đã chọn, lượt n ở giờ đó + n giờ.
+   Lượt 0 luôn được gửi (kể cả giờ đã chọn muộn hơn REPEAT_UNTIL); các lượt nhắc lại chỉ gửi khi chưa quá REPEAT_UNTIL.
+   Trả về số lượt, hoặc null nếu lúc này không gửi. */
+export function slotAt(startHHMM, nowHHMM, until = REPEAT_UNTIL) {
+  const start = toMin(startHHMM), now = toMin(nowHHMM);
+  if (now < start) return null;
+  const n = Math.floor((now - start) / REPEAT_EVERY_MIN);
+  if (n > 0 && now > toMin(until)) return null;
+  return n;
+}
+
 /* Các đợt nhắc đến hạn tại thời điểm `now` (giờ VN). Mỗi đợt có khoá `period` để chống gửi trùng.
+   v4.2: khoá có thêm ngày và số lượt ("<kỳ>@<ngày>#<lượt>") — mỗi lượt mỗi người nhận một lần.
    - Nhắc tuần: đúng thứ đã chọn, từ giờ đã chọn trở đi → nhắc cho TUẦN TRƯỚC (thứ Hai → Chủ nhật).
    - Nhắc tháng: từ ngày cuối tháng tới ngày monthTo của tháng sau, mỗi ngày một lần, từ giờ đã chọn trở đi.
      Ngày cuối tháng → nhắc cho chính tháng đó; mùng 1…monthTo → nhắc cho tháng trước. */
@@ -55,11 +73,13 @@ export function dueReminders(cfgReminders, now) {
   const r = normReminders(cfgReminders);
   const out = [];
   const { date, hhmm } = now;
-  if (r.weekOn && dow0(date) + 1 === r.weekDow && hhmm >= r.weekTime) {
+  const wSlot = r.weekOn && dow0(date) + 1 === r.weekDow ? slotAt(r.weekTime, hhmm) : null;
+  if (wSlot !== null) {
     const from = addDays(mondayOf(date), -7);
-    out.push({ kind: "week", period: from, from, to: addDays(from, 6) });
+    out.push({ kind: "week", period: `${from}@${date}#${wSlot}`, slot: wSlot, from, to: addDays(from, 6) });
   }
-  if (r.monthOn && hhmm >= r.monthTime) {
+  const mSlot = r.monthOn ? slotAt(r.monthTime, hhmm) : null;
+  if (mSlot !== null) {
     const ym = ymOf(date);
     const day = Number(date.slice(8, 10));
     const isLast = day === daysInMonth(ym);
@@ -67,7 +87,7 @@ export function dueReminders(cfgReminders, now) {
     if (isLast) target = ym;
     else if (day <= r.monthTo) target = prevYm(ym);
     if (target) {
-      out.push({ kind: "month", period: `${target}@${date}`, ym: target, from: `${target}-01`, to: `${target}-${pad(daysInMonth(target))}` });
+      out.push({ kind: "month", period: `${target}@${date}#${mSlot}`, slot: mSlot, ym: target, from: `${target}-01`, to: `${target}-${pad(daysInMonth(target))}` });
     }
   }
   return out;

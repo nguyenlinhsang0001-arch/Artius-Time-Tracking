@@ -429,7 +429,7 @@ create index if not exists artius_push_emp on public.artius_push (emp_id);
 
 create table if not exists public.artius_push_log (
   kind     text not null,                 -- 'week' | 'month' | 'test'
-  period   text not null,                 -- tuần: thứ Hai của tuần nhắc; tháng: 'YYYY-MM@YYYY-MM-DD' (ngày gửi)
+  period   text not null,                 -- tuần: thứ Hai của tuần nhắc; tháng: 'YYYY-MM@YYYY-MM-DD' (ngày gửi). v4.2: thêm '@<ngày>#<lượt>' cho cả hai
   emp_id   text not null,
   missing  int  not null default 0,       -- số ngày còn thiếu lúc gửi
   devices  int  not null default 0,       -- số thiết bị nhận thành công

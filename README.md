@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v4.1 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v4.2 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.1`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.2`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,15 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v4.2 — nhắc lại mỗi 1 giờ tới khi gửi đủ
+
+- Lần nhắc đầu tiên vẫn theo giờ đặt ở **Thiết lập → Nhắc nộp bảng công** (nhắc tuần: đúng thứ đã chọn; nhắc chốt tháng: mỗi ngày từ cuối tháng tới ngày đã chọn).
+- Sau đó, ai **còn ngày chưa gửi** được nhắc lại **mỗi 1 giờ** (ví dụ đặt 9:30 → 10:30, 11:30 … 17:30), **chỉ trong chính ngày nhắc**, quá **17:30** thì dừng.
+  Gửi đủ là lượt sau không nhận nữa. Áp dụng cho cả nhắc tuần và nhắc chốt tháng.
+- Thông báo mới thay thông báo cũ trên màn hình (không xếp chồng).
+- Chỉ sửa `api/_reminders.js` (và chữ hướng dẫn trong Thiết lập). **Không cần chạy lại `schema.sql` hay `cron.sql`** — lịch Supabase 15 phút/lần giữ nguyên.
+- Nhật ký "Lần nhắc gần nhất" giờ có một dòng cho mỗi lượt nhắc.
 
 ## Mới ở v4.1 — nhân viên vào app dễ hơn
 
