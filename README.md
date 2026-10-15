@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v4.0 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v4.1 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.0`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.1`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -22,9 +22,40 @@ Ghi chú:
 | `src/main.jsx`, `index.html`, `src/index.css` | Điểm khởi động, Tailwind |
 | `src/data.js`, `src/merge.js`, `src/storage.js`, `src/auth.js`, `src/push.js` | Đọc/ghi Supabase, đăng nhập, thông báo |
 | `api/accounts.js`, `api/push.js`, `api/_reminders.js` | Hàm server trên Vercel: tài khoản, thông báo nhắc |
-| `public/` | Service worker + biểu tượng thông báo |
+| `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v4.1 — nhân viên vào app dễ hơn
+
+- **Cài app từ trình duyệt (PWA).** Thêm `public/manifest.webmanifest` + icon 512 / maskable / iPhone. Service worker giờ được
+  đăng ký ngay khi mở app (trước chỉ khi cho phép thông báo) — vẫn không cache gì.
+  - Chrome / Edge (máy tính, Android): nút **Cài app** ở góc phải trên → hộp cài của trình duyệt → có icon ARTIUS TIME
+    trên Desktop/Taskbar hoặc màn hình chính, mở cửa sổ riêng.
+  - iPhone / iPad: nút **Cài app** mở hướng dẫn *Chia sẻ → Thêm vào MH chính*. **Trên iPhone, thông báo nhắc chỉ chạy khi
+    đã cài app** (iOS 16.4 trở lên) — app cài xong có bộ nhớ riêng nên phải đăng nhập lại một lần trong app.
+  - Đang mở dạng app đã cài thì nút tự ẩn.
+- **Bấm thông báo nhắc khi app đang mở** → chuyển thẳng tới tuần cần gửi (trước chỉ đưa cửa sổ lên). Còn giờ chưa gửi thì vẫn hỏi lại như cũ.
+- **Màn đăng nhập nhớ tên đăng nhập** lần trước trên máy đó. Phiên đăng nhập vốn đã được giữ lâu dài (tự gia hạn) từ v1.7 —
+  nhân viên chỉ phải đăng nhập lại khi bấm Thoát hoặc xoá dữ liệu trình duyệt.
+- **Thiết lập → Truy cập app** (quản lý): link + mã QR của đúng địa chỉ đang mở, nút **Sao chép link** và **In poster QR** (A4).
+  Đổi sang tên miền riêng rồi mở app bằng tên miền mới → QR tự đổi theo, in lại poster.
+- Thêm thư viện `qrcode` (chỉ tải khi mở mục Truy cập app). Không cần chạy lại `supabase/schema.sql`.
+
+### Gắn tên miền riêng (ví dụ `time.artius.vn`) — làm một lần, không đụng code
+1. **Vercel → project artius-timetracking → Settings → Domains → Add** → gõ `time.<tên miền công ty>` → Add.
+   Vercel hiện bản ghi cần thêm (thường là **CNAME** — chép đúng giá trị Vercel đưa).
+2. **Trang quản lý DNS của tên miền** (nơi mua domain) → thêm bản ghi: Loại `CNAME`, Tên/Host `time`, Giá trị = giá trị Vercel đưa ở bước 1, TTL mặc định.
+   Không sửa các bản ghi MX / mail đang có.
+3. Chờ Vercel báo **Valid Configuration** (vài phút tới vài giờ); Vercel tự cấp HTTPS.
+4. Địa chỉ `...vercel.app` cũ vẫn chạy. Nhưng app cài, thông báo và đăng nhập **gắn theo từng địa chỉ** → chốt dùng tên miền mới
+   trước khi phát động cài app, để mọi người cài một lần trên đúng địa chỉ.
+   Ai đã bật thông báo trên địa chỉ cũ thì mở địa chỉ mới, đăng nhập và cho phép thông báo lại.
+
+### Triển khai cho nhân viên
+1. Gắn tên miền (mục trên) → mở app bằng tên miền mới → Thiết lập → Truy cập app → **In poster QR**, dán ở văn phòng Q3, Q7, xưởng, công trường.
+2. Ghim link trong nhóm chat / mail nội bộ.
+3. Mỗi bộ phận dành 10 phút họp: mọi người mở link → **Cài app** → đăng nhập → **Cho phép** thông báo.
 
 ## Mới ở v4.0 — thiếu giờ công tính theo giờ chuẩn
 

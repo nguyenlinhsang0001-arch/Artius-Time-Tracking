@@ -7,7 +7,7 @@ import {
   Clock, Users, FolderKanban, LayoutDashboard, Download, Plus, Trash2, Save,
   AlertTriangle, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, LogOut, Settings,
   CheckCircle2, Loader2, ListChecks, Lock, RotateCcw, Pencil, Check, X, CalendarDays,
-  Copy, Unlock, Search, Flag, Zap, Eraser, ClipboardList, MoreHorizontal, Grid3x3, User, Eye, EyeOff, Bell, Send,
+  Copy, Unlock, Search, Flag, Zap, Eraser, ClipboardList, MoreHorizontal, Grid3x3, User, Eye, EyeOff, Bell, Send, Printer, QrCode, Share,
 } from "lucide-react";
 import { fetchConfig, saveConfig, fetchTs, fetchTsChanges, fetchTsStamps, saveTs, deleteAllTs, fetchUsage } from "./data.js";
 import { mergeConfig } from "./merge.js";
@@ -15,7 +15,15 @@ import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus 
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v2.2
+   ARTIUS — Quản lý giờ công theo dự án · v4.1
+   Mới ở v4.1 — nhân viên vào app dễ hơn
+   · Cài app từ trình duyệt (PWA): nút "Cài app" trên thanh đầu trang (Chrome/Edge, Android);
+     iPhone hiện hướng dẫn "Thêm vào MH chính". Cài xong có icon ARTIUS TIME, mở cửa sổ riêng.
+   · Bấm thông báo nhắc khi app đang mở: chuyển thẳng tới tuần cần gửi (trước chỉ đưa cửa sổ lên).
+   · Màn đăng nhập nhớ tên đăng nhập lần trước trên máy đó.
+   · Thiết lập → "Truy cập app": link, mã QR và in poster QR dán ở văn phòng / xưởng / công trường.
+   ------------------------------------------------------------
+   v2.2
    Mới ở v2.2 — chuẩn bị chạy thật cho 50+ người
    · Tự cập nhật nhẹ hơn: lần hỏi định kỳ chỉ lấy danh sách dòng vừa đổi, tải nội dung đúng dòng đổi;
      quản lý hỏi 30 giây/lần, máy để yên quá 10 phút thì ngừng hỏi.
@@ -113,7 +121,65 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v4.0";
+const APP_VERSION = "v4.1";
+/* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
+   Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
+   iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
+   Đang chạy dạng app đã cài thì ẩn nút. */
+let INSTALL_EVT = null;
+const installSubs = new Set();
+const notifyInstall = () => installSubs.forEach((f) => f());
+const isStandalone = () => {
+  try { return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true; } catch { return false; }
+};
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); INSTALL_EVT = e; notifyInstall(); });
+  window.addEventListener("appinstalled", () => { INSTALL_EVT = null; notifyInstall(); });
+}
+function useInstall() {
+  const [, bump] = useState(0);
+  useEffect(() => { const f = () => bump((x) => x + 1); installSubs.add(f); return () => installSubs.delete(f); }, []);
+  const mode = isStandalone() ? null : INSTALL_EVT ? "prompt" : isIOS() ? "ios" : null;
+  const install = async () => {
+    const e = INSTALL_EVT;
+    if (!e) return null;
+    INSTALL_EVT = null;            // mỗi sự kiện chỉ gọi prompt() được một lần
+    e.prompt();
+    const r = await e.userChoice.catch(() => null);
+    notifyInstall();
+    return r?.outcome || null;
+  };
+  return { mode, install };
+}
+
+function InstallButton() {
+  const { mode, install } = useInstall();
+  const [iosHelp, setIosHelp] = useState(false);
+  if (!mode) return null;
+  return (
+    <>
+      <button onClick={() => (mode === "ios" ? setIosHelp(true) : install())}
+        className="ml-3 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-teal-800 px-2.5 text-xs text-teal-300 hover:border-teal-600 hover:text-teal-200">
+        <Download size={13} /> Cài app
+      </button>
+      {iosHelp && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-4 md:items-center" onClick={() => setIosHelp(false)}>
+          <div className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h4 className="text-sm text-slate-50">Cài ARTIUS TIME lên iPhone</h4>
+            <ol className="mt-3 space-y-2.5 text-sm text-slate-300">
+              <li className="flex gap-2"><span className="w-4 shrink-0 font-mono text-teal-400">1</span><span>Mở trang này bằng Safari, bấm nút Chia sẻ <Share size={14} className="inline align-[-2px] text-teal-300" /> ở thanh dưới</span></li>
+              <li className="flex gap-2"><span className="w-4 shrink-0 font-mono text-teal-400">2</span><span>Chọn "Thêm vào MH chính" → Thêm</span></li>
+              <li className="flex gap-2"><span className="w-4 shrink-0 font-mono text-teal-400">3</span><span>Mở app từ icon ARTIUS TIME, đăng nhập một lần và cho phép thông báo</span></li>
+            </ol>
+            <button onClick={() => setIosHelp(false)} className={`mt-4 w-full ${btnGhost}`}>Đã hiểu</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* v2.2 — Thư viện Excel nặng nhất app; chỉ tải khi có người bấm xuất / đọc file Excel. */
 let XLSX_MOD = null;
 const loadXlsx = async () => XLSX_MOD || (XLSX_MOD = await import("xlsx"));
@@ -1286,6 +1352,28 @@ function AppMain() {
     : myEmp ? { type: "emp", empId: myEmp.id } : null;
   const orphan = !!who && !!cfg && !me;   // tài khoản thường nhưng nhân sự gắn kèm đã bị xoá
 
+  /* v4.1 — Bấm thông báo nhắc khi app ĐANG MỞ: service worker gửi tin sang đây thay vì tải lại trang.
+     Đang ở màn Chấm công thì chuyển tuần (vẫn hỏi lại nếu còn giờ chưa gửi); ở màn khác thì mở màn Chấm công đúng tuần đó. */
+  const navRef = useRef(null);
+  navRef.current = { me, tab, go };
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMsg = (ev) => {
+      if (ev.data?.type !== "artius-open") return;
+      let t = "";
+      try { t = new URL(ev.data.url).searchParams.get("tuan") || ""; } catch { /* bỏ qua */ }
+      const { me: m, tab: cur, go: goTab } = navRef.current || {};
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(t) || m?.type !== "emp") return;
+      if (cur === "ts") window.dispatchEvent(new CustomEvent("artius:tuan", { detail: t }));
+      else {
+        try { window.history.replaceState(null, "", `${window.location.pathname}?tuan=${t}`); } catch { /* bỏ qua */ }
+        goTab("ts");
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onMsg);
+    return () => navigator.serviceWorker.removeEventListener("message", onMsg);
+  }, []);
+
   if (booting) return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-950 px-6 text-center">
       <div className="flex items-center gap-2 text-slate-400"><Loader2 className="animate-spin" size={18} /><span className="text-sm">Đang tải dữ liệu…</span></div>
@@ -1356,7 +1444,10 @@ function AppMain() {
             <span className="font-mono text-sm tracking-[0.3em] text-slate-100">ARTIUS</span>
             <span className="truncate text-xs text-slate-500">{me ? pageTitle : "Quản lý giờ công dự án"}</span>
           </div>
-          {me && <span className="ml-3 shrink-0 truncate text-xs text-slate-400">{myEmp?.name || who.username}</span>}
+          <div className="flex min-w-0 items-center">
+            <InstallButton />
+            {me && <span className="ml-3 shrink-0 truncate text-xs text-slate-400">{myEmp?.name || who.username}</span>}
+          </div>
         </header>
 
         <main className="min-w-0 flex-1 px-3 pb-28 pt-4 md:px-6 md:pb-24 md:pt-5">
@@ -1497,10 +1588,12 @@ function NoteDialog({ open, title, value, readOnly, onSave, onClose }) {
 }
 
 /* ============================ SIGN IN ============================ */
+const LAST_USER_KEY = "artius:last-user";
 function SignIn({ onSignedIn, flash }) {
   const [mode, setMode] = useState(null);       // null = đang kiểm tra | "login" | "setup" (chưa có tài khoản nào)
   const [needPin, setNeedPin] = useState(false);
-  const [username, setUsername] = useState("");
+  // v4.1: nhớ tên đăng nhập lần trước trên máy này (không nhớ mật khẩu — việc đó để trình duyệt lo)
+  const [username, setUsername] = useState(() => { try { return localStorage.getItem(LAST_USER_KEY) || ""; } catch { return ""; } });
   const [password, setPassword] = useState("");
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1525,7 +1618,11 @@ function SignIn({ onSignedIn, flash }) {
     if (busy) return;
     if (!username.trim() || !password) return flash("Nhập tên đăng nhập và mật khẩu.", "err");
     setBusy(true);
-    try { await onSignedIn(await authSignIn(username, password)); }
+    try {
+      const w = await authSignIn(username, password);
+      try { localStorage.setItem(LAST_USER_KEY, normUsername(username)); } catch { /* bỏ qua */ }
+      await onSignedIn(w);
+    }
     catch (e) { flash(e.message, "err"); setBusy(false); }
   };
 
@@ -2098,6 +2195,14 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
     else if (atRisk) { setPendingWeek(nextMonday); return; }
     setMonday(nextMonday);
   };
+  // v4.1: thông báo nhắc được bấm khi đang ở màn này → chuyển tới tuần cần gửi qua goWeek (giữ nguyên bước hỏi lại)
+  const goWeekRef = useRef(goWeek);
+  goWeekRef.current = goWeek;
+  useEffect(() => {
+    const h = (e) => { const t = e.detail; if (/^\d{4}-\d{2}-\d{2}$/.test(t)) goWeekRef.current(fmt(mondayOf(parseD(t)))); };
+    window.addEventListener("artius:tuan", h);
+    return () => window.removeEventListener("artius:tuan", h);
+  }, []);
   const askSubmitWeek = () => {
     if (toSend.length === 0) return flash("Chưa có giờ mới để gửi. Nhập giờ vào các ngày chưa gửi (tới hôm nay) trước đã.", "err");
     setAskSubmit(true);
@@ -5540,6 +5645,78 @@ const TimePick = ({ value, onChange, disabled }) => {
   );
 };
 
+/* v4.1 — Truy cập app: link + mã QR của chính địa chỉ đang mở (đổi tên miền thì QR tự đổi theo), in poster dán tại văn phòng / xưởng / công trường */
+const escHtml = (x) => String(x).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function AccessPanel({ flash }) {
+  const url = `${window.location.origin}/`;
+  const shown = url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const [svg, setSvg] = useState("");
+  useEffect(() => {
+    let alive = true;
+    import("qrcode").then((QR) => QR.toString(url, { type: "svg", margin: 1, errorCorrectionLevel: "M", color: { dark: "#020617", light: "#ffffff" } }))
+      .then((s) => { if (alive) setSvg(s); })
+      .catch(() => { if (alive) setSvg(""); });
+    return () => { alive = false; };
+  }, [url]);
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(url); flash("Đã sao chép link."); }
+    catch { flash("Trình duyệt chặn sao chép — bôi đen link và Ctrl+C.", "err"); }
+  };
+
+  const printPoster = () => {
+    if (!svg) return;
+    const w = window.open("", "_blank");
+    if (!w) return flash("Trình duyệt chặn cửa sổ mới — cho phép popup rồi bấm lại.", "err");
+    w.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>ARTIUS TIME — QR</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #020617; background: #fff; }
+  .page { width: 210mm; height: 297mm; padding: 22mm 20mm; display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .brand { letter-spacing: .5em; font-size: 15pt; color: #0f766e; }
+  h1 { margin-top: 10mm; font-size: 30pt; font-weight: 600; }
+  .sub { margin-top: 3mm; font-size: 14pt; color: #475569; }
+  .qr { margin-top: 12mm; width: 120mm; height: 120mm; padding: 4mm; border: 1.2mm solid #2dd4bf; border-radius: 6mm; }
+  .qr svg { width: 100%; height: 100%; display: block; }
+  .url { margin-top: 7mm; font-family: Consolas, monospace; font-size: 18pt; }
+  .steps { margin-top: 12mm; display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; width: 100%; text-align: left; font-size: 11.5pt; line-height: 1.45; }
+  .steps b { display: block; font-size: 12.5pt; margin-bottom: 1.5mm; color: #0f766e; }
+  .foot { margin-top: auto; font-size: 10pt; color: #94a3b8; }
+</style></head><body><div class="page">
+  <div class="brand">ARTIUS</div>
+  <h1>Chấm công dự án</h1>
+  <div class="sub">Quét mã bằng camera điện thoại để mở ARTIUS TIME</div>
+  <div class="qr">${svg}</div>
+  <div class="url">${escHtml(shown)}</div>
+  <div class="steps">
+    <div><b>Android / máy tính</b>Mở link bằng Chrome hoặc Edge → bấm nút "Cài app" ở góc trên → Cài đặt. Từ đó mở bằng icon ARTIUS TIME.</div>
+    <div><b>iPhone</b>Mở link bằng Safari → nút Chia sẻ → "Thêm vào MH chính". Mở app từ icon, đăng nhập một lần và cho phép thông báo.</div>
+  </div>
+  <div class="foot">Quên mật khẩu: liên hệ quản lý để được cấp lại.</div>
+</div><script>window.onload = () => setTimeout(() => window.print(), 300);<\/script></body></html>`);
+    w.document.close();
+  };
+
+  return (
+    <Panel title="Truy cập app">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start">
+        <div className="h-40 w-40 shrink-0 overflow-hidden rounded-lg bg-white p-1.5">
+          {svg ? <div className="h-full w-full [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: svg }} />
+            : <div className="flex h-full items-center justify-center text-slate-400"><QrCode size={28} /></div>}
+        </div>
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="truncate rounded-md border border-slate-800 bg-slate-950 px-3 py-2.5 font-mono text-sm text-slate-100">{shown}</div>
+          <div className="grid grid-cols-2 gap-2 md:flex">
+            <button onClick={copy} className={btnGhost}><Copy size={14} /> Sao chép link</button>
+            <button onClick={printPoster} disabled={!svg} className={`${btnPrimary} disabled:opacity-40`}><Printer size={14} /> In poster QR</button>
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function ReminderPanel({ cfg, saveCfg, flash }) {
   const [r, setR] = useState({ ...REM_DEFAULT, ...(cfg.reminders || {}) });
   const [st, setSt] = useState(null);       // { subs, log } | { error }
@@ -5717,6 +5894,8 @@ function SettingsTab({ cfg, saveCfg, flash }) {
       </Panel>
 
       <ReminderPanel cfg={cfg} saveCfg={saveCfg} flash={flash} />
+
+      <AccessPanel flash={flash} />
 
       <Panel title={`Ngày lễ, ngày nghỉ chung (${holidays.length})`}>
         <div className="grid gap-2 md:flex md:items-end md:gap-3">

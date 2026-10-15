@@ -1,5 +1,6 @@
 /* ARTIUS v2.6 — Service worker: chỉ dùng để nhận và hiện thông báo nhắc nộp bảng công.
-   Không cache trang, không chặn mạng — app vẫn tải bình thường như trước. */
+   Không cache trang, không chặn mạng — app vẫn tải bình thường như trước.
+   v4.1: đăng ký ngay khi mở app (không chờ cho phép thông báo) để trình duyệt cho "Cài đặt ứng dụng". */
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 
@@ -23,8 +24,13 @@ self.addEventListener("notificationclick", (e) => {
   e.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     const open = all.find((c) => c.url.startsWith(self.location.origin));
-    // App đang mở thì chỉ đưa lên trước, KHÔNG tải lại trang — tránh mất giờ đang nhập dở chưa gửi
-    if (open) { await open.focus(); return; }
+    // App đang mở thì chỉ đưa lên trước, KHÔNG tải lại trang — tránh mất giờ đang nhập dở chưa gửi.
+    // v4.1: báo cho app đang mở chuyển tới đúng tuần cần gửi (app tự hỏi lại nếu còn giờ chưa gửi).
+    if (open) {
+      await open.focus();
+      try { open.postMessage({ type: "artius-open", url }); } catch { /* bỏ qua */ }
+      return;
+    }
     await self.clients.openWindow(url);
   })());
 });

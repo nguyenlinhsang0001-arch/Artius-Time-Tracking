@@ -19,6 +19,14 @@ function MissingConfig() {
   );
 }
 
+/* v4.1 — Đăng ký service worker ngay khi mở app: trình duyệt cần có nó để cho phép "Cài đặt ứng dụng"
+   (icon trên Desktop / màn hình chính điện thoại). sw.js không cache gì nên không ảnh hưởng việc tải app. */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => { /* trình duyệt chặn thì app vẫn chạy bình thường */ });
+  });
+}
+
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>{STORAGE_CONFIGURED ? <App /> : <MissingConfig />}</React.StrictMode>
 );
