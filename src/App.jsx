@@ -15,7 +15,8 @@ import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus 
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v4.4
+   ARTIUS — Quản lý giờ công theo dự án · v4.5
+   Mới ở v4.5 — Dashboard quản lý: bỏ biểu đồ "Giờ công theo tác vụ"; bảng nhân sự × dự án gọn cho nhiều dự án
    Mới ở v4.4 — mô tả ngắn cho tác vụ: quản lý ghi ở tab Tác vụ (bút chì), nhân sự thấy dưới tên hạng mục khi nhập giờ
      + kéo thả để đổi thứ tự tác vụ (máy tính); màn Chấm công hiện đúng thứ tự đó
    Mới ở v4.3 — chỉ sửa database: khoá bảng cũ artius_kv (xem supabase/schema.sql mục 8b)
@@ -127,7 +128,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v4.4";
+const APP_VERSION = "v4.5";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -4106,7 +4107,14 @@ function Dashboard({ cfg, flash }) {
       .sort((a, b) => b.total - a.total);
   }, [agg, projMapById]);
 
-  const chartTask = agg ? [...agg.byTask.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([k, v]) => ({ name: taskLabel(k), "giờ": +v.toFixed(1) })) : [];
+  /* v4.5 — Bảng nhân sự × dự án gọn cho nhiều dự án: tiêu đề cột là MÃ dự án (rê chuột xem tên đầy đủ), cột rộng cố định,
+     sắp theo tổng giờ giảm dần ("Khác" luôn cuối), ghim cột Nhân sự + cột Tổng, có dòng tổng, tô nền ô theo mức giờ. */
+  const projShort = (id) => { if (id === NO_PROJECT) return "Khác"; const p = projMapById.get(id); return p ? (p.code || p.name) : "(đã xoá)"; };
+  const mxCols = agg ? [...agg.byProj.entries()].sort((a, b) => (a[0] === NO_PROJECT) - (b[0] === NO_PROJECT) || b[1] - a[1]).map(([k]) => k) : [];
+  const mxRows = agg ? [...agg.matrix.entries()].sort((a, b) => empName(a[0]).localeCompare(empName(b[0]))) : [];
+  const mxColTotal = new Map(mxCols.map((pid) => [pid, mxRows.reduce((s, [, mm]) => s + (mm.get(pid) || 0), 0)]));
+  const mxMax = Math.max(0, ...mxRows.flatMap(([, mm]) => [...mm.values()]));
+  const heat = (v) => (v > 0 && mxMax > 0 ? { backgroundColor: `rgba(45,212,191,${(0.06 + 0.42 * (v / mxMax)).toFixed(3)})` } : undefined);
   return (
     <div className="space-y-3 md:space-y-4">
       <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
@@ -4184,32 +4192,51 @@ function Dashboard({ cfg, flash }) {
             <ProjectPhaseBars rows={projectRows} />
           </Panel>
 
-          <Panel title="Giờ công theo tác vụ"><ChartBar data={chartTask} color="#a78bfa" /></Panel>
-
           <Panel title="Giờ công: nhân sự × dự án">
             <div className="hidden overflow-x-auto md:block">
-              <table className="w-full border-collapse text-sm">
+              <table className="min-w-full border-separate border-spacing-0 text-sm">
                 <thead>
-                  <tr className="border-b border-slate-800 text-left text-xs uppercase tracking-wider text-slate-500">
-                    <th className="sticky left-0 bg-slate-900 px-3 py-2 font-medium">Nhân sự</th>
-                    {[...agg.byProj.keys()].map((pid) => <th key={pid} className="px-3 py-2 text-center font-medium normal-case">{projLabel(pid)}</th>)}
-                    <th className="px-3 py-2 text-center font-medium">Tổng</th>
+                  <tr className="text-xs uppercase tracking-wider text-slate-500">
+                    <th className="sticky left-0 z-10 w-48 min-w-[12rem] border-b border-r border-slate-800 bg-slate-900 px-3 py-2 text-left font-medium">Nhân sự</th>
+                    {mxCols.map((pid) => (
+                      <th key={pid} title={projLabel(pid)} className="w-16 min-w-[4rem] max-w-[4rem] border-b border-slate-800 px-1 py-2 text-center font-mono font-medium normal-case tracking-normal">
+                        <span className="block truncate">{projShort(pid)}</span>
+                      </th>
+                    ))}
+                    <th className="sticky right-0 z-10 w-20 min-w-[5rem] border-b border-l border-slate-800 bg-slate-900 px-3 py-2 text-center font-medium">Tổng</th>
                   </tr>
                 </thead>
                 <tbody className="font-mono">
-                  {[...agg.matrix.entries()].sort((a, b) => empName(a[0]).localeCompare(empName(b[0]))).map(([eid, mm]) => {
+                  {mxRows.map(([eid, mm]) => {
                     const t = [...mm.values()].reduce((s, v) => s + v, 0);
                     return (
-                      <tr key={eid} className="border-b border-slate-800 hover:bg-slate-800">
-                        <td className="sticky left-0 bg-slate-900 px-3 py-2 font-sans text-slate-200">{empName(eid)}</td>
-                        {[...agg.byProj.keys()].map((pid) => (
-                          <td key={pid} className="px-3 py-2 text-center text-slate-300">{mm.get(pid) ? mm.get(pid).toFixed(1) : <span className="text-slate-700">·</span>}</td>
-                        ))}
-                        <td className="px-3 py-2 text-center font-semibold text-teal-400">{t.toFixed(1)}</td>
+                      <tr key={eid} className="group">
+                        <td className="sticky left-0 z-10 truncate border-b border-r border-slate-800 bg-slate-900 px-3 py-2 font-sans text-slate-200 group-hover:bg-slate-800">{empName(eid)}</td>
+                        {mxCols.map((pid) => {
+                          const v = mm.get(pid) || 0;
+                          return (
+                            <td key={pid} title={`${empName(eid)} · ${projLabel(pid)}`} style={heat(v)}
+                              className="border-b border-slate-800 px-1 py-2 text-center text-slate-200">
+                              {v ? v.toFixed(1) : <span className="text-slate-700">·</span>}
+                            </td>
+                          );
+                        })}
+                        <td className="sticky right-0 z-10 border-b border-l border-slate-800 bg-slate-900 px-3 py-2 text-center text-teal-400 group-hover:bg-slate-800">{t.toFixed(1)}</td>
                       </tr>
                     );
                   })}
                 </tbody>
+                <tfoot className="font-mono">
+                  <tr>
+                    <td className="sticky left-0 z-10 border-r border-slate-800 bg-slate-950 px-3 py-2 font-sans text-xs uppercase tracking-wider text-slate-500">Tổng</td>
+                    {mxCols.map((pid) => (
+                      <td key={pid} title={projLabel(pid)} className="bg-slate-950 px-1 py-2 text-center text-slate-300">{(mxColTotal.get(pid) || 0).toFixed(1)}</td>
+                    ))}
+                    <td className="sticky right-0 z-10 border-l border-slate-800 bg-slate-950 px-3 py-2 text-center text-teal-300">
+                      {[...mxColTotal.values()].reduce((s, v) => s + v, 0).toFixed(1)}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
             <div className="space-y-2 md:hidden">

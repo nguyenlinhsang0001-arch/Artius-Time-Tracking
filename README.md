@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v4.4 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v4.5 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.4`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.5`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -26,13 +26,27 @@ Ghi chú:
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
 
+## Mới ở v4.5 — Dashboard quản lý gọn cho nhiều dự án
+
+- Bỏ biểu đồ **Giờ công theo tác vụ** khỏi Dashboard (file Excel vẫn giữ sheet "Theo hạng mục").
+- Bảng **Giờ công: nhân sự × dự án** (máy tính):
+  - Tiêu đề cột là **mã dự án**, rê chuột vào xem tên đầy đủ; mỗi cột rộng cố định 64px → 20 dự án vừa màn hình 1920px (cả thanh bên).
+  - Cột sắp theo **tổng giờ giảm dần**, cột "Khác" luôn ở cuối.
+  - **Ghim** cột Nhân sự (trái) và cột Tổng (phải) khi cuộn ngang; thêm **dòng Tổng** theo dự án ở cuối bảng.
+  - Ô tô nền teal theo mức giờ — càng đậm càng nhiều giờ.
+  - Dự án chưa đặt mã thì cột hiện tên (bị cắt ngắn) — nên đặt mã cho mọi dự án ở tab Dự án.
+- Không đổi database: **không cần chạy lại `schema.sql`**.
+
 ## Mới ở v4.4 — mô tả ngắn cho tác vụ
 
 - Tab **Tác vụ**: bấm **bút chì** ở một tác vụ → có thêm ô **Mô tả** (tối đa 200 ký tự) → ✓ hoặc Enter để lưu.
   Mô tả hiện thành dòng chữ nhỏ dưới tên tác vụ. Xoá trắng ô Mô tả rồi lưu là bỏ mô tả.
 - Màn **Chấm công**: khi khối dự án đang mở để nhập giờ, mỗi hạng mục có mô tả hiện thêm dòng chữ nhỏ bên dưới tên
   (máy tính và điện thoại). Khối đã thu gọn thì ẩn mô tả cho gọn.
-- Không đổi database: **không cần chạy lại `schema.sql`** (mô tả lưu cùng thiết lập).
+- **Kéo thả đổi thứ tự tác vụ** (máy tính): ở tab Tác vụ, nắm tay nắm ⋮⋮ bên trái tác vụ kéo lên/xuống, vạch xanh cho biết
+  chỗ thả, thả là lưu. Chỉ đổi thứ tự trong vai trò đang xem. Màn **Chấm công** hiện hạng mục đúng thứ tự này
+  (nhóm Tăng ca vẫn tách riêng ở cuối). Trên điện thoại không kéo được.
+- Không đổi database: **không cần chạy lại `schema.sql`** (mô tả và thứ tự lưu cùng thiết lập).
 
 ## Mới ở v4.3 — vá bảo mật: khoá bảng dữ liệu cũ
 
