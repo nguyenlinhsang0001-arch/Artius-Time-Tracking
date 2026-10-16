@@ -15,7 +15,9 @@ import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus 
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v5.1
+   ARTIUS — Quản lý giờ công theo dự án · v5.2
+   Mới ở v5.2 — Đổi màu để giờ chuẩn và OT không lẫn nhau: Giờ chuẩn = xanh dương nhạt (blue-400 #60a5fa),
+   OT / Tăng ca = xanh ngọc (teal, trước là xanh lá emerald), Giờ cố gắng giữ tím. Áp toàn app.
    Mới ở v5.1 — Tăng ca gộp theo KHUNG GIỜ: mỗi vai trò có bộ hạng mục [OT] riêng nhưng cùng khung giờ, nên hệ số (Thiết lập),
    cột của bảng "Tăng ca theo tác vụ" (Dashboard), sheet Tăng ca (Excel) và ô Khung giờ ở màn chấm công đều gộp theo khung giờ
    (otBandKey), không tách theo từng hạng mục. cfg.otRates nay lưu theo khung giờ; hệ số cũ lưu theo mã hạng mục vẫn đọc được.
@@ -146,7 +148,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v5.1";
+const APP_VERSION = "v5.2";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1037,7 +1039,7 @@ function CalendarPanel({ value, onSelect, dayStatus, view: viewProp, onViewChang
                     : status === "leave" ? "bg-sky-950/40 text-sky-300"
                     : status === "under" ? "text-amber-400"
                     : status === "otHigh" ? "bg-red-950/50 font-semibold text-red-300"
-                    : status === "over" ? "text-emerald-400"
+                    : status === "over" ? "text-teal-400"
                     : status === "effort" ? "text-violet-400"
                     : inMonth ? "text-slate-200" : "text-slate-700";
                 const ring =
@@ -2054,14 +2056,14 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
       <div className={mobile ? "grid grid-cols-[3fr_2fr] gap-2" : "flex min-w-0 flex-1 gap-2"}>
         <select ref={(el) => { otSel.current[i] = el; }} disabled={lockedRow} value={r.otFor || ""} onChange={(e) => upd(i, { otFor: e.target.value })}
           title="Tăng ca cho tác vụ" aria-label="Tăng ca cho tác vụ"
-          className={`${otPickCls} ${mobile ? "w-full" : "flex-[3]"} ${r.otFor ? "border-emerald-900 text-slate-100" : "border-amber-700/70 text-amber-300"}`}>
+          className={`${otPickCls} ${mobile ? "w-full" : "flex-[3]"} ${r.otFor ? "border-teal-900 text-slate-100" : "border-amber-700/70 text-amber-300"}`}>
           <option value="">Tăng ca cho tác vụ…</option>
           {otTargets.map((t) => <option key={t.id} value={t.id}>{taskText(t)}</option>)}
           {r.otFor && !otTargets.some((t) => t.id === r.otFor) && <option value={r.otFor}>{taskName(r.otFor)}</option>}
         </select>
         <select disabled={lockedRow} value={r.taskId} onChange={(e) => upd(i, { taskId: e.target.value })}
           title="Khung giờ tăng ca" aria-label="Khung giờ tăng ca"
-          className={`${otPickCls} ${mobile ? "w-full" : "flex-[2]"} border-emerald-900 text-emerald-300`}>
+          className={`${otPickCls} ${mobile ? "w-full" : "flex-[2]"} border-teal-900 text-teal-300`}>
           {(() => {
             // dòng đang giữ hạng mục [OT] của vai trò khác nhưng cùng khung giờ: hiện đúng hạng mục đó ở vị trí khung tương ứng
             const cur = taskById.get(r.taskId), ck = cur ? otBandKey(cur) : "";
@@ -2628,7 +2630,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
       {!admin && <DeadlineBanner cfg={cfg} empId={empId} />}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-0.5 text-xs text-slate-500">
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Thiếu giờ công</span>
-        <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Tăng ca</span>
+        <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-teal-400" /> Tăng ca</span>
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-red-400" /> OT trên {OT_ALERT} giờ/ngày</span>
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-violet-400" /> Giờ cố gắng</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-full border-2 border-red-500" /> Ngày lễ</span>
@@ -2650,14 +2652,14 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
             <div className="flex overflow-hidden rounded-lg border border-slate-700 text-right">
               <div className="px-2.5 py-1 md:px-3.5" title="Giờ công chuẩn = tổng − OT − giờ cố gắng">
                 <div className="text-[10px] uppercase tracking-wider text-slate-500">Chuẩn</div>
-                <div className="font-mono text-base font-semibold text-teal-400 md:text-lg">{stdTotal.toFixed(1)}</div>
+                <div className="font-mono text-base font-semibold text-blue-400 md:text-lg">{stdTotal.toFixed(1)}</div>
                 <div className="font-mono text-[10px] text-slate-500">{weekTarget > 0 ? `/ ${weekTarget.toFixed(1)}` : "giờ"}</div>
               </div>
               <div className="border-l border-slate-700 px-2.5 py-1 md:px-3.5" title="Giờ phát sinh = OT (hạng mục Tăng ca) + giờ cố gắng (không tính chi phí dự án)">
                 <div className="text-[10px] uppercase tracking-wider text-slate-500">Phát sinh</div>
                 <div className="font-mono text-base font-semibold text-slate-100 md:text-lg">{extraTotal.toFixed(1)}</div>
                 <div className="whitespace-nowrap font-mono text-[10px]">
-                  <span className={anyOtHigh ? "text-red-400" : "text-emerald-400"}>OT {otTotal.toFixed(1)}</span>
+                  <span className={anyOtHigh ? "text-red-400" : "text-teal-400"}>OT {otTotal.toFixed(1)}</span>
                   <span className="text-slate-600"> · </span>
                   <span className="text-violet-400">CG {effortTotal.toFixed(1)}</span>
                 </div>
@@ -2678,13 +2680,13 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
               <span className="text-slate-500">Tiến độ tuần</span>
               <span className="font-mono text-slate-400">
                 {stdTotal.toFixed(1)} / {weekTarget.toFixed(1)} giờ chuẩn
-                <span className={`ml-2 ${stdTotal >= weekTarget ? "text-teal-400" : "text-amber-400"}`}>
+                <span className={`ml-2 ${stdTotal >= weekTarget ? "text-blue-400" : "text-amber-400"}`}>
                   {stdTotal >= weekTarget ? "đủ target" : `còn thiếu ${(weekTarget - stdTotal).toFixed(1)}`}
                 </span>
               </span>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-              <div className={`h-full rounded-full transition-all ${stdTotal >= weekTarget ? "bg-teal-500" : "bg-amber-500"}`} style={{ width: `${targetPct}%` }} />
+              <div className={`h-full rounded-full transition-all ${stdTotal >= weekTarget ? "bg-blue-400" : "bg-amber-500"}`} style={{ width: `${targetPct}%` }} />
             </div>
           </div>
         )}
@@ -2810,13 +2812,13 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                           <tr><td colSpan={9} className="px-3 pb-2.5 pt-2">
                             <div style={{ paddingLeft: GUT + 8 }}>
                               <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r)}
-                                className={`${btnBase} border border-emerald-900 text-emerald-300 hover:border-emerald-700 disabled:opacity-40`}><Zap size={14} /> Tăng ca</button>
+                                className={`${btnBase} border border-teal-900 text-teal-300 hover:border-teal-700 disabled:opacity-40`}><Zap size={14} /> Tăng ca</button>
                             </div>
                           </td></tr>
                         )}
                         {open && !(sec.ot && sec.items.length === 0) && (
                           <tr><td colSpan={9} className="px-3 pb-0.5 pt-2.5">
-                            <div className={`flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider ${sec.ot ? "text-emerald-400" : "text-slate-500"}`} style={{ paddingLeft: GUT + 8 }}>
+                            <div className={`flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider ${sec.ot ? "text-teal-400" : "text-slate-500"}`} style={{ paddingLeft: GUT + 8 }}>
                               {sec.ot && <Zap size={11} />}{sec.label}
                               {sec.ot && sec.items.length > 0 && <span className="ml-2 normal-case tracking-normal text-slate-500">Tác vụ · Khung giờ</span>}
                             </div>
@@ -2834,7 +2836,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                                   <div className="shrink-0" style={{ width: GUT }} />
                                   {open && ot ? otPickers(r, i) : (
                                   <div className="min-w-0 flex-1">
-                                    <div className={`truncate text-sm ${rt ? "text-slate-100" : "text-slate-400"} ${ot && !open ? "text-emerald-300" : ""}`} title={rowLabel(r, open)}>
+                                    <div className={`truncate text-sm ${rt ? "text-slate-100" : "text-slate-400"} ${ot && !open ? "text-teal-300" : ""}`} title={rowLabel(r, open)}>
                                       {rowLabel(r, open)}
                                     </div>
                                     {open && rowDesc(r) && <div className="truncate text-[11px] leading-tight text-slate-500" title={rowDesc(r)}>{rowDesc(r)}</div>}
@@ -2874,9 +2876,9 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                                       onFocus={(e) => e.target.select()}
                                       onKeyDown={(e) => gridKey(e, i, k)}
                                       title={ot ? `Tối đa ${fmtH(otMaxHours(taskById.get(r.taskId)))} giờ` : undefined}
-                                      className={`${CTRL} w-full rounded-md border bg-slate-950 px-1 text-center font-mono text-base font-medium focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[d] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "border-emerald-900 text-slate-100" : isIncomplete(d) ? "border-amber-700/60 text-slate-100" : k >= 5 ? "border-slate-800 text-slate-100" : "border-slate-700 text-slate-100"}`} />
+                                      className={`${CTRL} w-full rounded-md border bg-slate-950 px-1 text-center font-mono text-base font-medium focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[d] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "border-teal-900 text-slate-100" : isIncomplete(d) ? "border-amber-700/60 text-slate-100" : k >= 5 ? "border-slate-800 text-slate-100" : "border-slate-700 text-slate-100"}`} />
                                   ) : (
-                                    <div className={`py-1.5 text-center font-mono text-sm ${r.days[d] > 0 ? (ot ? "text-emerald-300" : "text-slate-200") : "text-slate-700"}`}>{r.days[d] > 0 ? r.days[d] : "·"}</div>
+                                    <div className={`py-1.5 text-center font-mono text-sm ${r.days[d] > 0 ? (ot ? "text-teal-300" : "text-slate-200") : "text-slate-700"}`}>{r.days[d] > 0 ? r.days[d] : "·"}</div>
                                   )}
                                 </td>
                               ))}
@@ -2888,7 +2890,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                           <tr><td colSpan={9} className="px-3 pb-2.5 pt-1.5">
                             <div style={{ paddingLeft: GUT + 8 }}>
                               <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r)}
-                                className={`${btnBase} border border-emerald-900 text-emerald-300 hover:border-emerald-700 disabled:opacity-40`}><Plus size={14} /> Thêm dòng tăng ca</button>
+                                className={`${btnBase} border border-teal-900 text-teal-300 hover:border-teal-700 disabled:opacity-40`}><Plus size={14} /> Thêm dòng tăng ca</button>
                             </div>
                           </td></tr>
                         )}
@@ -2903,24 +2905,24 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                 {showSplit && extraTotal > 0 && (<>
                   <tr className="border-t border-slate-700 font-mono text-xs">
                     <td className="px-4 py-2 font-sans text-xs text-slate-400" title="Tổng theo ngày trừ OT và giờ cố gắng">
-                      <span className="mr-2 inline-block h-2 w-2 rounded-sm bg-teal-400" />Giờ chuẩn</td>
+                      <span className="mr-2 inline-block h-2 w-2 rounded-sm bg-blue-400" />Giờ chuẩn</td>
                     {days.map((d) => {
                       const st = stdHrs(d);
-                      return <td key={d} className={`px-1 py-2 text-center ${dayCol(d)} ${isIncomplete(d) ? "text-amber-400" : st ? "text-teal-400" : "text-slate-700"}`}>{st ? st.toFixed(1) : "·"}</td>;
+                      return <td key={d} className={`px-1 py-2 text-center ${dayCol(d)} ${isIncomplete(d) ? "text-amber-400" : st ? "text-blue-400" : "text-slate-700"}`}>{st ? st.toFixed(1) : "·"}</td>;
                     })}
-                    <td className="px-2 py-2 text-center font-semibold text-teal-400">{stdTotal.toFixed(1)}</td>
+                    <td className="px-2 py-2 text-center font-semibold text-blue-400">{stdTotal.toFixed(1)}</td>
                   </tr>
                   {otTotal > 0 && (
                     <tr className="border-t border-slate-800 font-mono text-xs">
                       <td className="px-4 py-2 font-sans text-xs text-slate-400">
-                        <span className="mr-2 inline-block h-2 w-2 rounded-sm bg-emerald-400" />+ OT<span className="ml-1.5 text-[11px] text-slate-600">hạng mục Tăng ca</span></td>
+                        <span className="mr-2 inline-block h-2 w-2 rounded-sm bg-teal-400" />+ OT<span className="ml-1.5 text-[11px] text-slate-600">hạng mục Tăng ca</span></td>
                       {days.map((d) => {
                         const ot = otHrs(d);
                         const hot = ot > OT_ALERT; // vượt ngưỡng thì đổi đỏ, khỏi phải nhẩm
                         return <td key={d} title={hot ? `OT vượt ${OT_ALERT} giờ` : undefined}
-                          className={`px-1 py-2 text-center ${dayCol(d)} ${hot ? "font-semibold text-red-400" : ot ? "text-emerald-400" : "text-slate-700"}`}>{ot ? ot.toFixed(1) : "·"}</td>;
+                          className={`px-1 py-2 text-center ${dayCol(d)} ${hot ? "font-semibold text-red-400" : ot ? "text-teal-400" : "text-slate-700"}`}>{ot ? ot.toFixed(1) : "·"}</td>;
                       })}
-                      <td className={`px-2 py-2 text-center font-semibold ${anyOtHigh ? "text-red-400" : "text-emerald-400"}`}>{otTotal.toFixed(1)}</td>
+                      <td className={`px-2 py-2 text-center font-semibold ${anyOtHigh ? "text-red-400" : "text-teal-400"}`}>{otTotal.toFixed(1)}</td>
                     </tr>
                   )}
                   {effortTotal > 0 && (
@@ -3016,7 +3018,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
 
                   {secs.map((sec) => (
                     <div key={sec.label}>
-                      {open && !(sec.ot && sec.items.length === 0) && <div className={`mt-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider ${sec.ot ? "text-emerald-400" : "text-slate-500"}`}>{sec.ot && <Zap size={11} />}{sec.label}</div>}
+                      {open && !(sec.ot && sec.items.length === 0) && <div className={`mt-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider ${sec.ot ? "text-teal-400" : "text-slate-500"}`}>{sec.ot && <Zap size={11} />}{sec.label}</div>}
                       {sec.items.map(({ r, i }) => {
                         const rt = days.reduce((s, d) => s + (r.days[d] || 0), 0);
                         const ot = isOtTask(taskById.get(r.taskId));
@@ -3025,7 +3027,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                           {open && ot && <div className="mt-3">{otPickers(r, i, true)}</div>}
                           <div className={`flex items-center justify-between gap-2 ${open ? "mt-2" : "mt-2 border-t border-slate-800 pt-2"}`}>
                             <div className="min-w-0">
-                              {!(open && ot) && <div className={`truncate text-sm ${ot && !open ? "text-emerald-300" : rt ? "text-slate-100" : "text-slate-400"}`}>{rowLabel(r, open)}</div>}
+                              {!(open && ot) && <div className={`truncate text-sm ${ot && !open ? "text-teal-300" : rt ? "text-slate-100" : "text-slate-400"}`}>{rowLabel(r, open)}</div>}
                               {open && rowDesc(r) && <div className="text-[11px] leading-tight text-slate-500">{rowDesc(r)}</div>}
                               <div className="text-[11px] text-slate-600">Cả tuần: <span className="font-mono text-slate-400">{rt.toFixed(1)}</span> giờ</div>
                             </div>
@@ -3042,7 +3044,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                                     const next = mobileInputs.current[i + 1];
                                     if (next) { next.focus(); next.select?.(); } else e.target.blur();
                                   }}
-                                  className={`${CTRL} w-20 rounded-md border bg-slate-950 px-2 text-center font-mono text-lg focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[activeDay] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "border-emerald-900 text-slate-100" : "border-slate-700 text-slate-100"}`} />
+                                  className={`${CTRL} w-20 rounded-md border bg-slate-950 px-2 text-center font-mono text-lg focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[activeDay] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "border-teal-900 text-slate-100" : "border-slate-700 text-slate-100"}`} />
                               ) : (
                                 <span className={`w-12 text-right font-mono text-base ${r.days[activeDay] > 0 ? "text-slate-100" : "text-slate-700"}`}>{r.days[activeDay] > 0 ? r.days[activeDay] : "·"}</span>
                               )}
@@ -3068,7 +3070,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                       })}
                       {open && sec.ot && (
                         <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r)}
-                          className={`${sec.items.length ? "mt-2" : "mt-3"} w-full ${btnBase} border border-emerald-900 text-emerald-300 hover:border-emerald-700 disabled:opacity-40`}>
+                          className={`${sec.items.length ? "mt-2" : "mt-3"} w-full ${btnBase} border border-teal-900 text-teal-300 hover:border-teal-700 disabled:opacity-40`}>
                           {sec.items.length ? <><Plus size={14} /> Thêm dòng tăng ca</> : <><Zap size={14} /> Tăng ca</>}</button>
                       )}
                     </div>
@@ -3983,14 +3985,14 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                         <span className="font-mono text-xs text-slate-300">{w.label}</span>
                         <div className="relative">
                           <div className="flex h-2.5 overflow-hidden rounded-full bg-slate-800">
-                            <i className="block h-full bg-teal-400" style={{ width: pct(w.std) }} />
-                            <i className="block h-full bg-emerald-400" style={{ width: pct(w.ot) }} />
+                            <i className="block h-full bg-blue-400" style={{ width: pct(w.std) }} />
+                            <i className="block h-full bg-teal-400" style={{ width: pct(w.ot) }} />
                             <i className="block h-full bg-violet-400" style={{ width: pct(w.ef) }} />
                           </div>
                           {/* v3.9: nét dọc định vị giờ chuẩn tuần (44h) */}
                           {view.weekStd > 0 && <span className="pointer-events-none absolute -bottom-2.5 -top-2.5 w-0.5 -translate-x-1/2 bg-slate-200/80" style={{ left: pct(view.weekStd) }} />}
                         </div>
-                        <span className={`text-right font-mono text-xs ${w.miss.length === 0 ? "text-teal-400" : w.isCur ? "text-amber-400" : "text-rose-400"}`}>{w.std.toFixed(1)} / {w.target.toFixed(0)}</span>
+                        <span className={`text-right font-mono text-xs ${w.miss.length === 0 ? "text-blue-400" : w.isCur ? "text-amber-400" : "text-rose-400"}`}>{w.std.toFixed(1)} / {w.target.toFixed(0)}</span>
                         <span className={`hidden justify-self-end whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] md:inline-block ${pill[1]}`}>{pill[0]}</span>
                       </button>
                     );
@@ -3998,8 +4000,8 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                 </div>
               )}
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-800 pt-2.5 text-[11px] text-slate-400">
-                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-teal-400" />Giờ chuẩn</span>
-                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-400" />OT</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-blue-400" />Giờ chuẩn</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-teal-400" />OT</span>
                 <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-violet-400" />Giờ cố gắng</span>
                 <span className="flex items-center gap-1.5"><span className="h-3 w-0.5 bg-slate-200/80" />{view.weekStd}h chuẩn / tuần</span>
                 <span className="text-slate-600">"+11.5" là giờ phát sinh (OT + cố gắng)</span>
@@ -4008,8 +4010,8 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
               <div className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-slate-800 pt-2.5">
                 <span className="text-[11px] uppercase tracking-wider text-slate-500">Cả kỳ</span>
                 <span className="font-mono text-[13px]">
-                  <span className="text-teal-400">{view.std.toFixed(1)}</span> chuẩn <span className="text-slate-600">+</span>{" "}
-                  <span className="text-emerald-400">{view.ot.toFixed(1)}</span> OT <span className="text-slate-600">+</span>{" "}
+                  <span className="text-blue-400">{view.std.toFixed(1)}</span> chuẩn <span className="text-slate-600">+</span>{" "}
+                  <span className="text-teal-400">{view.ot.toFixed(1)}</span> OT <span className="text-slate-600">+</span>{" "}
                   <span className="text-violet-400">{view.ef.toFixed(1)}</span> cố gắng <span className="text-slate-600">=</span>{" "}
                   <b className="text-slate-50">{view.tot.toFixed(1)}</b> giờ
                 </span>
@@ -4028,7 +4030,7 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                   <thead>
                     <tr className="text-[10px] uppercase tracking-wider text-slate-500">
                       <th className="py-1 text-left font-sans font-medium">Ngày</th><th className="py-1 text-right font-medium">Tổng</th>
-                      <th className="py-1 text-right font-medium text-teal-500">Chuẩn</th><th className="py-1 text-right font-medium text-emerald-500">OT</th><th className="py-1 text-right font-medium text-violet-400">CG</th>
+                      <th className="py-1 text-right font-medium text-blue-400">Chuẩn</th><th className="py-1 text-right font-medium text-teal-500">OT</th><th className="py-1 text-right font-medium text-violet-400">CG</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
@@ -4039,13 +4041,13 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                           <td className={`py-1.5 font-sans ${x.st === "miss" ? "text-amber-400" : "text-slate-300"}`}>{shortDays([x.k])}{x.st === "miss" && <span className="ml-1.5 text-[10px]">thiếu</span>}</td>
                           <td className={`py-1.5 text-right font-semibold ${x.st === "miss" ? "text-amber-400" : x.tot ? "text-slate-100" : "text-slate-700"}`}>{x.tot ? x.tot.toFixed(1) : "—"}</td>
                           {/* v4.0: giờ chuẩn thiếu (dưới giờ chuẩn của ngày) tô cam như bảng chấm công */}
-                          {x.st === "miss" ? <td className="py-1.5 text-right text-amber-400">{x.std ? x.std.toFixed(1) : "0.0"}</td> : n(x.std, "text-teal-400")}{n(x.ot, "text-emerald-400")}{n(x.ef, "text-violet-400")}
+                          {x.st === "miss" ? <td className="py-1.5 text-right text-amber-400">{x.std ? x.std.toFixed(1) : "0.0"}</td> : n(x.std, "text-blue-400")}{n(x.ot, "text-teal-400")}{n(x.ef, "text-violet-400")}
                         </tr>
                       );
                     })}
                     <tr className="border-t border-slate-700 font-semibold">
                       <td className="py-1.5 font-sans text-slate-400">Cả tuần</td><td className="py-1.5 text-right text-slate-50">{sel.tot.toFixed(1)}</td>
-                      <td className={`py-1.5 text-right ${sel.miss.length ? "text-amber-400" : "text-teal-400"}`}>{sel.std.toFixed(1)}</td><td className="py-1.5 text-right text-emerald-400">{sel.ot.toFixed(1)}</td><td className="py-1.5 text-right text-violet-400">{sel.ef.toFixed(1)}</td>
+                      <td className={`py-1.5 text-right ${sel.miss.length ? "text-amber-400" : "text-blue-400"}`}>{sel.std.toFixed(1)}</td><td className="py-1.5 text-right text-teal-400">{sel.ot.toFixed(1)}</td><td className="py-1.5 text-right text-violet-400">{sel.ef.toFixed(1)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -4062,8 +4064,8 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                         <div className="mt-1 space-y-0.5">
                           {g.tasks.map(([tid, h]) => (
                             <div key={tid} className="flex items-baseline justify-between gap-2 pl-3 text-xs">
-                              <span className={`min-w-0 truncate ${isOtId(tid) ? "text-emerald-400" : "text-slate-400"}`}>{isOtId(tid) && taskMap.get(tid) ? `Tăng ca ${otText(taskMap.get(tid))}` : taskLabel(tid)}</span>
-                              <span className={`shrink-0 font-mono ${isOtId(tid) ? "text-emerald-400" : "text-slate-300"}`}>{h.toFixed(1)}</span>
+                              <span className={`min-w-0 truncate ${isOtId(tid) ? "text-teal-400" : "text-slate-400"}`}>{isOtId(tid) && taskMap.get(tid) ? `Tăng ca ${otText(taskMap.get(tid))}` : taskLabel(tid)}</span>
+                              <span className={`shrink-0 font-mono ${isOtId(tid) ? "text-teal-400" : "text-slate-300"}`}>{h.toFixed(1)}</span>
                             </div>
                           ))}
                         </div>
@@ -4661,7 +4663,7 @@ const OtByTaskTable = ({ info }) => {
         <thead>
           <tr className="border-b border-slate-800 text-[11.5px] text-slate-500">
             <th className="py-1.5 pr-3 text-left font-medium">Tác vụ</th>
-            {bands.map((b) => <th key={b.id} className="px-2 py-1.5 text-right font-medium text-emerald-400">{b.label}{b.rate != null && <span className="ml-1 text-slate-500">×{fmtH(b.rate)}</span>}</th>)}
+            {bands.map((b) => <th key={b.id} className="px-2 py-1.5 text-right font-medium text-teal-400">{b.label}{b.rate != null && <span className="ml-1 text-slate-500">×{fmtH(b.rate)}</span>}</th>)}
             <th className="px-2 py-1.5 text-right font-medium" title="Phần giờ rơi vào Chủ nhật hoặc ngày lễ (đã gồm trong các cột khung giờ)">Trong đó CN / lễ</th>
             <th className="px-2 py-1.5 text-right font-medium">Tổng tăng ca</th>
             <th className="py-1.5 pl-2 text-right font-medium" title="Giờ × hệ số — dùng tính chi phí dự án">Giờ quy đổi</th>
@@ -4673,7 +4675,7 @@ const OtByTaskTable = ({ info }) => {
               <td className={`py-1.5 pr-3 ${x.forId ? "text-slate-200" : ""}`}>{x.name}</td>
               {bands.map((b) => <td key={b.id} className="px-2 py-1.5 text-right font-mono">{x.b[b.id] ? fmtH(x.b[b.id]) : ""}</td>)}
               <td className="px-2 py-1.5 text-right font-mono">{x.special ? fmtH(x.special) : ""}</td>
-              <td className="px-2 py-1.5 text-right font-mono text-emerald-300">{fmtH(x.h)}</td>
+              <td className="px-2 py-1.5 text-right font-mono text-teal-300">{fmtH(x.h)}</td>
               <td className="py-1.5 pl-2 text-right font-mono text-slate-100">{fmtH(x.w)}</td>
             </tr>
           ))}
@@ -4683,7 +4685,7 @@ const OtByTaskTable = ({ info }) => {
             <td className="py-1.5 pr-3">Tổng</td>
             {bands.map((b) => <td key={b.id} className="px-2 py-1.5 text-right font-mono">{fmtH(col(b.id))}</td>)}
             <td className="px-2 py-1.5 text-right font-mono">{sp ? fmtH(sp) : ""}</td>
-            <td className="px-2 py-1.5 text-right font-mono text-emerald-300">{fmtH(info.ot)}</td>
+            <td className="px-2 py-1.5 text-right font-mono text-teal-300">{fmtH(info.ot)}</td>
             <td className="py-1.5 pl-2 text-right font-mono text-slate-100">{fmtH(info.otW)}</td>
           </tr>
         </tfoot>
@@ -6671,7 +6673,7 @@ function OtRatePanel({ cfg, saveCfg, flash }) {
             <div className="mb-1 text-xs text-slate-500">Khung giờ</div>
             {bands.map((t) => (
               <div key={t.id} className="flex items-center justify-between gap-3 border-b border-slate-800 py-1.5">
-                <span className="text-sm text-emerald-300">{otText(t)}<span className="ml-2 text-xs text-slate-600">tối đa {fmtH(otMaxHours(t))} giờ</span></span>
+                <span className="text-sm text-teal-300">{otText(t)}<span className="ml-2 text-xs text-slate-600">tối đa {fmtH(otMaxHours(t))} giờ</span></span>
                 <div className="w-24 shrink-0"><input inputMode="decimal" value={v.rates[t.id] ?? ""} onChange={(e) => setV((x) => ({ ...x, rates: { ...x.rates, [t.id]: e.target.value } }))}
                   aria-label={`Hệ số ${otText(t)}`} className={field} /></div>
               </div>
