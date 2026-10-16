@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v4.9 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v5.1 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.9`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v5.1`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,27 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v5.1 — Sửa lỗi hệ số tăng ca bị lặp nhiều dòng
+
+**Không cần chạy lại `schema.sql`** (nếu chưa chạy cho v4.9 thì vẫn phải chạy một lần).
+
+- Nguyên nhân: mỗi vai trò có bộ hạng mục `[OT]` riêng (cùng tên 17:30 - 21:00…), app liệt kê từng hạng mục nên ra 3 × số vai trò dòng.
+- Nay mọi chỗ **gộp theo khung giờ**: Thiết lập → Hệ số chi phí tăng ca chỉ còn 3 dòng (một hệ số áp cho mọi vai trò);
+  bảng "Tăng ca theo tác vụ" ở Dashboard mỗi khung một cột; sheet Tăng ca trong Excel gộp đúng theo khung.
+- Hệ số đã lưu ở v4.9 / v5.0 vẫn được đọc. Bấm **Lưu hệ số** một lần để lưu lại theo khung giờ.
+- Màn chấm công: người xem được mọi vai trò (Ban giám đốc) cũng chỉ thấy 3 khung giờ; chọn dự án ở khối mới không còn tự hiện các dòng tăng ca —
+  nhóm Tăng ca chỉ mở khi bấm nút **⚡ Tăng ca**.
+
+## Mới ở v5.0 — Nhóm Tăng ca ẩn / hiện, thêm dòng lần lượt, xoá dòng
+
+Chỉ đổi màn chấm công. **Không cần chạy lại `schema.sql`** — nhưng nếu chưa chạy cho v4.9 thì vẫn phải chạy một lần.
+
+- Khối dự án đang mở: nhóm **Tăng ca** mặc định ẩn, chỉ có nút **⚡ Tăng ca**. Bấm vào thì hiện nhóm Tăng ca kèm sẵn
+  **một dòng** khung giờ đầu tiên (17:30 – 21:00). Khối đã có giờ tăng ca thì nhóm tự hiện.
+- **+ Thêm dòng tăng ca** thêm lần lượt khung kế tiếp: dòng 2 = 22:00 – 0:00, dòng 3 = 0:00 – 8:00 (vẫn đổi khung được ở ô Khung giờ).
+- Mỗi dòng tăng ca có nút **thùng rác** xoá cả dòng, kể cả khi chưa nhập giờ (dòng có giờ của ngày đã gửi thì không xoá được).
+  Xoá hết các dòng thì nhóm Tăng ca ẩn lại.
 
 ## Mới ở v4.9 — Tăng ca gắn với tác vụ (phương án B+)
 

@@ -15,7 +15,13 @@ import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus 
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v4.9
+   ARTIUS — Quản lý giờ công theo dự án · v5.1
+   Mới ở v5.1 — Tăng ca gộp theo KHUNG GIỜ: mỗi vai trò có bộ hạng mục [OT] riêng nhưng cùng khung giờ, nên hệ số (Thiết lập),
+   cột của bảng "Tăng ca theo tác vụ" (Dashboard), sheet Tăng ca (Excel) và ô Khung giờ ở màn chấm công đều gộp theo khung giờ
+   (otBandKey), không tách theo từng hạng mục. cfg.otRates nay lưu theo khung giờ; hệ số cũ lưu theo mã hạng mục vẫn đọc được.
+   Mới ở v5.0 — Nhóm Tăng ca trong khối dự án mặc định ẩn: chỉ có nút "+ Tăng ca"; bấm vào mới hiện, kèm sẵn
+   một dòng khung giờ đầu tiên (17:30 – 21:00). "+ Thêm dòng tăng ca" thêm lần lượt các khung kế tiếp.
+   Mỗi dòng tăng ca có nút xoá (kể cả khi chưa nhập giờ); xoá hết dòng thì nhóm Tăng ca ẩn lại.
    Mới ở v4.9 — Tăng ca gắn tác vụ (phương án B+): mỗi dòng tăng ca (hạng mục [OT] = một khung giờ) phải chọn
    "Tăng ca cho tác vụ" nào (row.otFor); một khung giờ có thể có nhiều dòng cho nhiều tác vụ. Thiết lập có hệ số
    chi phí từng khung giờ + hệ số Chủ nhật / ngày lễ. Dashboard (chi tiết giai đoạn) và Excel có giờ tăng ca theo
@@ -140,7 +146,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v4.9";
+const APP_VERSION = "v5.1";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -774,11 +780,30 @@ const otSpan = (t) => {
   return { start: a, hours: (b - a) / 60 };
 };
 const otMaxHours = (t) => otSpan(t)?.hours ?? 24;
+/* v5.1 — Khoá khung giờ: các hạng mục [OT] của nhiều vai trò cùng giờ (17:30 - 21:00…) là CÙNG một khung. */
+const otBandKey = (t) => { const sp = otSpan(t); return sp ? `${sp.start}+${sp.hours}` : otText(t).replace(/\s+/g, "").toLowerCase(); };
+// Danh sách khung giờ không trùng, theo thứ tự xuất hiện: [{ key, label, task, ids }]
+const otBandList = (tasks = []) => {
+  const m = new Map();
+  for (const t of tasks) {
+    if (!isOtTask(t)) continue;
+    const k = otBandKey(t);
+    if (!m.has(k)) m.set(k, { key: k, label: otText(t), task: t, ids: [] });
+    m.get(k).ids.push(t.id);
+  }
+  return [...m.values()];
+};
 /* Hệ số chi phí của khung giờ: cfg.otRates[taskId]; chưa đặt thì khung bắt đầu từ 17:00 tới trước 21:00 = 1.5, còn lại = 2 */
 const otDefaultRate = (t) => { const sp = otSpan(t); return sp && sp.start >= 17 * 60 && sp.start < 21 * 60 ? 1.5 : 2; };
 const otRateOf = (cfg, t) => {
-  const v = cfg?.otRates?.[t?.id];
-  return v != null && v !== "" && Number(v) > 0 ? Number(v) : otDefaultRate(t);
+  const ok = (v) => v != null && v !== "" && Number(v) > 0;
+  if (!t) return 2;
+  const k = otBandKey(t), byKey = cfg?.otRates?.[k];   // v5.1: lưu theo khung giờ
+  if (ok(byKey)) return Number(byKey);
+  // v4.9 lưu theo mã hạng mục: lấy hệ số của chính hạng mục, không có thì của hạng mục cùng khung giờ (vai trò khác)
+  if (ok(cfg?.otRates?.[t.id])) return Number(cfg.otRates[t.id]);
+  const twin = (cfg?.tasks || []).find((x) => isOtTask(x) && ok(cfg?.otRates?.[x.id]) && otBandKey(x) === k);
+  return twin ? Number(cfg.otRates[twin.id]) : otDefaultRate(t);
 };
 /* Hệ số của một giờ tăng ca: ngày lễ / Chủ nhật có hệ số riêng (một hệ số cho cả ngày) thì dùng hệ số đó,
    để trống thì tính theo hệ số khung giờ. Ngày lễ rơi vào Chủ nhật: lấy hệ số ngày lễ. kind: "n" | "s" (CN) | "h" (lễ) */
@@ -1817,7 +1842,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   const taskOrder = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t, k) => [t.id, k])), [cfg.tasks]);
   const projTasks = myTasks.filter((t) => !commonIds.has(t.id));
   // v4.9: khung giờ tăng ca (hạng mục [OT]) và các tác vụ dự án chọn được làm "Tăng ca cho tác vụ"
-  const otBands = projTasks.filter((t) => isOtTask(t));
+  const otBands = otBandList(projTasks).map((b) => b.task);   // v5.1: mỗi khung giờ một lần (người xem được mọi vai trò cũng chỉ thấy 3 khung)
   const otTargets = projTasks.filter((t) => !isOtTask(t));
   const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
   const projName = (id) => cfg.projects.find((p) => p.id === id)?.name || "(dự án đã xoá)";
@@ -1995,7 +2020,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
      Chọn sẵn hạng mục đầu tiên chưa dùng trong khối rồi đưa con trỏ vào ô chọn,
      bấm phím là đổi được ngay, không phải quay lại ô tìm kiếm. */
   const addTaskToGroup = (g) => {
-    const pool = g.projectId === NO_PROJECT ? [...commonTasks, ...LEAVE_TASKS] : projTasks;
+    const pool = (g.projectId === NO_PROJECT ? [...commonTasks, ...LEAVE_TASKS] : projTasks).filter((t) => !isOtTask(t));
     const used = new Set(g.items.map(({ r }) => r.taskId));
     const t = pool.find((x) => !used.has(x.id));
     if (!t) return flash("Khối này đã dùng hết hạng mục có thể chọn.", "err");
@@ -2005,7 +2030,10 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
   /* v4.9 — "+ Thêm dòng tăng ca" trong khối dự án: tạo dòng tăng ca trống (khung giờ đầu tiên chưa có dòng trống),
      nhân sự chọn "Tăng ca cho tác vụ" rồi mới nhập giờ. Mỗi khung giờ chỉ có một dòng trống cùng lúc (tránh trùng rowKey). */
   const addOtRow = (g) => {
-    const freeBand = otBands.find((t) => !rows.some((r) => groupKey(r) === g.key && r.taskId === t.id && !r.otFor));
+    // v5.0: khung giờ lần lượt — dòng thứ nhất là khung đầu (17:30 – 21:00), dòng sau lấy khung kế tiếp, hết thì quay lại từ đầu
+    const nOt = rows.filter((r) => groupKey(r) === g.key && isOtId(r.taskId)).length;
+    const order = otBands.map((_, k) => otBands[(nOt + k) % otBands.length]);
+    const freeBand = order.find((t) => !rows.some((r) => groupKey(r) === g.key && !r.otFor && isOtId(r.taskId) && otBandKey(taskById.get(r.taskId) || t) === otBandKey(t)));
     if (!freeBand) return flash("Chọn tác vụ cho dòng tăng ca đang trống trước đã.", "err");
     const row = { projectId: g.projectId, phaseId: g.phaseId || DEFAULT_PHASE, taskId: freeBand.id, otFor: "", note: "", days: {} };
     let last = -1;
@@ -2034,8 +2062,13 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
         <select disabled={lockedRow} value={r.taskId} onChange={(e) => upd(i, { taskId: e.target.value })}
           title="Khung giờ tăng ca" aria-label="Khung giờ tăng ca"
           className={`${otPickCls} ${mobile ? "w-full" : "flex-[2]"} border-emerald-900 text-emerald-300`}>
-          {otBands.map((t) => <option key={t.id} value={t.id}>{otText(t)}</option>)}
-          {!otBands.some((t) => t.id === r.taskId) && <option value={r.taskId}>{otText(taskById.get(r.taskId))}</option>}
+          {(() => {
+            // dòng đang giữ hạng mục [OT] của vai trò khác nhưng cùng khung giờ: hiện đúng hạng mục đó ở vị trí khung tương ứng
+            const cur = taskById.get(r.taskId), ck = cur ? otBandKey(cur) : "";
+            const list = otBands.map((t) => (cur && otBandKey(t) === ck ? cur : t));
+            if (cur && !list.some((t) => t.id === cur.id)) list.push(cur);
+            return list.map((t) => <option key={t.id} value={t.id}>{otText(t)}</option>);
+          })()}
         </select>
       </div>
     );
@@ -2360,7 +2393,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
       if (nk !== gk && rows.some((r) => groupKey(r) === nk)) {
         return flash(`${projFull(pid)}${pid === NO_PROJECT ? "" : ` · ${phaseLabel(phaseId)}`} đã có ở khối khác — bấm nút Sửa ở khối đó để chấm thêm.`, "err");
       }
-      const pool = poolFor(pid);
+      const pool = poolFor(pid).filter((t) => !isOtTask(t));   // v5.1: dòng tăng ca chỉ tạo bằng nút Tăng ca / Thêm dòng tăng ca
       if (!pool.length) return flash(pid === NO_PROJECT ? "Chưa có tác vụ chung nào." : "Bạn chưa có tác vụ dự án nào cho vai trò của mình. Báo quản lý bổ sung trong tab Tác vụ.", "err");
       const next = rows.filter((r) => groupKey(r) !== gk);
       next.splice(first, 0, ...pool.map((t) => ({ projectId: pid, phaseId, taskId: t.id, note: "", days: {} })));
@@ -2772,7 +2805,16 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
 
                     {secs.map((sec, si) => (
                       <React.Fragment key={sec.label}>
-                        {open && (
+                        {/* v5.0: nhóm Tăng ca chưa có dòng nào = đang ẩn, chỉ hiện nút "+ Tăng ca" */}
+                        {open && sec.ot && sec.items.length === 0 && (
+                          <tr><td colSpan={9} className="px-3 pb-2.5 pt-2">
+                            <div style={{ paddingLeft: GUT + 8 }}>
+                              <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r)}
+                                className={`${btnBase} border border-emerald-900 text-emerald-300 hover:border-emerald-700 disabled:opacity-40`}><Zap size={14} /> Tăng ca</button>
+                            </div>
+                          </td></tr>
+                        )}
+                        {open && !(sec.ot && sec.items.length === 0) && (
                           <tr><td colSpan={9} className="px-3 pb-0.5 pt-2.5">
                             <div className={`flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider ${sec.ot ? "text-emerald-400" : "text-slate-500"}`} style={{ paddingLeft: GUT + 8 }}>
                               {sec.ot && <Zap size={11} />}{sec.label}
@@ -2810,8 +2852,13 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                                         {r.note && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-teal-400" />}
                                       </button>
                                     )}
+                                    {/* v5.0: dòng tăng ca xoá được cả dòng, kể cả khi chưa nhập giờ (dòng có giờ của ngày đã gửi thì không) */}
+                                    {open && ot && (
+                                      <button disabled={locked || rowLocked(r)} onClick={() => delRow(i)} title="Xoá dòng tăng ca này" aria-label="Xoá dòng tăng ca này"
+                                        className={`${iconBtn} hover:border-rose-800 hover:text-rose-300 disabled:opacity-40`}><Trash2 size={14} /></button>
+                                    )}
                                     {/* v3.3: chỉ hiện khi hạng mục có giờ còn xoá được trong tuần */}
-                                    {open && canClear(r) && (
+                                    {open && !ot && canClear(r) && (
                                       <button onClick={() => clearRow(i)} title="Xoá hết giờ của hạng mục này trong tuần" aria-label="Xoá hết giờ của hạng mục này trong tuần"
                                         className={`${iconBtn} hover:border-rose-800 hover:text-rose-300`}><Eraser size={14} /></button>
                                     )}
@@ -2837,7 +2884,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                             </tr>
                           );
                         })}
-                        {open && sec.ot && (
+                        {open && sec.ot && sec.items.length > 0 && (
                           <tr><td colSpan={9} className="px-3 pb-2.5 pt-1.5">
                             <div style={{ paddingLeft: GUT + 8 }}>
                               <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r)}
@@ -2969,7 +3016,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
 
                   {secs.map((sec) => (
                     <div key={sec.label}>
-                      {open && <div className={`mt-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider ${sec.ot ? "text-emerald-400" : "text-slate-500"}`}>{sec.ot && <Zap size={11} />}{sec.label}</div>}
+                      {open && !(sec.ot && sec.items.length === 0) && <div className={`mt-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider ${sec.ot ? "text-emerald-400" : "text-slate-500"}`}>{sec.ot && <Zap size={11} />}{sec.label}</div>}
                       {sec.items.map(({ r, i }) => {
                         const rt = days.reduce((s, d) => s + (r.days[d] || 0), 0);
                         const ot = isOtTask(taskById.get(r.taskId));
@@ -3006,7 +3053,11 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                                   {r.note && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-teal-400" />}
                                 </button>
                               )}
-                              {open && canClear(r) && (
+                              {open && ot && (
+                                <button disabled={locked || rowLocked(r)} onClick={() => delRow(i)} title="Xoá dòng tăng ca này" aria-label="Xoá dòng tăng ca này"
+                                  className={`${iconBtn} h-11 w-11 disabled:opacity-40`}><Trash2 size={16} /></button>
+                              )}
+                              {open && !ot && canClear(r) && (
                                 <button onClick={() => clearRow(i)} title="Xoá hết giờ của hạng mục này trong tuần" aria-label="Xoá hết giờ của hạng mục này trong tuần"
                                   className={`${iconBtn} h-11 w-11`}><Eraser size={16} /></button>
                               )}
@@ -3017,7 +3068,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
                       })}
                       {open && sec.ot && (
                         <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r)}
-                          className={`mt-2 w-full ${btnBase} border border-emerald-900 text-emerald-300 hover:border-emerald-700 disabled:opacity-40`}><Plus size={14} /> Thêm dòng tăng ca</button>
+                          className={`${sec.items.length ? "mt-2" : "mt-3"} w-full ${btnBase} border border-emerald-900 text-emerald-300 hover:border-emerald-700 disabled:opacity-40`}>
+                          {sec.items.length ? <><Plus size={14} /> Thêm dòng tăng ca</> : <><Zap size={14} /> Tăng ca</>}</button>
                       )}
                     </div>
                   ))}
@@ -4178,19 +4230,22 @@ function Dashboard({ cfg, saveCfg, flash }) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), "Chi tiết");
     /* v4.9 — Tăng ca: dự án × giai đoạn × tác vụ × khung giờ, tách ngày thường / CN / lễ, kèm hệ số và giờ quy đổi */
     {
-      const m = new Map();
+      const m = new Map(), bandRep = new Map();
       for (const d of agg.detail) {
         if (!isOtId(d.taskId)) continue;
         const kind = otDayKind(d.date, holidaySet);
-        const k = [d.projectId, d.phaseId || DEFAULT_PHASE, d.otFor || "", d.taskId, kind].join("|");
+        const bt = taskMap.get(d.taskId);   // v5.1: gộp theo khung giờ, giữ một hạng mục đại diện để lấy tên + hệ số
+        const k = [d.projectId, d.phaseId || DEFAULT_PHASE, d.otFor || "", bt ? otBandKey(bt) : d.taskId, kind].join("|");
+        if (bt && !bandRep.has(k)) bandRep.set(k, bt);
         m.set(k, (m.get(k) || 0) + d.hours);
       }
       const KIND = { n: "Ngày thường", s: "Chủ nhật", h: "Ngày lễ" };
       const otRowsX = [...m.entries()].map(([k, h]) => {
-        const [pid, ph, forId, bid, kind] = k.split("|");
-        const rate = otRateFor(cfg, taskMap.get(bid), kind);
+        const [pid, ph, forId, , kind] = k.split("|");
+        const bt = bandRep.get(k);
+        const rate = otRateFor(cfg, bt, kind);
         return { "Dự án": projLabel(pid), "Giai đoạn": phaseLabel(ph), "Tăng ca cho tác vụ": forId ? taskLabel(forId) : "Chưa rõ",
-          "Khung giờ": taskMap.get(bid) ? otText(taskMap.get(bid)) : "(đã xoá)", "Loại ngày": KIND[kind], "Giờ": +h.toFixed(2), "Hệ số": rate, "Giờ quy đổi": +(h * rate).toFixed(2) };
+          "Khung giờ": bt ? otText(bt) : "(đã xoá)", "Loại ngày": KIND[kind], "Giờ": +h.toFixed(2), "Hệ số": rate, "Giờ quy đổi": +(h * rate).toFixed(2) };
       }).sort((a, b) => a["Dự án"].localeCompare(b["Dự án"]) || a["Giai đoạn"].localeCompare(b["Giai đoạn"]) || a["Tăng ca cho tác vụ"].localeCompare(b["Tăng ca cho tác vụ"]) || a["Khung giờ"].localeCompare(b["Khung giờ"]));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(otRowsX.length ? otRowsX : [{ "Dự án": "(không có giờ tăng ca trong kỳ)" }]), "Tăng ca");
     }
@@ -4423,7 +4478,7 @@ const buildPhaseInfo = (raw, cell, ctx) => {
   }
   tasks.sort((a, b) => b.h - a.h);
   /* v4.9 — tăng ca theo "tăng ca cho tác vụ" × khung giờ, kèm giờ quy đổi (giờ × hệ số; CN / lễ dùng hệ số riêng nếu có) */
-  const otMap = new Map(), bandIds = new Set();
+  const otMap = new Map(), bandIds = new Map();
   let otW = 0;
   for (const [key, hv] of Object.entries(raw.o || {})) {
     const h = Number(hv) || 0;
@@ -4431,13 +4486,15 @@ const buildPhaseInfo = (raw, cell, ctx) => {
     const [bid, forId = "", kind = "n"] = key.split("|");
     const bt = ctx.taskById.get(bid);
     const w = h * otRateFor(ctx.cfg, bt || { id: bid, name: "" }, kind);
+    const bk = bt ? otBandKey(bt) : `?${bid}`;   // v5.1: gộp các hạng mục [OT] cùng khung giờ (của nhiều vai trò) vào một cột
     const row = otMap.get(forId) || { forId, b: {}, special: 0, h: 0, w: 0 };
-    row.b[bid] = (row.b[bid] || 0) + h; row.h += h; row.w += w;
+    row.b[bk] = (row.b[bk] || 0) + h; row.h += h; row.w += w;
     if (kind !== "n") row.special += h;
-    otMap.set(forId, row); bandIds.add(bid); otW += w;
+    otMap.set(forId, row); otW += w;
+    if (!bandIds.has(bk)) bandIds.set(bk, bt);
   }
-  const otBandsUsed = [...bandIds].sort((a, b) => (ctx.taskOrder.get(a) ?? 1e9) - (ctx.taskOrder.get(b) ?? 1e9))
-    .map((id) => { const t = ctx.taskById.get(id); return { id, label: t ? otText(t) : "(khung đã xoá)", rate: t ? otRateOf(ctx.cfg, t) : null }; });
+  const otBandsUsed = [...bandIds.entries()].sort((a, b) => (a[1] ? ctx.taskOrder.get(a[1].id) ?? 1e9 : 1e9) - (b[1] ? ctx.taskOrder.get(b[1].id) ?? 1e9 : 1e9))
+    .map(([id, t]) => ({ id, label: t ? otText(t) : "(khung đã xoá)", rate: t ? otRateOf(ctx.cfg, t) : null }));
   const otByTask = [...otMap.values()].map((x) => {
     const t = x.forId ? ctx.taskById.get(x.forId) : null;
     return { ...x, name: x.forId ? (t ? taskText(t) : "(tác vụ đã xoá)") : "Chưa rõ tác vụ (giờ tăng ca trước v4.9)" };
@@ -6584,11 +6641,13 @@ function ReminderPanel({ cfg, saveCfg, flash }) {
 
 /* v4.9 — Hệ số chi phí tăng ca. Mỗi khung giờ là một hạng mục [OT] (đổi giờ của khung = đổi tên hạng mục ở tab Tác vụ).
    Chủ nhật / ngày lễ: một hệ số cho cả ngày, áp cho mọi khung giờ; để trống thì tính theo hệ số khung giờ.
-   Lưu ở thiết lập chung: cfg.otRates = { <taskId>: số }, cfg.otSunRate, cfg.otHolRate (null = để trống). */
+   Lưu ở thiết lập chung: cfg.otRates = { <khoá khung giờ>: số } (v5.1; v4.9 lưu theo mã hạng mục), cfg.otSunRate, cfg.otHolRate (null = để trống).
+   v5.1: hiện MỖI KHUNG GIỜ MỘT DÒNG, dù mỗi vai trò có hạng mục [OT] riêng. */
 function OtRatePanel({ cfg, saveCfg, flash }) {
-  const bands = (cfg.tasks || []).filter((t) => isOtTask(t));
+  const bandList = otBandList(cfg.tasks || []);
+  const bands = bandList.map((b) => ({ ...b.task, id: b.key }));   // id = khoá khung giờ
   const init = () => ({
-    rates: Object.fromEntries(bands.map((t) => [t.id, String(otRateOf(cfg, t))])),
+    rates: Object.fromEntries(bandList.map((b) => [b.key, String(otRateOf(cfg, b.task))])),
     sun: cfg.otSunRate != null ? String(cfg.otSunRate) : "",
     hol: cfg.otHolRate != null ? String(cfg.otHolRate) : "",
   });
