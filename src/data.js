@@ -122,6 +122,15 @@ export async function fetchUsage() {
   return (data || []).map((r) => ({ projectId: r.project_id, phaseId: r.phase_id, sent: Number(r.sent_hours) || 0, all: Number(r.all_hours) || 0 }));
 }
 
+/* v4.7 — Chi tiết từng giai đoạn (Dashboard quản lý): giờ đã gửi theo tuần / nhân sự / tác vụ của mọi cặp dự án × giai đoạn,
+   do database tính trên TOÀN BỘ bảng công (hàm artius_phase_detail, chỉ quản lý gọi được).
+   Trả về { "<projectId>|<phaseId>": { w: {"<thứ Hai>": giờ}, e: {"<empId>": giờ}, t: {"<taskId>": giờ}, first, last } }. */
+export async function fetchPhaseDetail() {
+  const { data, error } = await supabase.rpc("artius_phase_detail");
+  if (error) throw fail("đọc chi tiết giai đoạn", error);
+  return data && typeof data === "object" ? data : {};
+}
+
 /* Ghi các bảng công trong map { "<empId>:<ym>": bucket }. Chỉ đụng tới đúng các dòng đó. */
 export async function saveTs(map) {
   const now = new Date().toISOString();

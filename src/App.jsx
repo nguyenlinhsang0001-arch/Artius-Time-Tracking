@@ -9,13 +9,16 @@ import {
   CheckCircle2, Loader2, ListChecks, Lock, RotateCcw, Pencil, Check, X, CalendarDays,
   Copy, Unlock, Search, Flag, Zap, Eraser, ClipboardList, MoreHorizontal, Grid3x3, User, Eye, EyeOff, Bell, Send, Printer, QrCode, Share, GripVertical,
 } from "lucide-react";
-import { fetchConfig, saveConfig, fetchTs, fetchTsChanges, fetchTsStamps, saveTs, deleteAllTs, fetchUsage } from "./data.js";
+import { fetchConfig, saveConfig, fetchTs, fetchTsChanges, fetchTsStamps, saveTs, deleteAllTs, fetchUsage, fetchPhaseDetail } from "./data.js";
 import { mergeConfig } from "./merge.js";
 import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus } from "./push.js";
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v4.6
+   ARTIUS — Quản lý giờ công theo dự án · v4.7
+   Mới ở v4.7 — Dashboard quản lý, bảng "Tiến độ dự án": rê chuột vào ô giai đoạn hiện thẻ tóm tắt (giờ còn lại, dự báo,
+     ai / tác vụ nào tiêu giờ nhiều nhất, tăng ca, lần gửi gần nhất); bấm vào ô mở khung chi tiết ngay dưới dự án (giờ theo tuần,
+     toàn bộ nhân sự và tác vụ, dòng Tăng ca 3 mức), các dự án khác mờ đi. Số liệu do database tính (schema.sql mục 14).
    Mới ở v4.6 — Dashboard quản lý: "Tiến độ dự án" (giờ hiện tại từ trước tới nay so với dự kiến từng giai đoạn, cảnh báo
      chỉ giai đoạn đang mở) thay biểu đồ giai đoạn cũ; "Phân bổ giờ công theo nhân sự" (thanh chia khúc + vạch giờ chuẩn kỳ)
      thay bảng nhân sự × dự án. Các tab khác giữ nguyên.
@@ -131,7 +134,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v4.6";
+const APP_VERSION = "v4.7";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -263,6 +266,18 @@ const useUsage = () => {
     return () => { alive = false; };
   }, [tick]);
   return u;
+};
+/* v4.7 — Chi tiết giai đoạn cho Dashboard (xem fetchPhaseDetail). undefined = đang hỏi; null = không hỏi được
+   (chưa chạy schema.sql mục 14) → Dashboard tạm tính từ phần bảng công đang có trong bộ nhớ. */
+const usePhaseDetail = () => {
+  const tick = useDataTick();
+  const [d, setD] = useState(undefined);
+  useEffect(() => {
+    let alive = true;
+    fetchPhaseDetail().then((r) => { if (alive) setD(r); }).catch(() => { if (alive) setD(null); });
+    return () => { alive = false; };
+  }, [tick]);
+  return d;
 };
 const allLoaded = () => DB_LOADED && !DB?.loadedFrom;
 
@@ -4221,14 +4236,261 @@ const ProgressLegend = () => (
   </div>
 );
 
+/* v4.7 — Chi tiết từng giai đoạn: tính từ khối số liệu database (artius_phase_detail) hoặc, khi chưa hỏi được,
+   từ phần bảng công đang có trong bộ nhớ. Kết quả: Map "<projectId>|<phaseId>" -> { w, e, t, first, last }. */
+const phaseDetailFromMemory = () => {
+  const out = new Map();
+  for (const [slotKey, bucket] of Object.entries(DB?.ts || {})) {
+    const empId = slotKey.split(":")[0];
+    for (const r of sentRows(bucket)) {
+      if (isLeaveTask(r.taskId) || r.projectId === NO_PROJECT || !r.projectId) continue;
+      const k = `${r.projectId}|${r.phaseId || DEFAULT_PHASE}`;
+      const o = out.get(k) || { w: {}, e: {}, t: {}, first: "", last: "" };
+      for (const [d, v] of Object.entries(r.days || {})) {
+        const h = Number(v) || 0;
+        if (h <= 0) continue;
+        const wk = fmt(mondayOf(parseD(d)));
+        o.w[wk] = (o.w[wk] || 0) + h; o.e[empId] = (o.e[empId] || 0) + h; o.t[r.taskId] = (o.t[r.taskId] || 0) + h;
+        if (!o.first || d < o.first) o.first = d;
+        if (!o.last || d > o.last) o.last = d;
+      }
+      out.set(k, o);
+    }
+  }
+  return out;
+};
+
+const DT_MAX_WEEKS = 16;   // biểu đồ theo tuần: tối đa 16 tuần gần nhất của giai đoạn
+const OT_MAX = 40;         // thang của thanh Tăng ca (%); vượt 40% thì vạch nằm cuối thanh
+const otLevel = (pct) => (pct < 15 ? "ok" : pct < 25 ? "mid" : "hi");
+const ddmm = (d) => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
+const daysBetween = (a, b) => Math.round((b - a) / 864e5);
+
+/* Gom số liệu của một ô (dự án × giai đoạn) thành những gì thẻ rê chuột và khung chi tiết cần. */
+const buildPhaseInfo = (raw, cell, ctx) => {
+  if (!raw) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const thisMon = mondayOf(today);
+  const people = Object.entries(raw.e || {})
+    .map(([id, h]) => { const e = ctx.empById.get(id); return { name: e?.name || "(nhân sự đã xoá)", role: e ? roleTitle(e.role) : "", h: Number(h) || 0 }; })
+    .filter((x) => x.h > 0).sort((a, b) => b.h - a.h);
+  let ot = 0;
+  const tasks = [];
+  for (const [id, hv] of Object.entries(raw.t || {})) {
+    const h = Number(hv) || 0;
+    if (h <= 0) continue;
+    if (isOtId(id)) { ot += h; continue; }
+    const t = ctx.taskById.get(id);
+    tasks.push({ name: t ? taskText(t) : "(tác vụ đã xoá)", h });
+  }
+  tasks.sort((a, b) => b.h - a.h);
+  const total = people.reduce((a, x) => a + x.h, 0);
+  if (!total) return null;
+  // tuần: từ thứ Hai của ngày đầu tiên tới tuần này (giai đoạn mở) hoặc tuần cuối có giờ (giai đoạn đóng)
+  const first = mondayOf(parseD(raw.first || raw.last));
+  const lastDay = parseD(raw.last || raw.first);
+  const end = cell.open ? thisMon : mondayOf(lastDay);
+  const weeks = [];
+  for (let m = new Date(first); m <= end && weeks.length < 520; m = addDays(m, 7)) weeks.push({ mon: new Date(m), h: Number(raw.w?.[fmt(m)]) || 0 });
+  // tốc độ = trung bình 4 tuần đã qua gần nhất (không tính tuần đang chạy vì thường chưa gửi xong)
+  let rate = null;
+  if (cell.open) {
+    const done = weeks.filter((w) => w.mon < thisMon).slice(-4);
+    if (done.length) rate = done.reduce((a, w) => a + w.h, 0) / 4;
+  }
+  return { people, tasks, ot, total, weeks, rate, first: parseD(raw.first || raw.last), last: lastDay,
+    idleDays: daysBetween(lastDay, today), nWeeks: Math.max(1, Math.round(daysBetween(first, mondayOf(lastDay)) / 7) + 1) };
+};
+
+/* Dự báo cho giai đoạn đang mở. full = câu đầy đủ (thẻ rê chuột), short = chỉ kết luận (khung chi tiết). */
+const phaseForecast = (cell, info) => {
+  const left = cell.b - cell.h;
+  if (info.idleDays >= 10) {
+    const t = <>Đứng im {info.idleDays} ngày — không ai gửi giờ vào giai đoạn này từ {ddmm(info.last)}. Kiểm tra dự án có đang tạm dừng?</>;
+    return { cls: "idle", full: t, short: t };
+  }
+  if (!info.rate) { const t = "Chưa đủ dữ liệu để dự báo."; return { cls: "idle", full: t, short: t }; }
+  if (!cell.b) { const t = <>Giai đoạn chưa có giờ dự kiến — tốc độ {fmtH(info.rate)} h/tuần.</>; return { cls: "idle", full: t, short: t }; }
+  if (left < 0) return { cls: "over",
+    full: <>Đã vượt <b>{fmtH(-left)} h</b> và vẫn đang tiêu {fmtH(info.rate)} h/tuần. Nếu không chặn, 2 tuần tới sẽ vượt thêm ~{fmtH(info.rate * 2)} h.</>,
+    short: <>→ Đã vượt <b>{fmtH(-left)} h</b>; nếu giữ tốc độ này, 2 tuần tới vượt thêm ~{fmtH(info.rate * 2)} h.</> };
+  const wk = left / info.rate, hit = addDays(new Date(), Math.round(wk * 7));
+  const cls = wk < 2 ? "over" : wk < 4 ? "warn" : "ok";
+  const dur = wk < 1 ? `${Math.max(1, Math.round(wk * 7))} ngày` : `${fmtH(wk)} tuần`;
+  const tail = <>sẽ hết {fmtH(left)} h còn lại trong <b>~{dur}</b> (khoảng <b>{ddmm(hit)}</b>).</>;
+  return { cls, full: <>Tốc độ 4 tuần gần nhất: <b>{fmtH(info.rate)} h/tuần</b> → {tail}</>, short: <>→ {tail}</> };
+};
+const FC_CLS = { ok: "bg-teal-400/[.07] text-teal-100", warn: "bg-amber-500/10 text-amber-200", over: "bg-rose-500/[.12] text-rose-200", idle: "bg-slate-800 text-slate-400" };
+
+/* Danh sách tên — giờ — % kèm thanh nhỏ (nhân sự / tác vụ) */
+const KvList = ({ items, total, n, withRole }) => {
+  const top = items[0]?.h || 1;
+  return (
+    <div>
+      {items.slice(0, n).map((x, i) => (
+        <div key={i} className="grid grid-cols-[minmax(0,1fr)_52px_36px] items-center gap-x-1.5 py-[3px]">
+          <span className="truncate text-slate-200">{x.name}{withRole && x.role && <span className="ml-1.5 text-[11px] text-slate-600">{x.role}</span>}</span>
+          <span className="text-right font-mono text-slate-100">{fmtH(x.h)}</span>
+          <span className="text-right font-mono text-[11px] text-slate-500">{Math.round((x.h / total) * 100)}%</span>
+          <div className="col-span-3 h-[3px] overflow-hidden rounded bg-slate-800"><div className="h-full bg-teal-500" style={{ width: `${(x.h / top) * 100}%` }} /></div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* Biểu đồ cột giờ theo tuần; màu cột = giờ LŨY KẾ tới tuần đó so với giờ dự kiến (xanh < 80%, cam 80–100%, đỏ > 100%) */
+const WeeklyChart = ({ cell, info }) => {
+  const wks = info.weeks.slice(-DT_MAX_WEEKS);
+  const W = 520, H = 150, padX = 28, n = Math.max(1, wks.length);
+  const max = Math.max(1, ...wks.map((w) => w.h), info.rate || 0) * 1.15;
+  const bw = (W - padX * 2) / n;
+  let cum = cell.h - wks.reduce((a, w) => a + w.h, 0);
+  const bars = wks.map((w, i) => {
+    cum += w.h;
+    const col = !cell.b ? "#14b8a6" : cum > cell.b ? "#f43f5e" : cum >= cell.b * 0.8 ? "#f59e0b" : "#14b8a6";
+    const h = (w.h / max) * H, x = padX + i * bw + 3, y = H - h + 4, cx = x + (bw - 6) / 2;
+    return (
+      <g key={i}>
+        <rect x={x} y={y} width={Math.max(2, bw - 6)} height={h} rx="3" fill={col} opacity={cell.open ? 1 : 0.6}>
+          <title>{`Tuần ${ddmm(w.mon)}: ${fmtH(w.h)} h · lũy kế ${fmtH(cum)}${cell.b ? ` / ${fmtH(cell.b)}` : ""} h`}</title>
+        </rect>
+        {w.h > 0 && <text x={cx} y={y - 4} fill="#94a3b8" fontSize="10" textAnchor="middle" fontFamily="Consolas,monospace">{fmtH(w.h)}</text>}
+        {(n <= 16 || i % 2 === 0) && <text x={cx} y={H + 18} fill="#64748b" fontSize="10" textAnchor="middle">{ddmm(w.mon)}</text>}
+      </g>
+    );
+  });
+  const ry = info.rate ? H - (info.rate / max) * H + 4 : null;
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H + 24}`} width="100%" style={{ maxWidth: W }}>
+        {bars}
+        {ry != null && <line x1={padX} x2={W - padX} y1={ry} y2={ry} stroke="#fbbf24" strokeDasharray="4 4" strokeWidth="1.5" />}
+      </svg>
+      {info.rate != null && (
+        <div className="mt-1.5 text-[11.5px] text-slate-500">
+          <span className="mr-1.5 inline-block w-3.5 border-t-2 border-dashed border-amber-400 align-middle" />
+          Trung bình 4 tuần gần nhất: <span className="text-amber-400">{fmtH(info.rate)} h/tuần</span>
+        </div>
+      )}
+      {info.weeks.length > DT_MAX_WEEKS && <div className="mt-0.5 text-[11px] text-slate-600">Hiện {DT_MAX_WEEKS} tuần gần nhất trên tổng {info.weeks.length} tuần.</div>}
+    </div>
+  );
+};
+
+const REWORK_RE = /chỉnh sửa|sửa lại|góp ý|khách hàng/i;
+
+/* Khung chi tiết khi bấm vào ô giai đoạn (mở ngay dưới dòng dự án) */
+const PhaseDetail = ({ cell, info, onClose, partial }) => {
+  const otPct = info.total ? Math.round((info.ot / info.total) * 100) : 0;
+  const lv = otLevel(otPct);
+  const fc = cell.open ? phaseForecast(cell, info) : null;
+  const pct = cell.b ? Math.round((cell.h / cell.b) * 100) : null;
+  const OT_BOX = { ok: "border-teal-900 bg-teal-400/[.06]", mid: "border-amber-800 bg-amber-500/[.08]", hi: "border-rose-800 bg-rose-500/[.08]" }[lv];
+  const OT_TXT = { ok: "text-teal-400", mid: "text-amber-400", hi: "text-rose-400" }[lv];
+  return (
+    <div className="relative grid grid-cols-1 gap-[18px] p-4 text-[13px] lg:grid-cols-[1.25fr_1fr_1fr] lg:pr-[120px]">
+      <button onClick={onClose} className="absolute right-4 top-3 h-[30px] rounded-md border border-slate-700 px-2.5 text-xs text-slate-400 hover:text-slate-100">Đóng ✕</button>
+      <div>
+        <h4 className="mb-2 text-[11px] uppercase tracking-wider text-slate-500">Giờ theo tuần (màu = lũy kế so với dự kiến)</h4>
+        <WeeklyChart cell={cell} info={info} />
+        {fc ? <div className={`mt-1.5 rounded-lg px-2.5 py-2 text-[12.5px] ${FC_CLS[fc.cls]}`}>{fc.short}</div>
+          : <div className={`mt-1.5 rounded-lg px-2.5 py-2 text-[12.5px] ${FC_CLS[cell.b && cell.h > cell.b ? "over" : "ok"]}`}>
+              {pct != null ? <>Đóng ở {pct}%{cell.h > cell.b ? ` — vượt ${fmtH(cell.h - cell.b)} h` : ""}. </> : null}
+              Chạy {info.nWeeks} tuần ({ddmm(info.first)} → {ddmm(info.last)}). Dùng số này khi báo giá giai đoạn {cell.ph.name.toLowerCase()} cho dự án tương tự.
+            </div>}
+        {partial && <div className="mt-1.5 text-[11px] text-amber-500/80">Đang tính trên dữ liệu đã tải (vài tháng gần nhất). Chạy lại supabase/schema.sql (mục 14) để xem đủ.</div>}
+      </div>
+      <div>
+        <h4 className="mb-2 text-[11px] uppercase tracking-wider text-slate-500">Nhân sự ({info.people.length})</h4>
+        <KvList items={info.people} total={info.total} n={10} withRole />
+        {info.people.length > 10 && <div className="mt-1 text-[11px] text-slate-600">+ {info.people.length - 10} người khác</div>}
+      </div>
+      <div>
+        <h4 className="mb-2 text-[11px] uppercase tracking-wider text-slate-500">Tác vụ ({info.tasks.length})</h4>
+        {info.tasks.length ? <KvList items={info.tasks} total={info.total} n={10} /> : <div className="text-slate-500">Chỉ có giờ tăng ca.</div>}
+        {info.tasks.length > 10 && <div className="mt-1 text-[11px] text-slate-600">+ {info.tasks.length - 10} tác vụ khác</div>}
+        {info.tasks[0] && REWORK_RE.test(info.tasks[0].name) && (
+          <div className="mt-1.5 text-[11.5px] text-amber-400">⚠ Tác vụ lớn nhất là "{info.tasks[0].name}" — có thể là vòng sửa lại / khách đổi ý. Nên rà lại phạm vi.</div>
+        )}
+      </div>
+      <div className={`flex flex-wrap items-center gap-[18px] rounded-[10px] border px-4 py-3 lg:col-span-3 lg:-mr-[102px] ${OT_BOX}`}>
+        <span className="text-[13.6px] font-bold tracking-wide text-slate-100">TĂNG CA</span>
+        <span className="text-slate-100">{fmtH(info.ot)} h · {otPct}% tổng giờ giai đoạn</span>
+        <span className="relative mx-1 mb-3.5 flex h-2 w-[300px] gap-0.5">
+          <span className={`h-full rounded-l bg-teal-500 ${lv === "ok" ? "" : "opacity-[.35]"}`} style={{ width: `${(15 / OT_MAX) * 100}%` }} />
+          <span className={`h-full bg-amber-500 ${lv === "mid" ? "" : "opacity-[.35]"}`} style={{ width: `${(10 / OT_MAX) * 100}%` }} />
+          <span className={`h-full flex-1 rounded-r bg-rose-500 ${lv === "hi" ? "" : "opacity-[.35]"}`} />
+          <span className="absolute -top-[5px] -ml-[1.5px] h-[18px] w-[3px] rounded-sm bg-slate-50 shadow-[0_0_0_2px_#0b1220]" style={{ left: `${Math.min(100, (otPct / OT_MAX) * 100)}%` }} />
+          {[[7.5, "Bình thường 0–15%"], [20, "TB 15–25%"], [32.5, "Cao >25%"]].map(([at, t]) => (
+            <span key={t} className="absolute top-3 -translate-x-1/2 whitespace-nowrap text-[10px] text-slate-500" style={{ left: `${(at / OT_MAX) * 100}%` }}>{t}</span>
+          ))}
+        </span>
+        <span className={`font-semibold ${OT_TXT}`}>{lv === "ok" ? "Trong mức bình thường" : lv === "mid" ? "Mức trung bình — cần theo dõi" : "Cao — dấu hiệu áp lực tiến độ"}</span>
+      </div>
+    </div>
+  );
+};
+
+/* Thẻ nổi khi rê chuột vào ô giai đoạn */
+const PhaseHoverCard = ({ cell, info, canOpen }) => {
+  const left = cell.b - cell.h;
+  const lc = !cell.b ? "text-slate-100" : left < 0 ? "text-rose-400" : left <= cell.b * 0.2 ? "text-amber-400" : "text-slate-100";
+  const Lbl = ({ children }) => <div className="mb-1 text-[10.5px] uppercase tracking-wider text-slate-500">{children}</div>;
+  let body;
+  if (!info) body = <div className={`mt-2 rounded-lg px-2.5 py-2 ${FC_CLS.idle}`}>Chưa có giờ công nào được gửi vào giai đoạn này.</div>;
+  else {
+    const fc = cell.open ? phaseForecast(cell, info) : null;
+    const pct = cell.b ? Math.round((cell.h / cell.b) * 100) : null;
+    const otPct = Math.round((info.ot / info.total) * 100);
+    const Chip = ({ l, v, cls = "" }) => (
+      <div className={`min-w-0 flex-1 rounded-lg border bg-slate-900 px-2 py-1.5 ${cls || "border-slate-800"}`}>
+        <div className="whitespace-nowrap text-[10.5px] text-slate-500">{l}</div><div className="whitespace-nowrap font-mono text-[12.5px]">{v}</div>
+      </div>
+    );
+    body = (
+      <>
+        {fc ? <div className={`mt-2 rounded-lg px-2.5 py-2 ${FC_CLS[fc.cls]}`}>{fc.full}</div>
+          : <div className={`mt-2 rounded-lg px-2.5 py-2 ${FC_CLS[cell.b && cell.h > cell.b ? "over" : pct != null && pct >= 80 ? "warn" : "ok"]}`}>
+              {pct != null && <>Đóng ở <b>{pct}%</b> {cell.h > cell.b ? <>— vượt <b>{fmtH(cell.h - cell.b)} h</b></> : <>— còn dư {fmtH(cell.b - cell.h)} h</>}. </>}
+              Chạy {info.nWeeks} tuần ({ddmm(info.first)} → {ddmm(info.last)}).
+            </div>}
+        <div className="mt-2.5 border-t border-slate-800 pt-2"><Lbl>Ai tiêu giờ nhiều nhất</Lbl><KvList items={info.people} total={info.total} n={3} withRole /></div>
+        {info.tasks.length > 0 && <div className="mt-2.5 border-t border-slate-800 pt-2"><Lbl>Giờ đổ vào tác vụ nào</Lbl><KvList items={info.tasks} total={info.total} n={3} /></div>}
+        <div className="mt-2.5 flex gap-2">
+          <Chip l="Tăng ca" v={`${fmtH(info.ot)} h · ${otPct}%`} cls={otPct >= 25 ? "border-rose-800 text-rose-400" : otPct >= 15 ? "border-amber-800 text-amber-400" : "border-slate-800 text-slate-100"} />
+          <Chip l={cell.open ? "Gửi giờ gần nhất" : "Giờ cuối cùng"} v={info.idleDays <= 0 ? "hôm nay" : `${info.idleDays} ngày trước`}
+            cls={cell.open && info.idleDays >= 10 ? "border-rose-800 text-rose-400" : "border-slate-800 text-slate-100"} />
+          <Chip l="Số người" v={info.people.length} cls="border-slate-800 text-slate-100" />
+        </div>
+        {canOpen && <div className="mt-2.5 text-right text-[11px] text-slate-500">Bấm vào ô để xem chi tiết theo tuần ▾</div>}
+      </>
+    );
+  }
+  return (
+    <div className="text-[12.5px] text-slate-300">
+      <div className="flex items-baseline gap-2 font-mono">
+        <span className="font-sans text-[11px] uppercase tracking-wider text-slate-500">{cell.b ? "Giờ còn lại" : "Giờ đã dùng"}</span>
+        <b className={`ml-auto text-xl ${lc}`}>{cell.b ? (left < 0 ? `−${fmtH(-left)}` : fmtH(left)) : fmtH(cell.h)} h</b>
+      </div>
+      {body}
+    </div>
+  );
+};
+
 /* Tiến độ dự án: giờ HIỆN TẠI = tổng giờ đã gửi từ trước tới nay (không theo kỳ đang lọc) so với giờ dự kiến từng giai đoạn.
    · Giai đoạn đang mở: thanh màu theo mức (xanh < 80%, cam 80–100%, đỏ > 100%) + nhãn "mở".
    · Giai đoạn đã đóng: chìm xuống (thanh xám, chữ xám, % nhạt) — không cảnh báo nữa.
    · Tình trạng chỉ xét giai đoạn đang mở. Dự án nguy cơ vượt xếp đầu; dự án chưa có giờ gom vào một dòng mở rộng.
-   · Chỉ dự án đang chấm công (active). Bộ lọc "dự án" của Dashboard áp vào đây; bộ lọc kỳ / bộ phận / nhân sự thì không. */
+   · Chỉ dự án đang chấm công (active). Bộ lọc "dự án" của Dashboard áp vào đây; bộ lọc kỳ / bộ phận / nhân sự thì không.
+   · v4.7: rê chuột vào ô → thẻ tóm tắt; bấm vào ô → khung chi tiết dưới dòng dự án, các dự án khác mờ đi. */
 function ProjectProgress({ cfg, fProj, dataTick }) {
   const usage = useUsage();
+  const detailRaw = usePhaseDetail();
   const [showIdle, setShowIdle] = useState(false);
+  const [sel, setSel] = useState(null);       // "<projectId>|<phaseId>" đang mở chi tiết
+  const [hover, setHover] = useState(null);   // "<projectId>|<phaseId>" đang rê chuột
+  const cardRef = useRef(null);
   const used = useMemo(() => {
     const m = new Map();
     if (usage) {
@@ -4248,6 +4510,12 @@ function ProjectProgress({ cfg, fProj, dataTick }) {
     }
     return m;
   }, [usage, dataTick]);
+  const detail = useMemo(() => (detailRaw ? new Map(Object.entries(detailRaw)) : phaseDetailFromMemory()), [detailRaw, dataTick]);
+  const partial = detailRaw === null;
+  const ctx = useMemo(() => ({
+    empById: new Map((cfg.employees || []).map((e) => [e.id, e])),
+    taskById: new Map((cfg.tasks || []).map((t) => [t.id, t])),
+  }), [cfg.employees, cfg.tasks]);
 
   const phases = PHASES.filter((ph) => ph.active !== false);
   const rows = cfg.projects
@@ -4259,7 +4527,7 @@ function ProjectProgress({ cfg, fProj, dataTick }) {
         const b = Math.max(0, Number(budgets[ph.id]) || 0), h = u[ph.id] || 0;
         const open = projPhaseIsOpen(p, ph.id);
         const pct = b ? (h / b) * 100 : null;
-        return { ph, b, h, open, pct };
+        return { ph, b, h, open, pct, key: `${p.id}|${ph.id}` };
       });
       const bt = cells.reduce((a, c) => a + c.b, 0), ut = cells.reduce((a, c) => a + c.h, 0);
       let worst = null, worstPh = "";
@@ -4270,7 +4538,22 @@ function ProjectProgress({ cfg, fProj, dataTick }) {
     });
   const active = rows.filter((r) => r.ut > 0).sort((a, b) => (b.worst ?? -1) - (a.worst ?? -1) || b.ut - a.ut);
   const idle = rows.filter((r) => r.ut === 0);
+  const findCell = (key) => { for (const r of rows) for (const c of r.cells) if (c.key === key) return c; return null; };
+  const selCell = sel ? findCell(sel) : null;
+  const selProj = selCell ? sel.split("|")[0] : null;
+  useEffect(() => { if (sel && !selCell) setSel(null); }, [sel, selCell]);
   if (rows.length === 0) return <p className="text-sm text-slate-500">Chưa có dự án đang chấm công.</p>;
+
+  // đặt thẻ rê chuột cạnh con trỏ, lật sang trái / lên trên khi sát mép màn hình (đổi trực tiếp vị trí, không vẽ lại bảng)
+  const placeCard = (e) => {
+    const el = cardRef.current; if (!el) return;
+    const w = el.offsetWidth || 360, hh = el.offsetHeight || 200;
+    let x = e.clientX + 16, y = e.clientY + 16;
+    if (x + w > window.innerWidth - 8) x = e.clientX - w - 16;
+    if (y + hh > window.innerHeight - 8) y = Math.max(8, window.innerHeight - hh - 8);
+    el.style.left = `${x}px`; el.style.top = `${y}px`;
+  };
+  const hoverCell = hover && hover !== sel ? findCell(hover) : null;
 
   const totColor = (r) => { if (!r.bt) return "text-slate-100"; const pc = (r.ut / r.bt) * 100; return pc > 100 ? "text-rose-400" : pc >= 80 ? "text-amber-400" : "text-slate-100"; };
   const statusBadge = (r) => {
@@ -4284,13 +4567,15 @@ function ProjectProgress({ cfg, fProj, dataTick }) {
   const cell = (r, c) => {
     if (!c.b && !c.h) return <td key={c.ph.id} className="px-2.5 py-2.5"><span className="text-xs text-slate-700">—</span></td>;
     const L = c.h ? pgLevel(c.pct) : "none";
-    const left = c.b ? c.b - c.h : null;
-    const tip = `${r.p.code ? r.p.code + " · " : ""}${r.p.name}\n${c.ph.id} · ${c.ph.name} — ${c.open ? "đang mở chấm công" : "đã đóng"}\n`
-      + `Đã dùng ${fmtH(c.h)} h / dự kiến ${c.b ? fmtH(c.b) + " h" : "—"}${c.pct != null ? ` (${Math.round(c.pct)}%)` : ""}`
-      + (left == null ? "" : left >= 0 ? `\nCòn lại ${fmtH(left)} h` : `\nVượt ${fmtH(-left)} h`);
     const bar = !c.h ? "transparent" : c.open ? PG_COLOR[L] : "#334155";
+    const isSel = sel === c.key;
     return (
-      <td key={c.ph.id} title={tip} className={`px-2.5 py-2.5 ${c.open ? "" : "opacity-75"}`}>
+      <td key={c.ph.id}
+        onMouseEnter={(e) => { setHover(c.key); placeCard(e); }}
+        onMouseMove={placeCard}
+        onMouseLeave={() => setHover((h) => (h === c.key ? null : h))}
+        onClick={() => { setHover(null); setSel((s) => (s === c.key ? null : c.key)); }}
+        className={`cursor-pointer rounded-md px-2.5 py-2.5 hover:bg-[#16213a] ${isSel ? "bg-[#16213a] shadow-[inset_0_0_0_1px_#0f766e]" : ""} ${c.open ? "" : "opacity-75"}`}>
         <div className={`flex items-baseline gap-1 font-mono text-xs ${c.open ? "text-slate-200" : "text-slate-600"}`}>
           <span>{fmtH(c.h)}</span><span className={c.open ? "text-slate-500" : "text-slate-700"}>/ {c.b ? fmtH(c.b) : "—"} h</span>
           {c.open && <span className="ml-1 rounded border border-teal-900 px-1 font-sans text-[10px] leading-4 text-teal-400">mở</span>}
@@ -4302,18 +4587,36 @@ function ProjectProgress({ cfg, fProj, dataTick }) {
       </td>
     );
   };
-  const line = (r) => (
-    <tr key={r.p.id} className="border-b border-slate-800 last:border-0">
-      <td className="whitespace-nowrap px-2.5 py-2.5 text-sm text-slate-100">
-        {r.p.code && <span className="mr-2 font-mono text-teal-400">{r.p.code}</span>}{r.p.name}
-      </td>
-      {r.cells.map((c) => cell(r, c))}
-      <td className="whitespace-nowrap px-2.5 py-2.5 text-center font-mono text-sm">
-        <span className={totColor(r)}>{fmtH(r.ut)}</span><span className="text-slate-500"> / {fmtH(r.bt)} h</span>
-      </td>
-      <td className="whitespace-nowrap px-2.5 py-2.5 text-center">{statusBadge(r)}</td>
-    </tr>
-  );
+  const line = (r) => {
+    const dim = selProj && r.p.id !== selProj, focus = selProj && r.p.id === selProj;
+    const out = [(
+      <tr key={r.p.id} className={`border-b border-slate-800 last:border-0 ${dim ? "opacity-25 hover:opacity-60" : ""} ${focus ? "bg-[#0f1a30]" : ""}`}>
+        <td className="whitespace-nowrap px-2.5 py-2.5 text-sm text-slate-100">
+          {r.p.code && <span className="mr-2 font-mono text-teal-400">{r.p.code}</span>}{r.p.name}
+        </td>
+        {r.cells.map((c) => cell(r, c))}
+        <td className="whitespace-nowrap px-2.5 py-2.5 text-center font-mono text-sm">
+          <span className={totColor(r)}>{fmtH(r.ut)}</span><span className="text-slate-500"> / {fmtH(r.bt)} h</span>
+        </td>
+        <td className="whitespace-nowrap px-2.5 py-2.5 text-center">{statusBadge(r)}</td>
+      </tr>
+    )];
+    if (focus) {
+      const info = buildPhaseInfo(detail.get(sel), selCell, ctx);
+      out.push(
+        <tr key={`${r.p.id}-detail`} className="border-b border-slate-800">
+          <td colSpan={phases.length + 3} className="bg-[#081022] p-0">
+            {info ? <PhaseDetail cell={selCell} info={info} partial={partial} onClose={() => setSel(null)} />
+              : <div className="relative p-4 text-sm text-slate-500">
+                  {detailRaw === undefined ? "Đang tải chi tiết…" : "Chưa có giờ công đã gửi vào giai đoạn này."}
+                  <button onClick={() => setSel(null)} className="absolute right-4 top-3 h-[30px] rounded-md border border-slate-700 px-2.5 text-xs text-slate-400 hover:text-slate-100">Đóng ✕</button>
+                </div>}
+          </td>
+        </tr>
+      );
+    }
+    return out;
+  };
   return (
     <div>
       <div className="overflow-x-auto">
@@ -4342,6 +4645,10 @@ function ProjectProgress({ cfg, fProj, dataTick }) {
           {showIdle ? "▲ Ẩn" : "▼ Hiện"} {idle.length} dự án đang mở nhưng chưa có giờ
         </button>
       )}
+      <div ref={cardRef} className="pointer-events-none fixed z-[60] w-[360px] rounded-xl border border-slate-700 bg-[#030a1a] px-3.5 py-3 shadow-[0_18px_40px_rgba(0,0,0,.6)]"
+        style={{ display: hoverCell ? "block" : "none" }}>
+        {hoverCell && <PhaseHoverCard cell={hoverCell} info={buildPhaseInfo(detail.get(hover), hoverCell, ctx)} canOpen />}
+      </div>
     </div>
   );
 }

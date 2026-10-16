@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v4.6 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v4.7 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.6`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.7`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,27 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v4.7 — Chi tiết từng giai đoạn trong "Tiến độ dự án"
+
+**Bắt buộc chạy lại `supabase/schema.sql`** (thêm mục 14: hàm `artius_phase_detail`). Chưa chạy thì app vẫn hoạt động,
+nhưng phần chi tiết chỉ tính trên dữ liệu đã tải (vài tháng gần nhất) và có dòng chữ cam nhắc chạy lại.
+
+Chỉ đổi bảng **Tiến độ dự án** ở tab Dashboard của quản lý; các tab khác giữ nguyên.
+
+- **Rê chuột vào ô giai đoạn** → thẻ tóm tắt:
+  - **Giờ còn lại** (cam khi còn ≤ 20% giờ dự kiến, đỏ có dấu − khi đã vượt).
+  - Giai đoạn đang mở: **dự báo** theo tốc độ trung bình 4 tuần đã qua (không tính tuần đang chạy) → hết giờ trong bao lâu, khoảng ngày nào;
+    đã vượt thì báo 2 tuần tới vượt thêm bao nhiêu; không ai gửi giờ ≥ 10 ngày thì báo "đứng im".
+    Giai đoạn đã đóng: đóng ở bao nhiêu %, chạy mấy tuần.
+  - 3 người và 3 tác vụ tiêu giờ nhiều nhất (kèm vai trò), ô Tăng ca, lần gửi giờ gần nhất, số người.
+- **Bấm vào ô giai đoạn** → khung chi tiết mở ngay dưới dòng dự án, **các dự án khác mờ đi** (rê chuột vào thì rõ lại một phần):
+  - Biểu đồ giờ theo tuần (tối đa 16 tuần gần nhất), màu cột = giờ lũy kế so với dự kiến; vạch vàng đứt = trung bình 4 tuần gần nhất;
+    dưới biểu đồ là kết luận dự báo.
+  - Toàn bộ nhân sự (tối đa 10, kèm vai trò) và tác vụ (tối đa 10) với giờ và %. Tác vụ lớn nhất là chỉnh sửa / góp ý / làm việc với khách thì có cảnh báo vàng.
+  - Dòng **TĂNG CA**: số giờ và % tổng giờ giai đoạn, thanh 3 mức — bình thường 0–15% (xanh), trung bình 15–25% (cam), cao > 25% (đỏ).
+  - Bấm lại vào ô hoặc nút **Đóng ✕** để đóng.
+- Tăng ca = giờ chấm vào hạng mục có tên bắt đầu bằng `[OT]`; danh sách tác vụ không tính các hạng mục này. Chỉ tính giờ của ngày đã gửi, trên toàn bộ dữ liệu.
 
 ## Mới ở v4.6 — Dashboard quản lý: Tiến độ dự án + Phân bổ theo nhân sự
 

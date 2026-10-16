@@ -2,6 +2,7 @@
 -- Chạy trong Supabase → SQL Editor. Chạy lại nhiều lần được, không xoá dữ liệu.
 -- Nâng cấp từ bất kỳ bản v1.7 → v3.0: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v3.1.
 -- (Lịch gửi nhắc nhở nằm riêng ở supabase/cron.sql — chạy sau file này, xem README.)
+-- (v4.7 thêm mục 14: hàm artius_phase_detail — chi tiết theo tuần / nhân sự / tác vụ của từng giai đoạn cho Dashboard.)
 -- (v2.1 thêm mục 9: hàm artius_usage tính tổng giờ toàn bộ dữ liệu cho tab Dự án và tab Thiết lập.)
 -- (v3.1 sửa mục 7c: nhân sự chấm được giai đoạn quản lý đang MỞ (project.phaseOpen); dự án chưa đặt mở/đóng thì theo giờ dự kiến như cũ.)
 -- (v2.9 sửa mục 7c: dòng "Khác" (projectId '__none__': tác vụ chung + vắng mặt) không cần giờ dự kiến.)
@@ -451,6 +452,42 @@ create policy "artius_push_admin_read" on public.artius_push
   for select to authenticated using ((select public.artius_is_admin()));
 create policy "artius_push_log_admin_read" on public.artius_push_log
   for select to authenticated using ((select public.artius_is_admin()));
+
+-- 14. v4.7 — Chi tiết từng giai đoạn cho Dashboard quản lý (rê chuột / bấm vào ô giai đoạn ở "Tiến độ dự án").
+--     Trả về MỘT khối JSON cho mọi cặp dự án × giai đoạn (chỉ giờ của ngày đã gửi, trên toàn bộ bảng công):
+--     { "<projectId>|<phaseId>": { "w": {"<thứ Hai>": giờ}, "e": {"<empId>": giờ}, "t": {"<taskId>": giờ},
+--                                   "first": "YYYY-MM-DD", "last": "YYYY-MM-DD" } }
+--     Trả một khối JSON (không trả từng dòng) để không vướng giới hạn 1000 dòng của API. Chỉ tài khoản quản lý nhận được số liệu.
+create or replace function public.artius_phase_detail()
+returns jsonb
+language sql stable security definer set search_path = public as $$
+  with x as (
+    select coalesce(rw ->> 'projectId', '') || '|' || coalesce(nullif(rw ->> 'phaseId', ''), 'P2') as k,
+           t.emp_id,
+           coalesce(rw ->> 'taskId', '') as task_id,
+           d.key::date as day,
+           (d.value #>> '{}')::numeric as h
+    from public.artius_ts t
+         cross join lateral (select t.value::jsonb as j) as v
+         cross join lateral jsonb_array_elements(case when jsonb_typeof(v.j -> 'rows') = 'array' then v.j -> 'rows' else '[]'::jsonb end) as rw
+         cross join lateral jsonb_each(case when jsonb_typeof(rw -> 'days') = 'object' then rw -> 'days' else '{}'::jsonb end) as d
+    where public.artius_is_admin()
+      and coalesce(rw ->> 'projectId', '') not in ('', '__none__')
+      and d.key ~ '^\d{4}-\d{2}-\d{2}$'
+      and jsonb_typeof(d.value) = 'number'
+      and (d.value #>> '{}')::numeric > 0
+      and coalesce(case when jsonb_typeof(v.j -> 'sent') = 'object' then v.j -> 'sent' end, '{}'::jsonb) ? d.key
+  ),
+  w as (select k, jsonb_object_agg(wk, h) as o from (select k, to_char(date_trunc('week', day), 'YYYY-MM-DD') as wk, sum(h) as h from x group by 1, 2) a group by k),
+  e as (select k, jsonb_object_agg(emp_id, h) as o from (select k, emp_id, sum(h) as h from x group by 1, 2) a group by k),
+  tk as (select k, jsonb_object_agg(task_id, h) as o from (select k, task_id, sum(h) as h from x group by 1, 2) a group by k),
+  r as (select k, min(day) as first, max(day) as last from x group by k)
+  select coalesce(jsonb_object_agg(r.k, jsonb_build_object('w', w.o, 'e', e.o, 't', tk.o,
+                                                           'first', to_char(r.first, 'YYYY-MM-DD'), 'last', to_char(r.last, 'YYYY-MM-DD'))), '{}'::jsonb)
+  from r join w using (k) join e using (k) join tk using (k);
+$$;
+revoke all on function public.artius_phase_detail() from public, anon;
+grant execute on function public.artius_phase_detail() to authenticated, service_role;
 
 -- 11. Bắt PostgREST nạp lại danh sách bảng / hàm ngay (để hàm artius_usage dùng được liền, không báo 404)
 notify pgrst, 'reload schema';
