@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v4.5 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v4.6 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.5`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.6`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,20 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v4.6 — Dashboard quản lý: Tiến độ dự án + Phân bổ theo nhân sự
+
+Chỉ đổi tab **Dashboard** của quản lý; các tab khác giữ nguyên. Không cần chạy lại `schema.sql`.
+
+- **Tiến độ dự án — giờ đã dùng so với dự kiến** (thay biểu đồ "giờ công theo giai đoạn và mốc giờ dự kiến"):
+  - Mỗi dự án một dòng, mỗi giai đoạn một ô: **giờ hiện tại** (tổng giờ đã gửi từ trước tới nay, không phụ thuộc kỳ đang lọc) / giờ dự kiến · %.
+  - Giai đoạn **đang mở**: thanh màu (xanh < 80%, cam 80–100%, đỏ > 100%) + nhãn "mở". Giai đoạn **đã đóng**: thanh xám, chữ chìm.
+  - Cột **Giờ hiện tại / dự kiến** của cả dự án: số chuyển cam khi ≥ 80%, đỏ khi > 100%.
+  - Cột **Tình trạng** chỉ cảnh báo giai đoạn đang mở (VD "Sắp vượt · P2"). Dự án nguy cơ vượt xếp đầu.
+  - Dự án đang mở nhưng chưa có giờ gom vào dòng "Hiện n dự án…". Rê chuột vào ô giai đoạn xem còn lại / vượt bao nhiêu giờ.
+  - Bộ lọc **Dự án** của Dashboard áp vào bảng này; kỳ, bộ phận, tên nhân sự thì không.
+- **Phân bổ giờ công theo nhân sự** (thay bảng "nhân sự × dự án"): mỗi người một thanh chia khúc theo dự án trong kỳ đang lọc,
+  vạch vàng đứt là **giờ chuẩn của kỳ** (theo Thiết lập, trừ ngày lễ); vượt 110% giờ chuẩn ghi "quá tải". Số chi tiết vẫn có trong file Excel (sheet "Ma trận NS x DA").
 
 ## Mới ở v4.5 — Dashboard quản lý gọn cho nhiều dự án
 

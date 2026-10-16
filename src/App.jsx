@@ -15,7 +15,10 @@ import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus 
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v4.5
+   ARTIUS — Quản lý giờ công theo dự án · v4.6
+   Mới ở v4.6 — Dashboard quản lý: "Tiến độ dự án" (giờ hiện tại từ trước tới nay so với dự kiến từng giai đoạn, cảnh báo
+     chỉ giai đoạn đang mở) thay biểu đồ giai đoạn cũ; "Phân bổ giờ công theo nhân sự" (thanh chia khúc + vạch giờ chuẩn kỳ)
+     thay bảng nhân sự × dự án. Các tab khác giữ nguyên.
    Mới ở v4.5 — Dashboard quản lý: bỏ biểu đồ "Giờ công theo tác vụ"; bảng nhân sự × dự án gọn cho nhiều dự án
    Mới ở v4.4 — mô tả ngắn cho tác vụ: quản lý ghi ở tab Tác vụ (bút chì), nhân sự thấy dưới tên hạng mục khi nhập giờ
      + kéo thả để đổi thứ tự tác vụ (máy tính); màn Chấm công hiện đúng thứ tự đó
@@ -128,7 +131,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v4.5";
+const APP_VERSION = "v4.6";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -3914,6 +3917,12 @@ function Dashboard({ cfg, flash }) {
   const holidaySet = useMemo(() => makeHolidayIndex(cfg.holidays), [cfg.holidays]);
 
   const setRange = (a, b) => { setFrom(a); setTo(b); };
+  // v4.6 — giờ chuẩn của một người trong kỳ đang chọn (T2–T6 / T7 / CN theo Thiết lập, trừ ngày lễ) — vạch so sánh ở "Phân bổ theo nhân sự"
+  const stdPeriod = useMemo(() => {
+    let t = 0;
+    for (let d = from; d <= to; d = fmt(addDays(parseD(d), 1))) t += minHoursFor(d, hoursCfg, holidaySet) || 0;
+    return t;
+  }, [from, to, hoursCfg, holidaySet]);
   const clearFilters = () => { setFDept("all"); setFProj("all"); setFPhase("all"); setQ(""); };
   const hasFilter = fDept !== "all" || fProj !== "all" || fPhase !== "all" || q.trim() !== "";
 
@@ -4107,14 +4116,6 @@ function Dashboard({ cfg, flash }) {
       .sort((a, b) => b.total - a.total);
   }, [agg, projMapById]);
 
-  /* v4.5 — Bảng nhân sự × dự án gọn cho nhiều dự án: tiêu đề cột là MÃ dự án (rê chuột xem tên đầy đủ), cột rộng cố định,
-     sắp theo tổng giờ giảm dần ("Khác" luôn cuối), ghim cột Nhân sự + cột Tổng, có dòng tổng, tô nền ô theo mức giờ. */
-  const projShort = (id) => { if (id === NO_PROJECT) return "Khác"; const p = projMapById.get(id); return p ? (p.code || p.name) : "(đã xoá)"; };
-  const mxCols = agg ? [...agg.byProj.entries()].sort((a, b) => (a[0] === NO_PROJECT) - (b[0] === NO_PROJECT) || b[1] - a[1]).map(([k]) => k) : [];
-  const mxRows = agg ? [...agg.matrix.entries()].sort((a, b) => empName(a[0]).localeCompare(empName(b[0]))) : [];
-  const mxColTotal = new Map(mxCols.map((pid) => [pid, mxRows.reduce((s, [, mm]) => s + (mm.get(pid) || 0), 0)]));
-  const mxMax = Math.max(0, ...mxRows.flatMap(([, mm]) => [...mm.values()]));
-  const heat = (v) => (v > 0 && mxMax > 0 ? { backgroundColor: `rgba(45,212,191,${(0.06 + 0.42 * (v / mxMax)).toFixed(3)})` } : undefined);
   return (
     <div className="space-y-3 md:space-y-4">
       <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
@@ -4188,78 +4189,13 @@ function Dashboard({ cfg, flash }) {
             </div>
           )}
 
-          <Panel title="Dự án — giờ công theo giai đoạn và mốc giờ dự kiến">
-            <ProjectPhaseBars rows={projectRows} />
+          <Panel title="Tiến độ dự án — giờ đã dùng so với dự kiến" right={<ProgressLegend />}>
+            <ProjectProgress cfg={cfg} fProj={fProj} dataTick={dataTick} />
           </Panel>
 
-          <Panel title="Giờ công: nhân sự × dự án">
-            <div className="hidden overflow-x-auto md:block">
-              <table className="min-w-full border-separate border-spacing-0 text-sm">
-                <thead>
-                  <tr className="text-xs uppercase tracking-wider text-slate-500">
-                    <th className="sticky left-0 z-10 w-48 min-w-[12rem] border-b border-r border-slate-800 bg-slate-900 px-3 py-2 text-left font-medium">Nhân sự</th>
-                    {mxCols.map((pid) => (
-                      <th key={pid} title={projLabel(pid)} className="w-16 min-w-[4rem] max-w-[4rem] border-b border-slate-800 px-1 py-2 text-center font-mono font-medium normal-case tracking-normal">
-                        <span className="block truncate">{projShort(pid)}</span>
-                      </th>
-                    ))}
-                    <th className="sticky right-0 z-10 w-20 min-w-[5rem] border-b border-l border-slate-800 bg-slate-900 px-3 py-2 text-center font-medium">Tổng</th>
-                  </tr>
-                </thead>
-                <tbody className="font-mono">
-                  {mxRows.map(([eid, mm]) => {
-                    const t = [...mm.values()].reduce((s, v) => s + v, 0);
-                    return (
-                      <tr key={eid} className="group">
-                        <td className="sticky left-0 z-10 truncate border-b border-r border-slate-800 bg-slate-900 px-3 py-2 font-sans text-slate-200 group-hover:bg-slate-800">{empName(eid)}</td>
-                        {mxCols.map((pid) => {
-                          const v = mm.get(pid) || 0;
-                          return (
-                            <td key={pid} title={`${empName(eid)} · ${projLabel(pid)}`} style={heat(v)}
-                              className="border-b border-slate-800 px-1 py-2 text-center text-slate-200">
-                              {v ? v.toFixed(1) : <span className="text-slate-700">·</span>}
-                            </td>
-                          );
-                        })}
-                        <td className="sticky right-0 z-10 border-b border-l border-slate-800 bg-slate-900 px-3 py-2 text-center text-teal-400 group-hover:bg-slate-800">{t.toFixed(1)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot className="font-mono">
-                  <tr>
-                    <td className="sticky left-0 z-10 border-r border-slate-800 bg-slate-950 px-3 py-2 font-sans text-xs uppercase tracking-wider text-slate-500">Tổng</td>
-                    {mxCols.map((pid) => (
-                      <td key={pid} title={projLabel(pid)} className="bg-slate-950 px-1 py-2 text-center text-slate-300">{(mxColTotal.get(pid) || 0).toFixed(1)}</td>
-                    ))}
-                    <td className="sticky right-0 z-10 border-l border-slate-800 bg-slate-950 px-3 py-2 text-center text-teal-300">
-                      {[...mxColTotal.values()].reduce((s, v) => s + v, 0).toFixed(1)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-            <div className="space-y-2 md:hidden">
-              {[...agg.matrix.entries()].sort((a, b) => empName(a[0]).localeCompare(empName(b[0]))).map(([eid, mm]) => {
-                const t = [...mm.values()].reduce((s, v) => s + v, 0);
-                return (
-                  <div key={eid} className="rounded-lg border border-slate-800 bg-slate-950 p-3">
-                    <div className="flex items-baseline justify-between">
-                      <span className="text-sm font-medium text-slate-100">{empName(eid)}</span>
-                      <span className="font-mono text-sm text-teal-400">{t.toFixed(1)} giờ</span>
-                    </div>
-                    <div className="mt-2 space-y-1">
-                      {[...mm.entries()].sort((a, b) => b[1] - a[1]).map(([pid, h]) => (
-                        <div key={pid} className="flex items-center justify-between gap-2 text-xs">
-                          <span className="truncate text-slate-400">{projLabel(pid)}</span>
-                          <span className="shrink-0 font-mono text-slate-300">{h.toFixed(1)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+          <Panel title="Phân bổ giờ công theo nhân sự"
+            right={<span className="flex items-center gap-1.5 text-xs text-slate-500"><span className="inline-block h-3 border-l-2 border-dashed border-amber-400" />Giờ chuẩn của kỳ: <span className="font-mono text-amber-400">{fmtH(stdPeriod)} h</span></span>}>
+            <StaffAllocation matrix={agg.matrix} std={stdPeriod} empName={empName} projMapById={projMapById} />
           </Panel>
         </>
       )}
@@ -4272,6 +4208,209 @@ function Dashboard({ cfg, flash }) {
    giờ đó rơi vào chặng nào, và đã vượt dự toán chưa. */
 /* v1.9 — Mỗi dự án 4 thanh theo phase: phần tô màu là giờ đã dùng (theo kỳ và bộ lọc đang chọn),
    vạch trắng là mốc giờ dự kiến của phase đó. Vượt mốc thì số chuyển đỏ và tên dự án có nhãn "Vượt Px". */
+/* ============================================================
+   v4.6 — Dashboard quản lý: Tiến độ dự án + Phân bổ giờ công theo nhân sự
+   ============================================================ */
+const PG_COLOR = { ok: "#14b8a6", warn: "#f59e0b", over: "#f43f5e" };
+const pgLevel = (pct) => (pct == null ? "none" : pct > 100 ? "over" : pct >= 80 ? "warn" : "ok");
+const ProgressLegend = () => (
+  <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+    <span className="rounded-full bg-teal-500/10 px-2 py-0.5 text-teal-400">&lt; 80%</span>
+    <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-400">80–100% sắp vượt</span>
+    <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-rose-400">&gt; 100% vượt</span>
+  </div>
+);
+
+/* Tiến độ dự án: giờ HIỆN TẠI = tổng giờ đã gửi từ trước tới nay (không theo kỳ đang lọc) so với giờ dự kiến từng giai đoạn.
+   · Giai đoạn đang mở: thanh màu theo mức (xanh < 80%, cam 80–100%, đỏ > 100%) + nhãn "mở".
+   · Giai đoạn đã đóng: chìm xuống (thanh xám, chữ xám, % nhạt) — không cảnh báo nữa.
+   · Tình trạng chỉ xét giai đoạn đang mở. Dự án nguy cơ vượt xếp đầu; dự án chưa có giờ gom vào một dòng mở rộng.
+   · Chỉ dự án đang chấm công (active). Bộ lọc "dự án" của Dashboard áp vào đây; bộ lọc kỳ / bộ phận / nhân sự thì không. */
+function ProjectProgress({ cfg, fProj, dataTick }) {
+  const usage = useUsage();
+  const [showIdle, setShowIdle] = useState(false);
+  const used = useMemo(() => {
+    const m = new Map();
+    if (usage) {
+      for (const u of usage) {
+        if (u.projectId === NO_PROJECT || !u.sent) continue;
+        const o = m.get(u.projectId) || {}; o[u.phaseId] = (o[u.phaseId] || 0) + u.sent; m.set(u.projectId, o);
+      }
+      return m;
+    }
+    // chưa hỏi được database: tạm cộng từ phần bảng công đang có trong bộ nhớ (giống tab Dự án)
+    for (const bucket of Object.values(DB?.ts || {})) for (const r of sentRows(bucket)) {
+      if (isLeaveTask(r.taskId) || r.projectId === NO_PROJECT) continue;
+      const h = Object.values(r.days || {}).reduce((a, v) => a + (Number(v) || 0), 0);
+      if (!h) continue;
+      const o = m.get(r.projectId) || {}; const ph = r.phaseId || DEFAULT_PHASE;
+      o[ph] = (o[ph] || 0) + h; m.set(r.projectId, o);
+    }
+    return m;
+  }, [usage, dataTick]);
+
+  const phases = PHASES.filter((ph) => ph.active !== false);
+  const rows = cfg.projects
+    .filter((p) => p.active && (fProj === "all" || p.id === fProj))
+    .map((p) => {
+      const budgets = projBudgets(p);
+      const u = used.get(p.id) || {};
+      const cells = phases.map((ph) => {
+        const b = Math.max(0, Number(budgets[ph.id]) || 0), h = u[ph.id] || 0;
+        const open = projPhaseIsOpen(p, ph.id);
+        const pct = b ? (h / b) * 100 : null;
+        return { ph, b, h, open, pct };
+      });
+      const bt = cells.reduce((a, c) => a + c.b, 0), ut = cells.reduce((a, c) => a + c.h, 0);
+      let worst = null, worstPh = "";
+      for (const c of cells) if (c.open && c.b) { const v = c.pct || 0; if (worst == null || v > worst) { worst = v; worstPh = c.ph.id; } }
+      const nOver = cells.filter((c) => c.open && c.b && c.h > c.b).length;
+      const noOpen = !cells.some((c) => c.open);
+      return { p, cells, bt, ut, worst, worstPh, nOver, noOpen };
+    });
+  const active = rows.filter((r) => r.ut > 0).sort((a, b) => (b.worst ?? -1) - (a.worst ?? -1) || b.ut - a.ut);
+  const idle = rows.filter((r) => r.ut === 0);
+  if (rows.length === 0) return <p className="text-sm text-slate-500">Chưa có dự án đang chấm công.</p>;
+
+  const totColor = (r) => { if (!r.bt) return "text-slate-100"; const pc = (r.ut / r.bt) * 100; return pc > 100 ? "text-rose-400" : pc >= 80 ? "text-amber-400" : "text-slate-100"; };
+  const statusBadge = (r) => {
+    if (r.noOpen) return <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[11.5px] text-slate-500">Không có giai đoạn mở</span>;
+    const L = pgLevel(r.worst);
+    const cls = { ok: "bg-teal-500/10 text-teal-400", warn: "bg-amber-500/10 text-amber-400", over: "bg-rose-500/15 text-rose-400", none: "bg-slate-800 text-slate-500" }[L];
+    const label = { ok: "Bình thường", warn: "Sắp vượt", over: "Vượt dự kiến", none: "Chưa có giờ" }[L];
+    const which = L === "warn" || L === "over" ? ` · ${r.nOver > 1 ? `${r.nOver} giai đoạn` : r.worstPh}` : "";
+    return <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11.5px] ${cls}`}>{label}{which}</span>;
+  };
+  const cell = (r, c) => {
+    if (!c.b && !c.h) return <td key={c.ph.id} className="px-2.5 py-2.5"><span className="text-xs text-slate-700">—</span></td>;
+    const L = c.h ? pgLevel(c.pct) : "none";
+    const left = c.b ? c.b - c.h : null;
+    const tip = `${r.p.code ? r.p.code + " · " : ""}${r.p.name}\n${c.ph.id} · ${c.ph.name} — ${c.open ? "đang mở chấm công" : "đã đóng"}\n`
+      + `Đã dùng ${fmtH(c.h)} h / dự kiến ${c.b ? fmtH(c.b) + " h" : "—"}${c.pct != null ? ` (${Math.round(c.pct)}%)` : ""}`
+      + (left == null ? "" : left >= 0 ? `\nCòn lại ${fmtH(left)} h` : `\nVượt ${fmtH(-left)} h`);
+    const bar = !c.h ? "transparent" : c.open ? PG_COLOR[L] : "#334155";
+    return (
+      <td key={c.ph.id} title={tip} className={`px-2.5 py-2.5 ${c.open ? "" : "opacity-75"}`}>
+        <div className={`flex items-baseline gap-1 font-mono text-xs ${c.open ? "text-slate-200" : "text-slate-600"}`}>
+          <span>{fmtH(c.h)}</span><span className={c.open ? "text-slate-500" : "text-slate-700"}>/ {c.b ? fmtH(c.b) : "—"} h</span>
+          {c.open && <span className="ml-1 rounded border border-teal-900 px-1 font-sans text-[10px] leading-4 text-teal-400">mở</span>}
+          {c.pct != null && c.h > 0 && <span className="ml-auto" style={{ color: PG_COLOR[L], opacity: c.open ? 1 : 0.45 }}>{Math.round(c.pct)}%</span>}
+        </div>
+        <div className={`mt-1 h-[5px] overflow-hidden rounded-full ${c.open ? "bg-slate-800" : "bg-slate-800/50"}`}>
+          <div className="h-full rounded-full" style={{ width: `${Math.min(100, c.pct || 0)}%`, background: bar, opacity: c.open ? 1 : 0.55 }} />
+        </div>
+      </td>
+    );
+  };
+  const line = (r) => (
+    <tr key={r.p.id} className="border-b border-slate-800 last:border-0">
+      <td className="whitespace-nowrap px-2.5 py-2.5 text-sm text-slate-100">
+        {r.p.code && <span className="mr-2 font-mono text-teal-400">{r.p.code}</span>}{r.p.name}
+      </td>
+      {r.cells.map((c) => cell(r, c))}
+      <td className="whitespace-nowrap px-2.5 py-2.5 text-center font-mono text-sm">
+        <span className={totColor(r)}>{fmtH(r.ut)}</span><span className="text-slate-500"> / {fmtH(r.bt)} h</span>
+      </td>
+      <td className="whitespace-nowrap px-2.5 py-2.5 text-center">{statusBadge(r)}</td>
+    </tr>
+  );
+  return (
+    <div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[960px] border-collapse">
+          <thead>
+            <tr className="border-b border-slate-800 text-left text-[11px] uppercase tracking-wider text-slate-500">
+              <th className="px-2.5 py-2 font-normal">Dự án</th>
+              {phases.map((ph) => (
+                <th key={ph.id} className="px-2.5 py-2 font-normal" style={{ width: "15.2%" }}>
+                  <span className="mr-1.5 inline-block h-2 w-2 rounded-sm align-middle" style={{ background: ph.color }} />{ph.id} · {ph.name}
+                </th>
+              ))}
+              <th className="whitespace-nowrap px-2.5 py-2 text-center font-normal" style={{ width: "12%" }}>Giờ hiện tại / dự kiến</th>
+              <th className="whitespace-nowrap px-2.5 py-2 text-center font-normal" style={{ width: "12%" }}>Tình trạng</th>
+            </tr>
+          </thead>
+          <tbody>
+            {active.map(line)}
+            {showIdle && idle.map(line)}
+          </tbody>
+        </table>
+      </div>
+      {active.length === 0 && !showIdle && <p className="px-2.5 pt-2 text-sm text-slate-500">Chưa dự án nào có giờ công đã gửi.</p>}
+      {idle.length > 0 && (
+        <button onClick={() => setShowIdle((x) => !x)} className="mt-2 px-2.5 text-xs text-slate-400 hover:text-slate-200">
+          {showIdle ? "▲ Ẩn" : "▼ Hiện"} {idle.length} dự án đang mở nhưng chưa có giờ
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* Phân bổ giờ công theo nhân sự (theo kỳ và bộ lọc của Dashboard): mỗi người một thanh, độ dài = tổng giờ,
+   chia khúc theo dự án ("Khác" = việc chung / vắng mặt, xám, luôn cuối). Vạch vàng đứt = giờ chuẩn của kỳ;
+   > 110% giờ chuẩn thì báo quá tải. Người nhiều giờ nhất lên đầu. */
+const ALLOC_PAL = ["#2dd4bf", "#f59e0b", "#60a5fa", "#a78bfa", "#f472b6", "#34d399", "#fb923c", "#38bdf8", "#c084fc", "#facc15", "#4ade80", "#f87171"];
+function StaffAllocation({ matrix, std, empName, projMapById }) {
+  const people = [...matrix.entries()].map(([eid, mm]) => ({ eid, mm, t: [...mm.values()].reduce((a, v) => a + v, 0) }))
+    .filter((x) => x.t > 0).sort((a, b) => b.t - a.t);
+  if (people.length === 0) return <p className="text-sm text-slate-500">Chưa có giờ công trong kỳ này.</p>;
+  const colT = new Map();
+  for (const x of people) for (const [k, v] of x.mm) colT.set(k, (colT.get(k) || 0) + v);
+  const cols = [...colT.keys()].filter((k) => k !== NO_PROJECT).sort((a, b) => colT.get(b) - colT.get(a));
+  if (colT.has(NO_PROJECT)) cols.push(NO_PROJECT);
+  const color = new Map(cols.map((k, i) => [k, k === NO_PROJECT ? "#64748b" : ALLOC_PAL[i % ALLOC_PAL.length]]));
+  const code = (k) => { if (k === NO_PROJECT) return "Khác"; const p = projMapById.get(k); return p ? (p.code || p.name) : "(đã xoá)"; };
+  const name = (k) => { if (k === NO_PROJECT) return "Việc chung, vắng mặt"; return projMapById.get(k)?.name || "(dự án đã xoá)"; };
+  const maxT = Math.max(...people.map((x) => x.t), std * 1.25, 1);
+  const step = maxT > 320 ? 80 : maxT > 160 ? 40 : 20;
+  const top = Math.ceil(maxT / step) * step;
+  const ticks = []; for (let v = 0; v <= top; v += step) ticks.push(v);
+  return (
+    <div>
+      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-400">
+        {cols.map((k) => <span key={k} className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: color.get(k) }} />{code(k)} · {name(k)}</span>)}
+      </div>
+      <div className="grid grid-cols-[120px_minmax(0,1fr)_88px] gap-3 pb-1.5 text-[11px] text-slate-500 md:grid-cols-[200px_minmax(0,1fr)_150px] md:gap-4">
+        <span />
+        <div className="relative h-3.5">{ticks.map((v) => <span key={v} className="absolute -translate-x-1/2" style={{ left: `${(v / top) * 100}%` }}>{v}h</span>)}</div>
+        <span />
+      </div>
+      {people.map((x) => {
+        const n = cols.filter((k) => k !== NO_PROJECT && x.mm.get(k)).length;
+        const pct = std ? Math.round((x.t / std) * 100) : null;
+        const over = pct != null && pct > 110;
+        return (
+          <div key={x.eid} className="grid grid-cols-[120px_minmax(0,1fr)_88px] items-center gap-3 border-b border-slate-800 py-2 last:border-0 md:grid-cols-[200px_minmax(0,1fr)_150px] md:gap-4">
+            <div className="min-w-0">
+              <div className="truncate text-sm text-slate-100">{empName(x.eid)}</div>
+              <div className="text-[11px] text-slate-500">{n} dự án</div>
+            </div>
+            <div className="relative h-7">
+              <div className="flex h-7 overflow-hidden rounded-md" style={{ width: `${(x.t / top) * 100}%` }}>
+                {cols.map((k) => {
+                  const v = x.mm.get(k); if (!v) return null;
+                  return (
+                    <div key={k} title={`${empName(x.eid)}\n${code(k)} · ${name(k)}\n${fmtH(v)} giờ · ${Math.round((v / x.t) * 100)}% thời gian của người này`}
+                      className="flex min-w-[2px] items-center justify-center overflow-hidden whitespace-nowrap border-r-2 border-slate-900 text-[11.5px] font-semibold text-slate-950 last:border-r-0"
+                      style={{ flex: `${v} 0 0`, background: color.get(k) }}>
+                      <span className="truncate px-1.5">{code(k)} · {fmtH(v)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {std > 0 && <div className="pointer-events-none absolute -bottom-1 -top-1 border-l-2 border-dashed border-amber-400" style={{ left: `${(std / top) * 100}%` }} />}
+            </div>
+            <div className="text-right font-mono text-sm">
+              <div className={over ? "text-rose-400" : "text-slate-100"}>{fmtH(x.t)} h</div>
+              {pct != null && <div className={`whitespace-nowrap font-sans text-[11px] ${over ? "text-rose-400" : "text-slate-500"}`}>{pct}% giờ chuẩn{over ? " · quá tải" : ""}</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const ProjectPhaseBars = ({ rows }) => {
   const [limit, setLimit] = useState(10);
   if (rows.length === 0) return <p className="text-sm text-slate-500">Chưa có dữ liệu.</p>;
