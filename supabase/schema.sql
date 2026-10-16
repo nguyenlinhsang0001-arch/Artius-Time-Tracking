@@ -151,6 +151,7 @@ returns jsonb language sql immutable as $$
              coalesce(rw ->> 'projectId', ''),
              coalesce(nullif(rw ->> 'phaseId', ''), 'P2'),
              coalesce(rw ->> 'taskId', ''),
+             coalesce(rw ->> 'otFor', ''),   -- v4.9: dòng tăng ca gắn tác vụ
              d.key,
              (d.value #>> '{}')::numeric) as x
     from jsonb_array_elements(case when jsonb_typeof(bucket -> 'rows') = 'array' then bucket -> 'rows' else '[]'::jsonb end) as rw,
@@ -173,6 +174,7 @@ returns jsonb language sql immutable as $$
              coalesce(rw ->> 'projectId', ''),
              coalesce(nullif(rw ->> 'phaseId', ''), 'P2'),
              coalesce(rw ->> 'taskId', ''),
+             coalesce(rw ->> 'otFor', ''),   -- v4.9: dòng tăng ca gắn tác vụ
              d.key,
              (d.value #>> '{}')::numeric) as x
     from jsonb_array_elements(case when jsonb_typeof(bucket -> 'rows') = 'array' then bucket -> 'rows' else '[]'::jsonb end) as rw,
@@ -207,6 +209,7 @@ returns jsonb language sql immutable as $$
              coalesce(rw ->> 'projectId', ''),
              coalesce(nullif(rw ->> 'phaseId', ''), 'P2'),     -- app coi dòng chưa có giai đoạn là P2
              coalesce(rw ->> 'taskId', ''),
+             coalesce(rw ->> 'otFor', ''),   -- v4.9: dòng tăng ca gắn tác vụ
              (rw -> 'days' -> d #>> '{}')::numeric) as x
     from jsonb_array_elements(case when jsonb_typeof(bucket -> 'rows') = 'array' then bucket -> 'rows' else '[]'::jsonb end) as rw
     where case when jsonb_typeof(rw -> 'days') = 'object' and jsonb_typeof(rw -> 'days' -> d) = 'number'
@@ -223,6 +226,7 @@ returns jsonb language sql immutable as $$
     select jsonb_build_array(
              coalesce(nullif(rw ->> 'phaseId', ''), 'P2'),
              coalesce(rw ->> 'taskId', ''),
+             coalesce(rw ->> 'otFor', ''),   -- v4.9: dòng tăng ca gắn tác vụ
              d.key,
              (d.value #>> '{}')::numeric) as x
     from jsonb_array_elements(case when jsonb_typeof(bucket -> 'rows') = 'array' then bucket -> 'rows' else '[]'::jsonb end) as rw,
@@ -458,6 +462,8 @@ create policy "artius_push_log_admin_read" on public.artius_push_log
 --     { "<projectId>|<phaseId>": { "w": {"<thứ Hai>": giờ}, "e": {"<empId>": giờ}, "t": {"<taskId>": giờ},
 --                                   "first": "YYYY-MM-DD", "last": "YYYY-MM-DD" } }
 --     Trả một khối JSON (không trả từng dòng) để không vướng giới hạn 1000 dòng của API. Chỉ tài khoản quản lý nhận được số liệu.
+--     v4.9: thêm "o": {"<mã hạng mục tăng ca>|<tăng ca cho tác vụ>|<n|s|h>": giờ} — giờ tăng ca theo khung giờ × tác vụ,
+--     n = ngày thường, s = Chủ nhật, h = ngày lễ (theo danh sách ngày lễ trong thiết lập). Dòng tăng ca cũ chưa có tác vụ: phần giữa rỗng.
 create or replace function public.artius_phase_detail()
 returns jsonb
 language sql stable security definer set search_path = public as $$
@@ -465,6 +471,7 @@ language sql stable security definer set search_path = public as $$
     select coalesce(rw ->> 'projectId', '') || '|' || coalesce(nullif(rw ->> 'phaseId', ''), 'P2') as k,
            t.emp_id,
            coalesce(rw ->> 'taskId', '') as task_id,
+           coalesce(rw ->> 'otFor', '') as ot_for,
            d.key::date as day,
            (d.value #>> '{}')::numeric as h
     from public.artius_ts t
@@ -481,10 +488,25 @@ language sql stable security definer set search_path = public as $$
   w as (select k, jsonb_object_agg(wk, h) as o from (select k, to_char(date_trunc('week', day), 'YYYY-MM-DD') as wk, sum(h) as h from x group by 1, 2) a group by k),
   e as (select k, jsonb_object_agg(emp_id, h) as o from (select k, emp_id, sum(h) as h from x group by 1, 2) a group by k),
   tk as (select k, jsonb_object_agg(task_id, h) as o from (select k, task_id, sum(h) as h from x group by 1, 2) a group by k),
-  r as (select k, min(day) as first, max(day) as last from x group by k)
-  select coalesce(jsonb_object_agg(r.k, jsonb_build_object('w', w.o, 'e', e.o, 't', tk.o,
+  r as (select k, min(day) as first, max(day) as last from x group by k),
+  cf as (select coalesce((select c.value::jsonb from public.artius_config c where c.id = 'main'), '{}'::jsonb) as j),
+  otid as (select tt ->> 'id' as id
+           from cf, jsonb_array_elements(case when jsonb_typeof(cf.j -> 'tasks') = 'array' then cf.j -> 'tasks' else '[]'::jsonb end) as tt
+           where coalesce(tt ->> 'name', '') ~* '^\s*\[\s*ot\s*\]'),
+  hol as (select coalesce(hd ->> 'date', '') as dt, coalesce((hd ->> 'yearly')::boolean, false) as yearly
+          from cf, jsonb_array_elements(case when jsonb_typeof(cf.j -> 'holidays') = 'array' then cf.j -> 'holidays' else '[]'::jsonb end) as hd),
+  ot as (select k, jsonb_object_agg(ok, h) as o
+         from (select k,
+                      task_id || '|' || ot_for || '|' ||
+                        case when exists (select 1 from hol where hol.dt = to_char(day, 'YYYY-MM-DD')
+                                                             or (hol.yearly and substr(hol.dt, 6) = to_char(day, 'MM-DD'))) then 'h'
+                             when extract(isodow from day) = 7 then 's' else 'n' end as ok,
+                      sum(h) as h
+               from x where task_id in (select id from otid) group by 1, 2) a
+         group by k)
+  select coalesce(jsonb_object_agg(r.k, jsonb_build_object('w', w.o, 'e', e.o, 't', tk.o, 'o', coalesce(ot.o, '{}'::jsonb),
                                                            'first', to_char(r.first, 'YYYY-MM-DD'), 'last', to_char(r.last, 'YYYY-MM-DD'))), '{}'::jsonb)
-  from r join w using (k) join e using (k) join tk using (k);
+  from r join w using (k) join e using (k) join tk using (k) left join ot using (k);
 $$;
 revoke all on function public.artius_phase_detail() from public, anon;
 grant execute on function public.artius_phase_detail() to authenticated, service_role;

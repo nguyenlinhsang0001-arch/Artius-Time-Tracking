@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v4.8 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v4.9 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.8`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.9`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -26,12 +26,33 @@ Ghi chú:
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
 
+## Mới ở v4.9 — Tăng ca gắn với tác vụ (phương án B+)
+
+**Bắt buộc chạy lại `supabase/schema.sql`** (khoá ngày đã gửi tính cả tác vụ của dòng tăng ca; Dashboard có số tăng ca theo tác vụ).
+
+- **Màn chấm công:** nhóm **Tăng ca** của mỗi khối dự án có nút **+ Thêm dòng tăng ca**. Mỗi dòng tăng ca có 2 ô:
+  **Tăng ca cho tác vụ** (chọn trong các tác vụ của dự án) và **Khung giờ** (các hạng mục `[OT]`, ví dụ 17:30 – 21:00).
+  - Chưa chọn tác vụ thì chưa nhập giờ được; dòng tăng ca có giờ mà chưa chọn tác vụ thì không Gửi được.
+  - Một khung giờ có thể có nhiều dòng cho nhiều tác vụ khác nhau; trùng cả khung giờ lẫn tác vụ thì bị chặn.
+  - Mỗi ô giờ không được vượt độ dài khung (đọc từ tên hạng mục: 17:30 – 21:00 tối đa 3,5 giờ; 22:00 – 0:00 tối đa 2 giờ;
+    0:00 – 8:00 tối đa 8 giờ). Ô vượt hiện đỏ và không Gửi được.
+  - Khi thu gọn, dòng hiện dạng "Tăng ca 17:30 – 21:00 · Render phối cảnh".
+  - Giờ tăng ca cũ (trước v4.9, chưa có tác vụ) giữ nguyên, hiện "chưa rõ tác vụ". Nếu còn ở ngày chưa gửi thì nhân sự phải chọn tác vụ trước khi gửi.
+- **Thiết lập → Hệ số chi phí tăng ca:** hệ số từng khung giờ (mặc định 17:30 – 21:00 = 1.5, 22:00 – 0:00 = 2, 0:00 – 8:00 = 2)
+  và hệ số **Chủ nhật**, **Ngày lễ** (một hệ số cho cả ngày, để trống = tính theo hệ số khung giờ; ngày lễ lấy từ danh sách ngày lễ).
+  Đổi giờ của một khung = đổi tên hạng mục `[OT]` ở tab Tác vụ.
+- **Dashboard → Tiến độ dự án → bấm ô giai đoạn:** thêm bảng **Tăng ca theo tác vụ** — giờ theo từng khung, phần rơi vào CN / lễ,
+  tổng tăng ca và **giờ quy đổi** (giờ × hệ số). Giờ tăng ca cũ gom vào dòng "Chưa rõ tác vụ".
+- **Excel (Dashboard):** sheet **Chi tiết** thêm cột *Tăng ca cho tác vụ*, *Hệ số TC*, *Giờ quy đổi*; thêm sheet **Tăng ca**
+  (dự án × giai đoạn × tác vụ × khung giờ × loại ngày, kèm hệ số và giờ quy đổi).
+- Dữ liệu: dòng tăng ca trong bảng công có thêm trường `otFor` (mã tác vụ). Thiết lập có thêm `otRates`, `otSunRate`, `otHolRate`.
+
 ## Mới ở v4.8 — Giai đoạn đang mở nổi bật + đánh dấu Urgent
 
 Chỉ đổi bảng **Tiến độ dự án** ở tab Dashboard của quản lý. **Không cần chạy lại `schema.sql`** (nếu chưa chạy cho v4.7 thì vẫn phải chạy mục 14).
 
 - **Giai đoạn đang mở** nổi lên: ô tô nền nhạt theo màu của giai đoạn (P1 cam, P2 xanh ngọc, P3 xanh dương, P4 tím)
-  + vạch màu bên trái, số giờ in đậm. Giai đoạn **đã đóng** chìm xuống (độ sáng 54%).
+  + vạch màu bên trái, số giờ in đậm. Giai đoạn **đã đóng** chìm xuống (độ sáng 97%, chữ và thanh màu xám).
 - **Urgent:** rê chuột vào dòng dự án → hiện cờ ⚑ bên trái mã dự án → bấm để bật/tắt.
   - Dự án Urgent có vạch đỏ bên trái, nhãn **URGENT**, nền hơi đỏ và **luôn nằm đầu bảng**
     (trong nhóm Urgent vẫn xếp theo mức nguy cơ vượt; dự án Urgent chưa có giờ cũng hiện ở đầu, không bị gom vào dòng "chưa có giờ").
