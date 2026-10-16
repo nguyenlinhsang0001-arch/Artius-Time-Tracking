@@ -15,7 +15,9 @@ import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus 
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v4.7
+   ARTIUS — Quản lý giờ công theo dự án · v4.8
+   Mới ở v4.8 — Dashboard quản lý, "Tiến độ dự án": làm nổi giai đoạn đang mở (nền màu giai đoạn + vạch trái, ô đóng chìm hẳn);
+     cờ Urgent cho dự án (rê chuột vào tên → bấm cờ), dự án Urgent luôn xếp đầu bảng.
    Mới ở v4.7 — Dashboard quản lý, bảng "Tiến độ dự án": rê chuột vào ô giai đoạn hiện thẻ tóm tắt (giờ còn lại, dự báo,
      ai / tác vụ nào tiêu giờ nhiều nhất, tăng ca, lần gửi gần nhất); bấm vào ô mở khung chi tiết ngay dưới dự án (giờ theo tuần,
      toàn bộ nhân sự và tác vụ, dòng Tăng ca 3 mức), các dự án khác mờ đi. Số liệu do database tính (schema.sql mục 14).
@@ -134,7 +136,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v4.7";
+const APP_VERSION = "v4.8";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1500,7 +1502,7 @@ desc={me?.type === "admin" ? "Giờ vừa sửa sẽ mất. Bấm Giữ lại đ
             )
             : me.type === "admin" ? (
               <>
-                {tab === "dash" && <Dashboard cfg={cfg} flash={flash} />}
+                {tab === "dash" && <Dashboard cfg={cfg} saveCfg={saveCfg} flash={flash} />}
                 {tab === "sheet" && <AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} />}
                 {tab === "proj" && <Projects cfg={cfg} saveCfg={saveCfg} flash={flash} />}
                 {tab === "emp" && <Employees cfg={cfg} saveCfg={saveCfg} flash={flash} />}
@@ -3915,7 +3917,7 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
 }
 
 /* ============================ DASHBOARD (QUẢN LÝ) ============================ */
-function Dashboard({ cfg, flash }) {
+function Dashboard({ cfg, saveCfg, flash }) {
   const dataTick = useDataTick();   // v1.9: số liệu tự cập nhật khi có người vừa gửi
   const now = new Date();
   const [from, setFrom] = useState(fmt(firstOfMonth(now)));
@@ -4205,7 +4207,7 @@ function Dashboard({ cfg, flash }) {
           )}
 
           <Panel title="Tiến độ dự án — giờ đã dùng so với dự kiến" right={<ProgressLegend />}>
-            <ProjectProgress cfg={cfg} fProj={fProj} dataTick={dataTick} />
+            <ProjectProgress cfg={cfg} fProj={fProj} dataTick={dataTick} saveCfg={saveCfg} flash={flash} />
           </Panel>
 
           <Panel title="Phân bổ giờ công theo nhân sự"
@@ -4483,8 +4485,11 @@ const PhaseHoverCard = ({ cell, info, canOpen }) => {
    · Giai đoạn đã đóng: chìm xuống (thanh xám, chữ xám, % nhạt) — không cảnh báo nữa.
    · Tình trạng chỉ xét giai đoạn đang mở. Dự án nguy cơ vượt xếp đầu; dự án chưa có giờ gom vào một dòng mở rộng.
    · Chỉ dự án đang chấm công (active). Bộ lọc "dự án" của Dashboard áp vào đây; bộ lọc kỳ / bộ phận / nhân sự thì không.
-   · v4.7: rê chuột vào ô → thẻ tóm tắt; bấm vào ô → khung chi tiết dưới dòng dự án, các dự án khác mờ đi. */
-function ProjectProgress({ cfg, fProj, dataTick }) {
+   · v4.7: rê chuột vào ô → thẻ tóm tắt; bấm vào ô → khung chi tiết dưới dòng dự án, các dự án khác mờ đi.
+   · v4.8: ô giai đoạn đang mở tô nền màu của giai đoạn + vạch trái, số giờ đậm; ô đã đóng chìm hẳn (45%).
+           Cờ Urgent (project.urgent, lưu trong thiết lập chung): rê chuột vào tên dự án → bấm cờ để bật/tắt;
+           dự án Urgent có vạch đỏ + nhãn URGENT và luôn xếp lên đầu (trong nhóm vẫn xếp theo mức nguy cơ vượt). */
+function ProjectProgress({ cfg, fProj, dataTick, saveCfg, flash }) {
   const usage = useUsage();
   const detailRaw = usePhaseDetail();
   const [showIdle, setShowIdle] = useState(false);
@@ -4536,8 +4541,17 @@ function ProjectProgress({ cfg, fProj, dataTick }) {
       const noOpen = !cells.some((c) => c.open);
       return { p, cells, bt, ut, worst, worstPh, nOver, noOpen };
     });
-  const active = rows.filter((r) => r.ut > 0).sort((a, b) => (b.worst ?? -1) - (a.worst ?? -1) || b.ut - a.ut);
-  const idle = rows.filter((r) => r.ut === 0);
+  const byUrgent = (a, b) => (b.p.urgent ? 1 : 0) - (a.p.urgent ? 1 : 0);
+  const active = rows.filter((r) => r.ut > 0).sort((a, b) => byUrgent(a, b) || (b.worst ?? -1) - (a.worst ?? -1) || b.ut - a.ut);
+  // v4.8: dự án Urgent chưa có giờ vẫn hiện ở đầu bảng (không bị gom vào dòng "chưa có giờ")
+  const idle = rows.filter((r) => r.ut === 0 && !r.p.urgent);
+  const urgentIdle = rows.filter((r) => r.ut === 0 && r.p.urgent);
+  const toggleUrgent = async (p) => {
+    if (!saveCfg) return;
+    const on = !p.urgent;
+    const ok = await saveCfg({ ...cfg, projects: cfg.projects.map((x) => (x.id === p.id ? { ...x, urgent: on } : x)) });
+    if (ok && flash) flash(on ? `Đã đánh dấu Urgent: ${p.code ? p.code + " · " : ""}${p.name}` : `Đã bỏ Urgent: ${p.code ? p.code + " · " : ""}${p.name}`);
+  };
   const findCell = (key) => { for (const r of rows) for (const c of r.cells) if (c.key === key) return c; return null; };
   const selCell = sel ? findCell(sel) : null;
   const selProj = selCell ? sel.split("|")[0] : null;
@@ -4569,19 +4583,22 @@ function ProjectProgress({ cfg, fProj, dataTick }) {
     const L = c.h ? pgLevel(c.pct) : "none";
     const bar = !c.h ? "transparent" : c.open ? PG_COLOR[L] : "#334155";
     const isSel = sel === c.key;
+    const col = c.ph.color || phaseColor(c.ph.id);
+    // v4.8: giai đoạn đang mở = nền màu giai đoạn (~11%) + vạch trái; đang chọn thì thêm viền
+    const shadows = [c.open ? `inset 3px 0 0 ${col}` : "", isSel ? "inset 0 0 0 1px #0f766e" : ""].filter(Boolean).join(", ");
     return (
-      <td key={c.ph.id}
+      <td key={c.ph.id} style={{ background: c.open ? `${col}1c` : isSel ? "#16213a" : undefined, boxShadow: shadows || undefined }}
         onMouseEnter={(e) => { setHover(c.key); placeCard(e); }}
         onMouseMove={placeCard}
         onMouseLeave={() => setHover((h) => (h === c.key ? null : h))}
         onClick={() => { setHover(null); setSel((s) => (s === c.key ? null : c.key)); }}
-        className={`cursor-pointer rounded-md px-2.5 py-2.5 hover:bg-[#16213a] ${isSel ? "bg-[#16213a] shadow-[inset_0_0_0_1px_#0f766e]" : ""} ${c.open ? "" : "opacity-75"}`}>
-        <div className={`flex items-baseline gap-1 font-mono text-xs ${c.open ? "text-slate-200" : "text-slate-600"}`}>
-          <span>{fmtH(c.h)}</span><span className={c.open ? "text-slate-500" : "text-slate-700"}>/ {c.b ? fmtH(c.b) : "—"} h</span>
+        className={`cursor-pointer px-2.5 py-2.5 ${c.open ? "rounded-r-md hover:brightness-125" : "rounded-md opacity-[.45] hover:bg-[#16213a]"}`}>
+        <div className={`flex items-baseline gap-1 font-mono text-xs ${c.open ? "text-slate-100" : "text-slate-600"}`}>
+          <span className={c.open ? "text-[13px] font-bold" : ""}>{fmtH(c.h)}</span><span className={c.open ? "text-slate-400" : "text-slate-700"}>/ {c.b ? fmtH(c.b) : "—"} h</span>
           {c.open && <span className="ml-1 rounded border border-teal-900 px-1 font-sans text-[10px] leading-4 text-teal-400">mở</span>}
           {c.pct != null && c.h > 0 && <span className="ml-auto" style={{ color: PG_COLOR[L], opacity: c.open ? 1 : 0.45 }}>{Math.round(c.pct)}%</span>}
         </div>
-        <div className={`mt-1 h-[5px] overflow-hidden rounded-full ${c.open ? "bg-slate-800" : "bg-slate-800/50"}`}>
+        <div className={`mt-1 h-[5px] overflow-hidden rounded-full ${c.open ? "bg-slate-950/60" : "bg-slate-800/50"}`}>
           <div className="h-full rounded-full" style={{ width: `${Math.min(100, c.pct || 0)}%`, background: bar, opacity: c.open ? 1 : 0.55 }} />
         </div>
       </td>
@@ -4590,9 +4607,15 @@ function ProjectProgress({ cfg, fProj, dataTick }) {
   const line = (r) => {
     const dim = selProj && r.p.id !== selProj, focus = selProj && r.p.id === selProj;
     const out = [(
-      <tr key={r.p.id} className={`border-b border-slate-800 last:border-0 ${dim ? "opacity-25 hover:opacity-60" : ""} ${focus ? "bg-[#0f1a30]" : ""}`}>
-        <td className="whitespace-nowrap px-2.5 py-2.5 text-sm text-slate-100">
+      <tr key={r.p.id} className={`group border-b border-slate-800 last:border-0 ${dim ? "opacity-25 hover:opacity-60" : ""} ${focus ? "bg-[#0f1a30]" : r.p.urgent ? "bg-rose-500/[.035]" : ""}`}>
+        <td className="relative whitespace-nowrap py-2.5 pl-2 pr-2.5 text-sm text-slate-100">
+          {r.p.urgent && <span className="absolute bottom-1.5 left-0 top-1.5 w-[3px] rounded-sm bg-rose-500" />}
+          <button onClick={() => toggleUrgent(r.p)} title={r.p.urgent ? "Bỏ đánh dấu Urgent" : "Đánh dấu Urgent — đưa dự án lên đầu"}
+            className={`mr-1.5 rounded p-1 align-[-3px] transition-opacity hover:bg-slate-800 ${r.p.urgent ? "text-rose-500 opacity-100" : "text-slate-600 opacity-0 hover:text-rose-400 group-hover:opacity-100"}`}>
+            <Flag size={14} fill={r.p.urgent ? "currentColor" : "none"} />
+          </button>
           {r.p.code && <span className="mr-2 font-mono text-teal-400">{r.p.code}</span>}{r.p.name}
+          {r.p.urgent && <span className="ml-2 rounded border border-rose-800 bg-rose-500/15 px-1.5 align-[1px] text-[10px] font-bold leading-4 tracking-wider text-rose-400">URGENT</span>}
         </td>
         {r.cells.map((c) => cell(r, c))}
         <td className="whitespace-nowrap px-2.5 py-2.5 text-center font-mono text-sm">
@@ -4634,12 +4657,14 @@ function ProjectProgress({ cfg, fProj, dataTick }) {
             </tr>
           </thead>
           <tbody>
-            {active.map(line)}
+            {active.filter((r) => r.p.urgent).map(line)}
+            {urgentIdle.map(line)}
+            {active.filter((r) => !r.p.urgent).map(line)}
             {showIdle && idle.map(line)}
           </tbody>
         </table>
       </div>
-      {active.length === 0 && !showIdle && <p className="px-2.5 pt-2 text-sm text-slate-500">Chưa dự án nào có giờ công đã gửi.</p>}
+      {active.length === 0 && urgentIdle.length === 0 && !showIdle && <p className="px-2.5 pt-2 text-sm text-slate-500">Chưa dự án nào có giờ công đã gửi.</p>}
       {idle.length > 0 && (
         <button onClick={() => setShowIdle((x) => !x)} className="mt-2 px-2.5 text-xs text-slate-400 hover:text-slate-200">
           {showIdle ? "▲ Ẩn" : "▼ Hiện"} {idle.length} dự án đang mở nhưng chưa có giờ
