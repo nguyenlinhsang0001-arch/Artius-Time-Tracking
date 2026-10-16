@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v4.7 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v4.8 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.7`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v4.8`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,17 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v4.8 — Giai đoạn đang mở nổi bật + đánh dấu Urgent
+
+Chỉ đổi bảng **Tiến độ dự án** ở tab Dashboard của quản lý. **Không cần chạy lại `schema.sql`** (nếu chưa chạy cho v4.7 thì vẫn phải chạy mục 14).
+
+- **Giai đoạn đang mở** nổi lên: ô tô nền nhạt theo màu của giai đoạn (P1 cam, P2 xanh ngọc, P3 xanh dương, P4 tím)
+  + vạch màu bên trái, số giờ in đậm. Giai đoạn **đã đóng** chìm xuống (độ sáng 54%).
+- **Urgent:** rê chuột vào dòng dự án → hiện cờ ⚑ bên trái mã dự án → bấm để bật/tắt.
+  - Dự án Urgent có vạch đỏ bên trái, nhãn **URGENT**, nền hơi đỏ và **luôn nằm đầu bảng**
+    (trong nhóm Urgent vẫn xếp theo mức nguy cơ vượt; dự án Urgent chưa có giờ cũng hiện ở đầu, không bị gom vào dòng "chưa có giờ").
+  - Lưu chung trong thiết lập (`project.urgent`) → mọi máy quản lý đều thấy. Chỉ tài khoản quản lý bật/tắt được.
 
 ## Mới ở v4.7 — Chi tiết từng giai đoạn trong "Tiến độ dự án"
 
