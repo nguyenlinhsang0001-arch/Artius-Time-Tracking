@@ -4486,7 +4486,7 @@ const PhaseHoverCard = ({ cell, info, canOpen }) => {
    · Tình trạng chỉ xét giai đoạn đang mở. Dự án nguy cơ vượt xếp đầu; dự án chưa có giờ gom vào một dòng mở rộng.
    · Chỉ dự án đang chấm công (active). Bộ lọc "dự án" của Dashboard áp vào đây; bộ lọc kỳ / bộ phận / nhân sự thì không.
    · v4.7: rê chuột vào ô → thẻ tóm tắt; bấm vào ô → khung chi tiết dưới dòng dự án, các dự án khác mờ đi.
-   · v4.8: ô giai đoạn đang mở tô nền màu của giai đoạn + vạch trái, số giờ đậm; ô đã đóng chìm hẳn (45%).
+   · v4.8: ô giai đoạn đang mở tô nền màu của giai đoạn + vạch trái, số giờ đậm; ô đã đóng chìm xuống (54%).
            Cờ Urgent (project.urgent, lưu trong thiết lập chung): rê chuột vào tên dự án → bấm cờ để bật/tắt;
            dự án Urgent có vạch đỏ + nhãn URGENT và luôn xếp lên đầu (trong nhóm vẫn xếp theo mức nguy cơ vượt). */
 function ProjectProgress({ cfg, fProj, dataTick, saveCfg, flash }) {
@@ -4592,7 +4592,7 @@ function ProjectProgress({ cfg, fProj, dataTick, saveCfg, flash }) {
         onMouseMove={placeCard}
         onMouseLeave={() => setHover((h) => (h === c.key ? null : h))}
         onClick={() => { setHover(null); setSel((s) => (s === c.key ? null : c.key)); }}
-        className={`cursor-pointer px-2.5 py-2.5 ${c.open ? "rounded-r-md hover:brightness-125" : "rounded-md opacity-[.45] hover:bg-[#16213a]"}`}>
+        className={`cursor-pointer px-2.5 py-2.5 ${c.open ? "rounded-r-md hover:brightness-125" : "rounded-md opacity-[.54] hover:bg-[#16213a]"}`}>
         <div className={`flex items-baseline gap-1 font-mono text-xs ${c.open ? "text-slate-100" : "text-slate-600"}`}>
           <span className={c.open ? "text-[13px] font-bold" : ""}>{fmtH(c.h)}</span><span className={c.open ? "text-slate-400" : "text-slate-700"}>/ {c.b ? fmtH(c.b) : "—"} h</span>
           {c.open && <span className="ml-1 rounded border border-teal-900 px-1 font-sans text-[10px] leading-4 text-teal-400">mở</span>}
