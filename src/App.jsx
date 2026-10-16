@@ -15,7 +15,10 @@ import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus 
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v5.2
+   ARTIUS — Quản lý giờ công theo dự án · v5.3
+   Mới ở v5.3 — Dashboard quản lý, "Phân bổ giờ công theo nhân sự": hai cách xem Theo người (thanh chuẩn / OT / cố gắng,
+   nhãn Quá tải / Thiếu giờ, gom theo bộ phận, bấm mở chi tiết dự án) và Ma trận người × dự án; hàng chỉ số công suất;
+   lọc theo trạng thái, sắp xếp. Ngưỡng Quá tải / Thiếu giờ chỉnh ở Thiết lập (cfg.allocOver, cfg.allocUnder).
    Mới ở v5.2 — Đổi màu để giờ chuẩn và OT không lẫn nhau: Giờ chuẩn = xanh dương nhạt (blue-400 #60a5fa),
    OT / Tăng ca = xanh ngọc (teal, trước là xanh lá emerald), Giờ cố gắng giữ tím. Áp toàn app.
    Mới ở v5.1 — Tăng ca gộp theo KHUNG GIỜ: mỗi vai trò có bộ hạng mục [OT] riêng nhưng cùng khung giờ, nên hệ số (Thiết lập),
@@ -148,7 +151,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v5.2";
+const APP_VERSION = "v5.3";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -4277,6 +4280,10 @@ function Dashboard({ cfg, saveCfg, flash }) {
       "Giờ OT": +(agg.otByEmp.get(k) || 0).toFixed(1),
       "Giờ cố gắng": +(agg.effortByEmp.get(k) || 0).toFixed(1),
       "Giờ thường": +(v - (agg.otByEmp.get(k) || 0) - (agg.effortByEmp.get(k) || 0)).toFixed(1),
+      // v5.3: tải so với giờ chuẩn của kỳ, cùng ngưỡng với khung Phân bổ
+      "% tải": stdPeriod ? Math.round((v / stdPeriod) * 100) : "",
+      "Trạng thái": (() => { const L = allocLimits(cfg), s0 = v - (agg.otByEmp.get(k) || 0) - (agg.effortByEmp.get(k) || 0);
+        return !stdPeriod ? "" : v > (stdPeriod * L.over) / 100 ? "Quá tải" : s0 < (stdPeriod * L.under) / 100 ? "Thiếu giờ" : "Bình thường"; })(),
     }))), "Theo nhân sự");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sortDesc(agg.byTask, (k, v) => ({ "Hạng mục": taskLabel(k), "Tổng giờ": v }))), "Theo hạng mục");
     const projIds = [...agg.byProj.keys()];
@@ -4403,7 +4410,9 @@ function Dashboard({ cfg, saveCfg, flash }) {
 
           <Panel title="Phân bổ giờ công theo nhân sự"
             right={<span className="flex items-center gap-1.5 text-xs text-slate-500"><span className="inline-block h-3 border-l-2 border-dashed border-amber-400" />Giờ chuẩn của kỳ: <span className="font-mono text-amber-400">{fmtH(stdPeriod)} h</span></span>}>
-            <StaffAllocation matrix={agg.matrix} std={stdPeriod} empName={empName} projMapById={projMapById} />
+            <StaffAllocation matrix={agg.matrix} otByEmp={agg.otByEmp} effortByEmp={agg.effortByEmp} std={stdPeriod} cfg={cfg}
+              staff={fProj === "all" && fPhase === "all" ? cfg.employees.filter((e) => matchEmp(e.id)) : []}
+              empName={empName} projMapById={projMapById} />
           </Panel>
         </>
       )}
@@ -4940,13 +4949,42 @@ function ProjectProgress({ cfg, fProj, dataTick, saveCfg, flash }) {
   );
 }
 
-/* Phân bổ giờ công theo nhân sự (theo kỳ và bộ lọc của Dashboard): mỗi người một thanh, độ dài = tổng giờ,
-   chia khúc theo dự án ("Khác" = việc chung / vắng mặt, xám, luôn cuối). Vạch vàng đứt = giờ chuẩn của kỳ;
-   > 110% giờ chuẩn thì báo quá tải. Người nhiều giờ nhất lên đầu. */
+/* v5.3 — Phân bổ giờ công theo nhân sự (theo kỳ và bộ lọc của Dashboard). Hai cách xem trong cùng khung:
+   · "Theo người" (mặc định): mỗi người một thanh tách Giờ chuẩn (xanh dương) / OT (xanh ngọc) / Giờ cố gắng (tím)
+     so với vạch giờ chuẩn của kỳ; nhãn Quá tải / Thiếu giờ / Bình thường; gom theo bộ phận; bấm một người để mở
+     chi tiết theo dự án.
+   · "Ma trận": hàng = người, cột = dự án ("Khác" = việc chung / vắng mặt, luôn cuối), ô đậm nhạt theo số giờ;
+     cuối hàng là tổng, % tải và số dự án (≥ 3 dự án tô vàng); cuối cột là tổng giờ từng dự án.
+   Ngưỡng: Quá tải khi tổng giờ > cfg.allocOver % giờ chuẩn kỳ (mặc định 110); Thiếu giờ khi giờ chuẩn < cfg.allocUnder % (mặc định 90).
+   Chỉnh ở Thiết lập. Nhân sự chưa chấm giờ nào trong kỳ vẫn hiện (khi không lọc theo dự án / giai đoạn) để thấy ai thiếu. */
 const ALLOC_PAL = ["#2dd4bf", "#f59e0b", "#60a5fa", "#a78bfa", "#f472b6", "#34d399", "#fb923c", "#38bdf8", "#c084fc", "#facc15", "#4ade80", "#f87171"];
-function StaffAllocation({ matrix, std, empName, projMapById }) {
-  const people = [...matrix.entries()].map(([eid, mm]) => ({ eid, mm, t: [...mm.values()].reduce((a, v) => a + v, 0) }))
-    .filter((x) => x.t > 0).sort((a, b) => b.t - a.t);
+const allocLimits = (cfg) => ({
+  over: Math.max(100, Number(cfg?.allocOver) || 110),
+  under: Math.min(100, Math.max(0, Number(cfg?.allocUnder ?? 90))),
+});
+const ALLOC_ST = {
+  hi: ["Quá tải", "border-rose-900 bg-rose-950 text-rose-300"],
+  lo: ["Thiếu giờ", "border-amber-900 bg-amber-950/70 text-amber-300"],
+  ok: ["Bình thường", "border-teal-900 bg-teal-950 text-teal-300"],
+};
+function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empName, projMapById }) {
+  const [view, setView] = useState("people");   // "people" | "matrix"
+  const [fSt, setFSt] = useState("all");        // all | hi | lo | ok
+  const [sort, setSort] = useState("load");     // load | extra | name
+  const [open, setOpen] = useState(() => new Set());
+  const lim = allocLimits(cfg);
+  const empById = new Map((cfg.employees || []).map((e) => [e.id, e]));
+  // mọi người cần hiện: có giờ trong kỳ + (nếu không lọc dự án / giai đoạn) người chưa chấm giờ nào
+  const ids = new Set([...matrix.keys(), ...staff.map((e) => e.id)]);
+  const people = [...ids].map((eid) => {
+    const mm = matrix.get(eid) || new Map();
+    const t = [...mm.values()].reduce((a, v) => a + v, 0);
+    const o = otByEmp.get(eid) || 0, c = effortByEmp.get(eid) || 0;
+    const s = Math.max(0, t - o - c);
+    const st = std > 0 && t > (std * lim.over) / 100 ? "hi" : std > 0 && s < (std * lim.under) / 100 ? "lo" : "ok";
+    const e = empById.get(eid);
+    return { eid, mm, t, s, o, c, st, dept: e?.dept || "Khác", role: e ? roleTitle(e.role) : "" };
+  });
   if (people.length === 0) return <p className="text-sm text-slate-500">Chưa có giờ công trong kỳ này.</p>;
   const colT = new Map();
   for (const x of people) for (const [k, v] of x.mm) colT.set(k, (colT.get(k) || 0) + v);
@@ -4955,52 +4993,183 @@ function StaffAllocation({ matrix, std, empName, projMapById }) {
   const color = new Map(cols.map((k, i) => [k, k === NO_PROJECT ? "#64748b" : ALLOC_PAL[i % ALLOC_PAL.length]]));
   const code = (k) => { if (k === NO_PROJECT) return "Khác"; const p = projMapById.get(k); return p ? (p.code || p.name) : "(đã xoá)"; };
   const name = (k) => { if (k === NO_PROJECT) return "Việc chung, vắng mặt"; return projMapById.get(k)?.name || "(dự án đã xoá)"; };
+  const nProj = (x) => cols.filter((k) => k !== NO_PROJECT && x.mm.get(k)).length;
+  const pct = (x) => (std ? Math.round((x.t / std) * 100) : null);
+
+  const cnt = (k) => people.filter((x) => k === "all" || x.st === k).length;
+  const list = people.filter((x) => fSt === "all" || x.st === fSt)
+    .sort(sort === "load" ? (a, b) => b.t - a.t : sort === "extra" ? (a, b) => (b.o + b.c) - (a.o + a.c) || b.t - a.t : (a, b) => empName(a.eid).localeCompare(empName(b.eid), "vi"));
+  const used = people.reduce((a, x) => a + x.t, 0), cap = people.length * std;
+  const free = people.reduce((a, x) => a + Math.max(0, std - x.s), 0);
+  const toggle = (eid) => setOpen((s) => { const n = new Set(s); n.has(eid) ? n.delete(eid) : n.add(eid); return n; });
+
+  const Kpi = ({ l, v, cls = "text-slate-50", sub }) => (
+    <div className="bg-slate-900 px-3 py-2.5">
+      <div className="text-[10.5px] uppercase tracking-wider text-slate-500">{l}</div>
+      <div className={`mt-0.5 font-mono text-lg font-semibold ${cls}`}>{v}{sub && <span className="ml-1.5 text-xs font-normal text-slate-500">{sub}</span>}</div>
+    </div>
+  );
   const maxT = Math.max(...people.map((x) => x.t), std * 1.25, 1);
-  const step = maxT > 320 ? 80 : maxT > 160 ? 40 : 20;
-  const top = Math.ceil(maxT / step) * step;
-  const ticks = []; for (let v = 0; v <= top; v += step) ticks.push(v);
+
+  // nhóm theo bộ phận, giữ thứ tự sắp xếp trong từng nhóm; nhóm xếp theo thứ tự xuất hiện của người đầu tiên
+  const groups = [];
+  for (const x of list) { let g = groups.find((y) => y.dept === x.dept); if (!g) { g = { dept: x.dept, items: [] }; groups.push(g); } g.items.push(x); }
+
   return (
-    <div>
-      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-400">
-        {cols.map((k) => <span key={k} className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: color.get(k) }} />{code(k)} · {name(k)}</span>)}
+    <div className="-m-3 md:-m-4">
+      <div className="grid grid-cols-2 gap-px border-b border-slate-800 bg-slate-800 md:grid-cols-5">
+        <Kpi l="Công suất kỳ" v={`${fmtH(cap)} h`} sub={`${people.length} người`} />
+        <Kpi l="Đã dùng" v={`${fmtH(used)} h`} sub={cap ? `${Math.round((used / cap) * 100)}%` : ""} />
+        <Kpi l={`Quá tải (>${lim.over}%)`} v={`${cnt("hi")} người`} cls={cnt("hi") ? "text-rose-400" : "text-slate-50"} />
+        <Kpi l={`Thiếu giờ chuẩn (<${lim.under}%)`} v={`${cnt("lo")} người`} cls={cnt("lo") ? "text-amber-400" : "text-slate-50"} />
+        <Kpi l="Còn trống có thể giao" v={`${fmtH(free)} h`} cls="text-teal-400" />
       </div>
-      <div className="grid grid-cols-[120px_minmax(0,1fr)_88px] gap-3 pb-1.5 text-[11px] text-slate-500 md:grid-cols-[200px_minmax(0,1fr)_150px] md:gap-4">
-        <span />
-        <div className="relative h-3.5">{ticks.map((v) => <span key={v} className="absolute -translate-x-1/2" style={{ left: `${(v / top) * 100}%` }}>{v}h</span>)}</div>
-        <span />
+
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
+        <div className="flex max-w-full overflow-x-auto rounded-md border border-slate-700">
+          {[["all", "Tất cả"], ["hi", "Quá tải"], ["lo", "Thiếu giờ"], ["ok", "Bình thường"]].map(([k, l]) => (
+            <button key={k} onClick={() => setFSt(k)}
+              className={`${CTRL} whitespace-nowrap px-3 text-[13px] ${fSt === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>
+              {l}<span className="ml-1.5 font-mono text-slate-500">{cnt(k)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="w-60 max-w-full">
+          <select value={sort} onChange={(e) => setSort(e.target.value)} className={selectCls} aria-label="Sắp xếp">
+            <option value="load">Sắp xếp: tải cao → thấp</option>
+            <option value="extra">Sắp xếp: phát sinh nhiều nhất</option>
+            <option value="name">Sắp xếp: tên A → Z</option>
+          </select>
+        </div>
+        <div className="ml-auto flex rounded-md border border-slate-700">
+          {[["people", "Theo người"], ["matrix", "Ma trận"]].map(([k, l]) => (
+            <button key={k} onClick={() => setView(k)}
+              className={`${CTRL} whitespace-nowrap px-3.5 text-[13px] ${view === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>{l}</button>
+          ))}
+        </div>
       </div>
-      {people.map((x) => {
-        const n = cols.filter((k) => k !== NO_PROJECT && x.mm.get(k)).length;
-        const pct = std ? Math.round((x.t / std) * 100) : null;
-        const over = pct != null && pct > 110;
-        return (
-          <div key={x.eid} className="grid grid-cols-[120px_minmax(0,1fr)_88px] items-center gap-3 border-b border-slate-800 py-2 last:border-0 md:grid-cols-[200px_minmax(0,1fr)_150px] md:gap-4">
-            <div className="min-w-0">
-              <div className="truncate text-sm text-slate-100">{empName(x.eid)}</div>
-              <div className="text-[11px] text-slate-500">{n} dự án</div>
+
+      {list.length === 0 && <p className="px-5 py-4 text-sm text-slate-500">Không có nhân sự nào ở nhóm này.</p>}
+
+      {view === "people" && list.length > 0 && (
+        <div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-slate-800 px-3 py-2 text-xs text-slate-400 md:px-4">
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-blue-400" />Giờ chuẩn</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-teal-400" />OT</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-violet-400" />Giờ cố gắng</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-3 border-l-2 border-amber-400" />{fmtH(std)} h giờ chuẩn của kỳ</span>
+            <span className="text-slate-600">Bấm một người để xem theo dự án</span>
+          </div>
+          {groups.map((g) => (
+            <div key={g.dept}>
+              <div className="flex justify-between border-b border-slate-800 bg-slate-950/60 px-3 py-1.5 text-[11px] uppercase tracking-wider text-slate-500 md:px-4">
+                <span>{g.dept} · {g.items.length} người</span><span className="font-mono">{fmtH(g.items.reduce((a, x) => a + x.t, 0))} h</span>
+              </div>
+              {g.items.map((x) => {
+                const op = open.has(x.eid), p = pct(x);
+                const pm = Math.max(1, ...x.mm.values());
+                return (
+                  <div key={x.eid} className="border-b border-slate-800/70">
+                    <button type="button" onClick={() => toggle(x.eid)} aria-expanded={op}
+                      className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-3 py-2.5 text-left md:grid-cols-[200px_minmax(0,1fr)_190px_150px] md:gap-4 md:px-4 ${op ? "bg-slate-800/50" : "hover:bg-slate-800/30"}`}>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 truncate text-sm text-slate-100">{op ? <ChevronDown size={14} className="shrink-0 text-slate-500" /> : <ChevronRight size={14} className="shrink-0 text-slate-500" />}{empName(x.eid)}</div>
+                        <div className="pl-5 text-[11px] text-slate-500">{x.role ? `${x.role} · ` : ""}{nProj(x)} dự án
+                          {x.st !== "ok" && <span className={`ml-1.5 rounded-full border px-1.5 md:hidden ${ALLOC_ST[x.st][1]}`}>{ALLOC_ST[x.st][0]}</span>}</div>
+                      </div>
+                      <div className="relative col-span-2 row-start-2 md:col-span-1 md:row-start-auto">
+                        <div className="flex h-3 overflow-hidden rounded-full bg-slate-800">
+                          <i className="block h-full bg-blue-400" style={{ width: `${(x.s / maxT) * 100}%` }} />
+                          <i className="block h-full bg-teal-400" style={{ width: `${(x.o / maxT) * 100}%` }} />
+                          <i className="block h-full bg-violet-400" style={{ width: `${(x.c / maxT) * 100}%` }} />
+                        </div>
+                        {std > 0 && <span className="pointer-events-none absolute -bottom-1.5 -top-1.5 w-0.5 -translate-x-1/2 rounded bg-amber-400 shadow-[0_0_0_2px_#0f172a]" style={{ left: `${(std / maxT) * 100}%` }} />}
+                      </div>
+                      <div className="text-right font-mono md:order-none">
+                        <div className={`text-sm font-semibold ${x.st === "hi" ? "text-rose-400" : "text-slate-100"}`}>{fmtH(x.t)} h</div>
+                        <div className="whitespace-nowrap text-[11px] text-slate-500"><span className="text-blue-400">{fmtH(x.s)}</span> chuẩn · <span className="text-teal-400">{fmtH(x.o)}</span> OT · <span className="text-violet-400">{fmtH(x.c)}</span> CG</div>
+                      </div>
+                      <span className={`hidden justify-self-end whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] md:inline-block ${ALLOC_ST[x.st][1]}`}>{ALLOC_ST[x.st][0]}{p != null ? ` · ${p}%` : ""}</span>
+                    </button>
+                    {op && (
+                      <div className="bg-slate-950/40 px-3 pb-3 pt-1 md:pl-[232px] md:pr-4">
+                        {x.mm.size === 0 ? <div className="py-1 text-xs text-slate-500">Chưa chấm giờ nào trong kỳ.</div> : (
+                          <>
+                            <div className="grid grid-cols-[minmax(0,1fr)_56px_44px] gap-3 py-1 text-[10.5px] uppercase tracking-wider text-slate-500 md:grid-cols-[220px_minmax(0,1fr)_60px_48px]">
+                              <span>Dự án</span><span className="hidden md:block" /><span className="text-right">Giờ</span><span className="text-right">%</span>
+                            </div>
+                            {cols.filter((k) => x.mm.get(k)).sort((a, b) => x.mm.get(b) - x.mm.get(a)).map((k) => (
+                              <div key={k} className="grid grid-cols-[minmax(0,1fr)_56px_44px] items-center gap-3 py-1 text-[12.5px] md:grid-cols-[220px_minmax(0,1fr)_60px_48px]">
+                                <span className="truncate text-slate-300" title={name(k)}>{k === NO_PROJECT ? "" : `${code(k)} · `}{name(k)}</span>
+                                <div className="hidden h-1.5 overflow-hidden rounded bg-slate-800 md:block"><div className="h-full rounded" style={{ width: `${(x.mm.get(k) / pm) * 100}%`, background: color.get(k) }} /></div>
+                                <span className="text-right font-mono text-slate-100">{fmtH(x.mm.get(k))}</span>
+                                <span className="text-right font-mono text-slate-500">{Math.round((x.mm.get(k) / (x.t || 1)) * 100)}%</span>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            <div className="relative h-7">
-              <div className="flex h-7 overflow-hidden rounded-md" style={{ width: `${(x.t / top) * 100}%` }}>
-                {cols.map((k) => {
-                  const v = x.mm.get(k); if (!v) return null;
+          ))}
+        </div>
+      )}
+
+      {view === "matrix" && list.length > 0 && (() => {
+        const maxV = Math.max(1, ...list.flatMap((x) => [...x.mm.values()]));
+        const hex = (a) => Math.round(a * 255).toString(16).padStart(2, "0");
+        return (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-[12.5px]">
+              <thead>
+                <tr className="text-[11px] text-slate-500">
+                  <th className="sticky left-0 z-10 min-w-[170px] bg-slate-900 px-3 py-2 text-left font-medium md:px-4">Nhân sự</th>
+                  {cols.map((k) => (
+                    <th key={k} className="min-w-[76px] px-1.5 py-2 text-center font-medium" title={name(k)}>
+                      <span style={{ color: color.get(k) }}>■</span> {code(k)}
+                      <div className="mx-auto max-w-[110px] truncate font-normal text-slate-600">{k === NO_PROJECT ? "chung, vắng" : name(k)}</div>
+                    </th>
+                  ))}
+                  <th className="px-3 py-2 text-right font-medium">Tổng</th><th className="px-3 py-2 text-right font-medium">% tải</th><th className="px-3 py-2 text-right font-medium">Số DA</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((x) => {
+                  const p = pct(x), n = nProj(x);
                   return (
-                    <div key={k} title={`${empName(x.eid)}\n${code(k)} · ${name(k)}\n${fmtH(v)} giờ · ${Math.round((v / x.t) * 100)}% thời gian của người này`}
-                      className="flex min-w-[2px] items-center justify-center overflow-hidden whitespace-nowrap border-r-2 border-slate-900 text-[11.5px] font-semibold text-slate-950 last:border-r-0"
-                      style={{ flex: `${v} 0 0`, background: color.get(k) }}>
-                      <span className="truncate px-1.5">{code(k)} · {fmtH(v)}</span>
-                    </div>
+                    <tr key={x.eid} className="border-t border-slate-800/70">
+                      <td className="sticky left-0 z-10 bg-slate-900 px-3 py-1.5 md:px-4">
+                        <div className="truncate text-slate-100">{empName(x.eid)}</div>
+                        <div className="text-[11px] text-slate-500">{x.dept}{x.role ? ` · ${x.role}` : ""}</div>
+                      </td>
+                      {cols.map((k) => {
+                        const v = x.mm.get(k);
+                        return v ? (
+                          <td key={k} className="h-10 text-center font-mono text-slate-50" style={{ background: `${color.get(k)}${hex(0.14 + 0.6 * (v / maxV))}` }}
+                            title={`${empName(x.eid)}\n${code(k)} · ${name(k)}\n${fmtH(v)} giờ · ${Math.round((v / x.t) * 100)}% thời gian của người này`}>{fmtH(v)}</td>
+                        ) : <td key={k} className="h-10 text-center text-slate-700">·</td>;
+                      })}
+                      <td className="px-3 text-right font-mono text-slate-100">{fmtH(x.t)}</td>
+                      <td className={`px-3 text-right font-mono ${x.st === "hi" ? "text-rose-400" : x.st === "lo" ? "text-amber-400" : "text-teal-400"}`}>{p != null ? `${p}%` : "—"}</td>
+                      <td className={`px-3 text-right font-mono ${n >= 3 ? "text-amber-400" : "text-slate-400"}`} title={n >= 3 ? "Ôm từ 3 dự án trở lên" : undefined}>{n}</td>
+                    </tr>
                   );
                 })}
-              </div>
-              {std > 0 && <div className="pointer-events-none absolute -bottom-1 -top-1 border-l-2 border-dashed border-amber-400" style={{ left: `${(std / top) * 100}%` }} />}
-            </div>
-            <div className="text-right font-mono text-sm">
-              <div className={over ? "text-rose-400" : "text-slate-100"}>{fmtH(x.t)} h</div>
-              {pct != null && <div className={`whitespace-nowrap font-sans text-[11px] ${over ? "text-rose-400" : "text-slate-500"}`}>{pct}% giờ chuẩn{over ? " · quá tải" : ""}</div>}
-            </div>
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-slate-700 font-mono text-slate-300">
+                  <td className="sticky left-0 z-10 bg-slate-900 px-3 py-2 font-sans text-xs text-slate-400 md:px-4">Tổng dự án</td>
+                  {cols.map((k) => <td key={k} className="py-2 text-center">{fmtH(list.reduce((a, x) => a + (x.mm.get(k) || 0), 0))}</td>)}
+                  <td className="px-3 py-2 text-right text-slate-100">{fmtH(list.reduce((a, x) => a + x.t, 0))}</td><td /><td />
+                </tr>
+              </tfoot>
+            </table>
           </div>
         );
-      })}
+      })()}
     </div>
   );
 }
@@ -6701,6 +6870,38 @@ function OtRatePanel({ cfg, saveCfg, flash }) {
   );
 }
 
+/* v5.3 — Ngưỡng tải nhân sự cho khung "Phân bổ giờ công theo nhân sự" (Dashboard) và cột Trạng thái trong Excel */
+function AllocLimitPanel({ cfg, saveCfg, flash }) {
+  const cur = allocLimits(cfg);
+  const [v, setV] = useState({ over: String(cur.over), under: String(cur.under) });
+  useEffect(() => { const c = allocLimits(cfg); setV({ over: String(c.over), under: String(c.under) }); }, [cfg.allocOver, cfg.allocUnder]); // eslint-disable-line react-hooks/exhaustive-deps
+  const save = async () => {
+    const o = Number(v.over), u = Number(v.under);
+    if (!(o >= 100 && o <= 300)) return flash("Ngưỡng Quá tải phải từ 100 đến 300%.", "err");
+    if (!(u >= 0 && u <= 100)) return flash("Ngưỡng Thiếu giờ phải từ 0 đến 100%.", "err");
+    await saveCfg({ ...cfg, allocOver: o, allocUnder: u });
+    flash("Đã lưu ngưỡng tải nhân sự.");
+  };
+  return (
+    <Panel title="Ngưỡng tải nhân sự">
+      <div className="grid grid-cols-2 gap-3 md:max-w-xl">
+        <div>
+          <label className="mb-1 block text-xs text-slate-500">Quá tải khi tổng giờ vượt (% giờ chuẩn kỳ)</label>
+          <input type="number" inputMode="numeric" min="100" max="300" value={v.over} onChange={(e) => setV((x) => ({ ...x, over: e.target.value }))} className={`font-mono ${inputCls}`} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-slate-500">Thiếu giờ khi giờ chuẩn dưới (% giờ chuẩn kỳ)</label>
+          <input type="number" inputMode="numeric" min="0" max="100" value={v.under} onChange={(e) => setV((x) => ({ ...x, under: e.target.value }))} className={`font-mono ${inputCls}`} />
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-3 border-t border-slate-800 pt-3">
+        <span className="text-xs text-slate-500">Dùng cho khung Phân bổ giờ công theo nhân sự ở Dashboard và cột Trạng thái trong Excel. Mặc định 110% / 90%.</span>
+        <button onClick={save} className={`ml-auto shrink-0 ${btnPrimary}`}><Save size={14} /> Lưu ngưỡng</button>
+      </div>
+    </Panel>
+  );
+}
+
 function SettingsTab({ cfg, saveCfg, flash }) {
   const [day, setDay] = useState(cfg.deadlineDay || 5);
   const [confirm, setConfirm] = useState("");
@@ -6784,6 +6985,8 @@ function SettingsTab({ cfg, saveCfg, flash }) {
       </Panel>
 
       <OtRatePanel cfg={cfg} saveCfg={saveCfg} flash={flash} />
+
+      <AllocLimitPanel cfg={cfg} saveCfg={saveCfg} flash={flash} />
 
       <ReminderPanel cfg={cfg} saveCfg={saveCfg} flash={flash} />
 

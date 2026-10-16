@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v5.2 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v5.3 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v5.2`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v5.3`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,19 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v5.3 — Phân bổ giờ công theo nhân sự (Dashboard quản lý)
+
+**Không cần chạy lại `schema.sql`.**
+
+- Hàng chỉ số: công suất kỳ (số người × giờ chuẩn kỳ), đã dùng, số người Quá tải, số người Thiếu giờ chuẩn, giờ còn trống có thể giao.
+- Lọc nhanh Tất cả / Quá tải / Thiếu giờ / Bình thường; sắp xếp theo tải, theo giờ phát sinh, theo tên. Bộ lọc kỳ / bộ phận / dự án / tìm tên của Dashboard vẫn áp vào.
+- **Theo người** (mặc định): mỗi người một thanh tách Giờ chuẩn (xanh dương) / OT (xanh ngọc) / Giờ cố gắng (tím) so với vạch giờ chuẩn kỳ,
+  nhãn trạng thái kèm %, gom theo bộ phận; bấm một người để mở chi tiết giờ theo dự án.
+- **Ma trận**: hàng = người, cột = dự án, ô đậm nhạt theo số giờ; cuối hàng tổng, % tải, số dự án (≥ 3 dự án tô vàng); cuối cột tổng giờ từng dự án.
+- Nhân sự chưa chấm giờ nào trong kỳ vẫn hiện (0 h, Thiếu giờ) khi không lọc theo dự án / giai đoạn.
+- **Thiết lập → Ngưỡng tải nhân sự:** Quá tải khi tổng giờ > 110% giờ chuẩn kỳ, Thiếu giờ khi giờ chuẩn < 90% (chỉnh được).
+- Excel sheet "Theo nhân sự" thêm cột % tải và Trạng thái.
 
 ## Mới ở v5.2 — Đổi màu giờ chuẩn / OT cho dễ phân biệt
 
