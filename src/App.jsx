@@ -15,7 +15,10 @@ import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus 
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v5.3
+   ARTIUS — Quản lý giờ công theo dự án · v5.4
+   Mới ở v5.4 — "Phân bổ giờ công theo nhân sự" (Theo người): chi tiết khi bấm một người chỉ còn chữ + số
+   (dòng Giờ chuẩn · OT · cố gắng, rồi mỗi dự án một dòng tên — giờ), bỏ các thanh màu nhỏ; thanh tải có khe tách
+   nhẹ giữa các khúc Giờ chuẩn / OT / cố gắng.
    Mới ở v5.3 — Dashboard quản lý, "Phân bổ giờ công theo nhân sự": hai cách xem Theo người (thanh chuẩn / OT / cố gắng,
    nhãn Quá tải / Thiếu giờ, gom theo bộ phận, bấm mở chi tiết dự án) và Ma trận người × dự án; hàng chỉ số công suất;
    lọc theo trạng thái, sắp xếp. Ngưỡng Quá tải / Thiếu giờ chỉnh ở Thiết lập (cfg.allocOver, cfg.allocUnder).
@@ -151,7 +154,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v5.3";
+const APP_VERSION = "v5.4";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -5067,7 +5070,6 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
               </div>
               {g.items.map((x) => {
                 const op = open.has(x.eid), p = pct(x);
-                const pm = Math.max(1, ...x.mm.values());
                 return (
                   <div key={x.eid} className="border-b border-slate-800/70">
                     <button type="button" onClick={() => toggle(x.eid)} aria-expanded={op}
@@ -5079,9 +5081,10 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
                       </div>
                       <div className="relative col-span-2 row-start-2 md:col-span-1 md:row-start-auto">
                         <div className="flex h-3 overflow-hidden rounded-full bg-slate-800">
+                          {/* v5.4: khe tối 2px giữa các khúc (viền trái cùng màu nền) để tách Giờ chuẩn / OT / cố gắng */}
                           <i className="block h-full bg-blue-400" style={{ width: `${(x.s / maxT) * 100}%` }} />
-                          <i className="block h-full bg-teal-400" style={{ width: `${(x.o / maxT) * 100}%` }} />
-                          <i className="block h-full bg-violet-400" style={{ width: `${(x.c / maxT) * 100}%` }} />
+                          {x.o > 0 && <i className={`block h-full bg-teal-400 ${x.s > 0 ? "border-l-2 border-slate-900" : ""}`} style={{ width: `${(x.o / maxT) * 100}%` }} />}
+                          {x.c > 0 && <i className={`block h-full bg-violet-400 ${x.s + x.o > 0 ? "border-l-2 border-slate-900" : ""}`} style={{ width: `${(x.c / maxT) * 100}%` }} />}
                         </div>
                         {std > 0 && <span className="pointer-events-none absolute -bottom-1.5 -top-1.5 w-0.5 -translate-x-1/2 rounded bg-amber-400 shadow-[0_0_0_2px_#0f172a]" style={{ left: `${(std / maxT) * 100}%` }} />}
                       </div>
@@ -5092,22 +5095,18 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
                       <span className={`hidden justify-self-end whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] md:inline-block ${ALLOC_ST[x.st][1]}`}>{ALLOC_ST[x.st][0]}{p != null ? ` · ${p}%` : ""}</span>
                     </button>
                     {op && (
-                      <div className="bg-slate-950/40 px-3 pb-3 pt-1 md:pl-[232px] md:pr-4">
-                        {x.mm.size === 0 ? <div className="py-1 text-xs text-slate-500">Chưa chấm giờ nào trong kỳ.</div> : (
-                          <>
-                            <div className="grid grid-cols-[minmax(0,1fr)_56px_44px] gap-3 py-1 text-[10.5px] uppercase tracking-wider text-slate-500 md:grid-cols-[220px_minmax(0,1fr)_60px_48px]">
-                              <span>Dự án</span><span className="hidden md:block" /><span className="text-right">Giờ</span><span className="text-right">%</span>
-                            </div>
-                            {cols.filter((k) => x.mm.get(k)).sort((a, b) => x.mm.get(b) - x.mm.get(a)).map((k) => (
-                              <div key={k} className="grid grid-cols-[minmax(0,1fr)_56px_44px] items-center gap-3 py-1 text-[12.5px] md:grid-cols-[220px_minmax(0,1fr)_60px_48px]">
-                                <span className="truncate text-slate-300" title={name(k)}>{k === NO_PROJECT ? "" : `${code(k)} · `}{name(k)}</span>
-                                <div className="hidden h-1.5 overflow-hidden rounded bg-slate-800 md:block"><div className="h-full rounded" style={{ width: `${(x.mm.get(k) / pm) * 100}%`, background: color.get(k) }} /></div>
-                                <span className="text-right font-mono text-slate-100">{fmtH(x.mm.get(k))}</span>
-                                <span className="text-right font-mono text-slate-500">{Math.round((x.mm.get(k) / (x.t || 1)) * 100)}%</span>
+                      <div className="bg-slate-950/40 px-3 pb-3 pt-1.5 md:pl-[232px] md:pr-4">
+                        {/* v5.4: chi tiết chỉ bằng chữ + số, không vẽ thanh — đỡ rối mắt */}
+                        <div className="max-w-md text-[13px]">
+                          <div className="py-1 text-slate-500">Giờ chuẩn {fmtH(x.s)} · OT {fmtH(x.o)} · cố gắng {fmtH(x.c)}</div>
+                          {x.mm.size === 0 ? <div className="py-1 text-slate-500">Chưa chấm giờ nào trong kỳ.</div>
+                            : cols.filter((k) => x.mm.get(k)).sort((a, b) => x.mm.get(b) - x.mm.get(a)).map((k) => (
+                              <div key={k} className="flex items-baseline justify-between gap-4 py-0.5">
+                                <span className="truncate text-slate-200" title={name(k)}>{k === NO_PROJECT ? "" : `${code(k)} · `}{name(k)}</span>
+                                <span className="shrink-0 font-mono text-slate-100">{fmtH(x.mm.get(k))} h</span>
                               </div>
                             ))}
-                          </>
-                        )}
+                        </div>
                       </div>
                     )}
                   </div>
