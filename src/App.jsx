@@ -24,7 +24,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
      · Khung chi tiết giai đoạn: rê chuột vào tên nhân sự → thẻ tác vụ của người đó trong giai đoạn (Tác vụ · Giờ · %).
        Cần chạy lại supabase/schema.sql (mục 14 trả thêm "et"); chưa chạy thì tạm tính từ dữ liệu đã tải.
      · Giai đoạn đang xem chi tiết: viền teal mảnh bo góc bao trọn dòng dự án + khung chi tiết.
-     · Bảng "Tăng ca theo tác vụ" trong khung chi tiết mặc định thu gọn (chỉ hiện số tổng) — bấm tiêu đề để mở.
+     · Bảng "Tăng ca theo tác vụ" trong khung chi tiết mặc định ẩn — bấm nút ▸ ở đầu khung TĂNG CA để xổ bảng ra bên dưới.
        Bảng không hiện hệ số / giờ quy đổi (vẫn có trong file Excel); cột "Trong đó CN / lễ" chỉ hiện khi có giờ tăng ca CN / lễ.
    Mới ở v5.5 — Phân bổ nhân sự, chi tiết một người: thêm cột % thời gian theo dự án; rê chuột vào dự án hiện thẻ
    các tác vụ người đó làm trong dự án (giờ, % trên tổng giờ của người đó ở dự án; dòng tăng ca ghi "Tăng ca · tác vụ"),
@@ -4647,6 +4647,8 @@ const REWORK_RE = /chỉnh sửa|sửa lại|góp ý|khách hàng/i;
 /* Khung chi tiết khi bấm vào ô giai đoạn (mở ngay dưới dòng dự án) */
 const PhaseDetail = ({ cell, info, onClose, partial }) => {
   const [tip, setTip] = useState(null);   // v5.6: { x: người, cx, cy } — thẻ tác vụ khi rê chuột vào tên nhân sự
+  const [otOpen, setOtOpen] = useState(false);   // v5.6: bảng tăng ca theo tác vụ — mặc định thu gọn, bấm nút trong khung TĂNG CA để mở
+  const hasOtTable = info.otByTask?.length > 0;
   const otPct = info.total ? Math.round((info.ot / info.total) * 100) : 0;
   const lv = otLevel(otPct);
   const fc = cell.open ? phaseForecast(cell, info) : null;
@@ -4680,7 +4682,13 @@ const PhaseDetail = ({ cell, info, onClose, partial }) => {
         )}
       </div>
       <div className={`flex flex-wrap items-center gap-[18px] rounded-[10px] border px-4 py-3 lg:col-span-3 lg:-mr-[102px] ${OT_BOX}`}>
-        <span className="text-[13.6px] font-bold tracking-wide text-slate-100">TĂNG CA</span>
+        {hasOtTable ? (
+          <button type="button" onClick={() => setOtOpen((o) => !o)} aria-expanded={otOpen} title={otOpen ? "Thu gọn tăng ca theo tác vụ" : "Xem tăng ca theo tác vụ"}
+            className="-my-2 -ml-2 flex min-h-[44px] items-center gap-1.5 rounded-md px-2 hover:bg-slate-50/[.06]">
+            {otOpen ? <ChevronDown size={16} className="text-slate-300" /> : <ChevronRight size={16} className="text-slate-300" />}
+            <span className="text-[13.6px] font-bold tracking-wide text-slate-100">TĂNG CA</span>
+          </button>
+        ) : <span className="text-[13.6px] font-bold tracking-wide text-slate-100">TĂNG CA</span>}
         <span className="text-slate-100">{fmtH(info.ot)} h · {otPct}% tổng giờ giai đoạn</span>
         <span className="relative mx-1 mb-3.5 flex h-2 w-[300px] gap-0.5">
           <span className={`h-full rounded-l bg-teal-500 ${lv === "ok" ? "" : "opacity-[.35]"}`} style={{ width: `${(15 / OT_MAX) * 100}%` }} />
@@ -4693,7 +4701,7 @@ const PhaseDetail = ({ cell, info, onClose, partial }) => {
         </span>
         <span className={`font-semibold ${OT_TXT}`}>{lv === "ok" ? "Trong mức bình thường" : lv === "mid" ? "Mức trung bình — cần theo dõi" : "Cao — dấu hiệu áp lực tiến độ"}</span>
       </div>
-      {info.otByTask?.length > 0 && <OtByTaskTable info={info} />}
+      {hasOtTable && otOpen && <OtByTaskTable info={info} />}
       {info.otNoDetail && <div className="text-[11.5px] text-amber-500/80 lg:col-span-3">Chưa xem được tăng ca theo tác vụ — chạy lại supabase/schema.sql (bản v4.9) trên Supabase.</div>}
       {tip && tip.x.tasks?.length > 0 && (() => {
         /* v5.6 — thẻ tác vụ của một người trong giai đoạn: Tác vụ · Giờ · % (trên tổng giờ của người đó trong giai đoạn) */
@@ -4723,19 +4731,12 @@ const PhaseDetail = ({ cell, info, onClose, partial }) => {
 
 /* v4.9 — Bảng tăng ca theo tác vụ × khung giờ trong khung chi tiết giai đoạn (chỉ giờ đã gửi) */
 const OtByTaskTable = ({ info }) => {
-  const [open, setOpen] = useState(false);   // v5.6: mặc định thu gọn, bấm tiêu đề để mở bảng
   const bands = info.otBandsUsed || [];
   const col = (bid) => info.otByTask.reduce((a, x) => a + (x.b[bid] || 0), 0);
   const sp = info.otByTask.reduce((a, x) => a + x.special, 0);
   return (
     <div className="overflow-x-auto lg:col-span-3 lg:-mr-[102px]">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
-        className="-mx-2 flex min-h-[44px] items-center gap-2 rounded-md px-2 text-left hover:bg-slate-800/50">
-        {open ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
-        <span className="text-[11px] uppercase tracking-wider text-slate-400">Tăng ca theo tác vụ</span>
-        <span className="text-[12px] text-slate-500">· {info.otByTask.length} tác vụ · <span className="font-mono text-teal-400">{fmtH(info.ot)} h</span></span>
-      </button>
-      {open && <table className="mt-1 w-full text-[13px]">
+      <table className="-mt-2 w-full text-[13px]">
         <thead>
           <tr className="border-b border-slate-800 text-[11.5px] text-slate-500">
             <th className="py-1.5 pr-3 text-left font-medium">Tác vụ</th>
@@ -4762,7 +4763,7 @@ const OtByTaskTable = ({ info }) => {
             <td className="py-1.5 pl-2 text-right font-mono text-teal-300">{fmtH(info.ot)}</td>
           </tr>
         </tfoot>
-      </table>}
+      </table>
     </div>
   );
 };
