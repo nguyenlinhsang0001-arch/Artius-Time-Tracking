@@ -16,6 +16,10 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v5.8 — Tab Nhân sự, chi tiết một người: thêm bảng Tác vụ · Giờ · % (gộp mọi dự án trong kỳ) bên phải bảng Dự án.
+   Mới ở v5.7 — Tab Nhân sự, thanh từng người: số giờ nằm trong từng khúc (Giờ chuẩn / OT / cố gắng), bên phải chỉ còn giờ tổng;
+     ngoặc vàng phía trên thanh chỉ khoảng thiếu giờ chuẩn ("thiếu x h"); vạch giờ chuẩn của kỳ đổi trắng mờ, mảnh 1px;
+     khung chi tiết bỏ dòng "Giờ chuẩn · OT · cố gắng".
    Mới ở v5.6 — Dashboard tách hai tab "Dự án | Nhân sự", mỗi tab có bộ lọc riêng:
      · Dự án: tiến độ từ trước tới nay (không theo kỳ); lọc Vượt / Sắp vượt / Bình thường, tìm dự án; KPI đang mở / vượt /
        sắp vượt / Urgent; thêm cột "Người tuần này".
@@ -167,7 +171,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v5.6";
+const APP_VERSION = "v5.8";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -5107,6 +5111,17 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
     }
     return m;
   }, [detail, taskLabel]);
+  /* v5.8 — tác vụ của từng người trong kỳ (gộp mọi dự án): Map eid -> [{ name, h, ot }], tăng ca xếp cuối */
+  const byE = useMemo(() => {
+    const m = new Map();
+    for (const [k, o] of byEP) {
+      const eid = k.split("|")[0];
+      const mm = m.get(eid) || new Map();
+      for (const [lbl, t] of o.tasks) { const x = mm.get(lbl) || { name: lbl, h: 0, ot: t.ot }; x.h += t.h; mm.set(lbl, x); }
+      m.set(eid, mm);
+    }
+    return new Map([...m].map(([eid, mm]) => [eid, [...mm.values()].sort((a, b) => (a.ot - b.ot) || b.h - a.h)]));
+  }, [byEP]);
   const projTot = useMemo(() => {
     const m = new Map();
     for (const d of projDetail) { const k = isLeaveTask(d.taskId) ? NO_PROJECT : d.projectId; m.set(k, (m.get(k) || 0) + d.hours); }
@@ -5205,7 +5220,8 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-blue-400" />Giờ chuẩn</span>
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-teal-400" />OT</span>
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-violet-400" />Giờ cố gắng</span>
-            <span className="flex items-center gap-1.5"><span className="inline-block h-3 border-l-2 border-amber-400" />{fmtH(std)} h giờ chuẩn của kỳ</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-px bg-slate-100/55" />{fmtH(std)} h giờ chuẩn của kỳ</span>
+            <span className="text-amber-400">⌃ thiếu giờ chuẩn</span>
             <span className="text-slate-600">Bấm một người để xem theo dự án</span>
           </div>
           {groups.map((g) => (
@@ -5218,33 +5234,41 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
                 return (
                   <div key={x.eid} className="border-b border-slate-800/70">
                     <button type="button" onClick={() => toggle(x.eid)} aria-expanded={op}
-                      className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-3 py-2.5 text-left md:grid-cols-[200px_minmax(0,1fr)_190px_150px] md:gap-4 md:px-4 ${op ? "bg-slate-800/50" : "hover:bg-slate-800/30"}`}>
+                      className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-3 py-2.5 text-left md:grid-cols-[200px_minmax(0,1fr)_90px_150px] md:gap-4 md:px-4 ${op ? "bg-slate-800/50" : "hover:bg-slate-800/30"}`}>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 truncate text-sm text-slate-100">{op ? <ChevronDown size={14} className="shrink-0 text-slate-500" /> : <ChevronRight size={14} className="shrink-0 text-slate-500" />}{empName(x.eid)}</div>
                         <div className="pl-5 text-[11px] text-slate-500">{x.role ? `${x.role} · ` : ""}{nProj(x)} dự án
                           {x.st !== "ok" && <span className={`ml-1.5 rounded-full border px-1.5 md:hidden ${ALLOC_ST[x.st][1]}`}>{ALLOC_ST[x.st][0]}</span>}</div>
                       </div>
-                      <div className="relative col-span-2 row-start-2 md:col-span-1 md:row-start-auto">
-                        <div className="flex h-3 overflow-hidden rounded-full bg-slate-800">
-                          {/* v5.4: khe tối 2px giữa các khúc (viền trái cùng màu nền) để tách Giờ chuẩn / OT / cố gắng */}
-                          <i className="block h-full bg-blue-400" style={{ width: `${(x.s / maxT) * 100}%` }} />
-                          {x.o > 0 && <i className={`block h-full bg-teal-400 ${x.s > 0 ? "border-l-2 border-slate-900" : ""}`} style={{ width: `${(x.o / maxT) * 100}%` }} />}
-                          {x.c > 0 && <i className={`block h-full bg-violet-400 ${x.s + x.o > 0 ? "border-l-2 border-slate-900" : ""}`} style={{ width: `${(x.c / maxT) * 100}%` }} />}
+                      <div className="relative col-span-2 row-start-2 pt-[18px] md:col-span-1 md:row-start-auto">
+                        {/* v5.7: số giờ nằm trong từng khúc (khúc hẹp thì ẩn số, rê chuột xem); khe tối 2px giữa các khúc */}
+                        <div className="flex h-[18px] overflow-hidden rounded-full bg-slate-800 font-mono text-[11px] font-semibold text-slate-950">
+                          {[[x.s, "bg-blue-400", "Giờ chuẩn"], [x.o, "bg-teal-400", "OT"], [x.c, "bg-violet-400", "Giờ cố gắng"]].filter(([v]) => v > 0).map(([v, cls, l], i) => (
+                            <i key={l} title={`${l}: ${fmtH(v)} h`} className={`flex h-full items-center justify-center overflow-hidden whitespace-nowrap not-italic ${cls} ${i ? "border-l-2 border-slate-900" : ""}`}
+                              style={{ width: `${(v / maxT) * 100}%` }}>{(v / maxT) * 100 >= 3.2 ? fmtH(v) : ""}</i>
+                          ))}
                         </div>
-                        {std > 0 && <span className="pointer-events-none absolute -bottom-1.5 -top-1.5 w-0.5 -translate-x-1/2 rounded bg-amber-400 shadow-[0_0_0_2px_#0f172a]" style={{ left: `${(std / maxT) * 100}%` }} />}
+                        {/* v5.7: ngoặc vàng chỉ khoảng thiếu giờ chuẩn (từ cuối phần Giờ chuẩn tới vạch giờ chuẩn của kỳ) — OT / cố gắng không bù vào */}
+                        {std > 0 && std - x.s > 0.05 && (
+                          <span className="pointer-events-none absolute top-3 h-[5px] rounded-t-[3px] border-[1.5px] border-b-0 border-amber-400" style={{ left: `${(x.s / maxT) * 100}%`, width: `${((std - x.s) / maxT) * 100}%` }}>
+                            <span className="absolute -top-[5px] left-1/2 h-1 w-[1.5px] -translate-x-1/2 bg-amber-400" />
+                            <span className="absolute bottom-[9px] left-1/2 -translate-x-1/2 whitespace-nowrap font-sans text-[11px] font-medium leading-none text-amber-400">thiếu {fmtH(std - x.s)} h</span>
+                          </span>
+                        )}
+                        {/* v5.7: vạch giờ chuẩn của kỳ — trắng mờ, mảnh 1px */}
+                        {std > 0 && <span className="pointer-events-none absolute -bottom-1.5 top-3 w-px -translate-x-1/2 bg-slate-100/55 shadow-[0_0_0_1.5px_#0f172a]" style={{ left: `${(std / maxT) * 100}%` }} />}
                       </div>
                       <div className="text-right font-mono md:order-none">
                         <div className={`text-sm font-semibold ${x.st === "hi" ? "text-rose-400" : "text-slate-100"}`}>{fmtH(x.t)} h</div>
-                        <div className="whitespace-nowrap text-[11px] text-slate-500"><span className="text-blue-400">{fmtH(x.s)}</span> chuẩn · <span className="text-teal-400">{fmtH(x.o)}</span> OT · <span className="text-violet-400">{fmtH(x.c)}</span> CG</div>
                       </div>
                       <span className={`hidden justify-self-end whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] md:inline-block ${ALLOC_ST[x.st][1]}`}>{ALLOC_ST[x.st][0]}{p != null ? ` · ${p}%` : ""}</span>
                     </button>
                     {op && (
                       <div className="bg-slate-950/40 px-3 pb-3 pt-1.5 md:pl-[232px] md:pr-4">
                         {/* v5.4: chi tiết chỉ bằng chữ + số, không vẽ thanh — đỡ rối mắt */}
-                        <div className="max-w-xl text-[13px]">
-                          <div className="py-1 text-slate-500">Giờ chuẩn {fmtH(x.s)} · OT {fmtH(x.o)} · cố gắng {fmtH(x.c)}</div>
+                        <div className="grid max-w-5xl grid-cols-1 gap-x-10 gap-y-3 text-[13px] lg:grid-cols-2">
                           {x.mm.size === 0 ? <div className="py-1 text-slate-500">Chưa chấm giờ nào trong kỳ.</div> : (<>
+                            <div>
                             <div className="grid grid-cols-[minmax(0,1fr)_72px_52px] gap-3 py-0.5 text-[10.5px] uppercase tracking-wider text-slate-600">
                               <span>Dự án</span><span className="text-right">Giờ</span><span className="text-right">%</span>
                             </div>
@@ -5257,6 +5281,20 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
                                 <span className="text-right font-mono text-slate-400">{pc[i]}%</span>
                               </div>
                             )); })()}
+                            </div>
+                            {/* v5.8 — tác vụ của người này trong kỳ (mọi dự án); tăng ca ghi "Tăng ca · tác vụ", màu xanh ngọc, xếp cuối */}
+                            <div>
+                              <div className="grid grid-cols-[minmax(0,1fr)_72px_52px] gap-3 py-0.5 text-[10.5px] uppercase tracking-wider text-slate-600">
+                                <span>Tác vụ</span><span className="text-right">Giờ</span><span className="text-right">%</span>
+                              </div>
+                              {(() => { const ts = byE.get(x.eid) || [], pc = pct100(ts.map((t) => t.h)); return ts.map((t, i) => (
+                                <div key={t.name} className="grid grid-cols-[minmax(0,1fr)_72px_52px] items-baseline gap-3 py-0.5">
+                                  <span className={`truncate ${t.ot ? "text-teal-400" : "text-slate-200"}`}>{t.name}</span>
+                                  <span className="text-right font-mono text-slate-100">{fmtH(t.h)} h</span>
+                                  <span className="text-right font-mono text-slate-400">{pc[i]}%</span>
+                                </div>
+                              )); })()}
+                            </div>
                           </>)}
                         </div>
                       </div>
