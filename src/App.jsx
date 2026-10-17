@@ -21,6 +21,8 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
        sắp vượt / Urgent; thêm cột "Người tuần này".
      · Nhân sự: kỳ chọn nhanh Tuần này / 7 ngày qua / Tháng này hoặc lịch, bộ phận, tìm người, Excel; 6 KPI; người chưa chấm
        gom một dòng cuối. Bỏ ô lọc Dự án / Giai đoạn chung ở đầu trang.
+     · Khung chi tiết giai đoạn: rê chuột vào tên nhân sự → thẻ tác vụ của người đó trong giai đoạn (Tác vụ · Giờ · %).
+       Cần chạy lại supabase/schema.sql (mục 14 trả thêm "et"); chưa chạy thì tạm tính từ dữ liệu đã tải.
    Mới ở v5.5 — Phân bổ nhân sự, chi tiết một người: thêm cột % thời gian theo dự án; rê chuột vào dự án hiện thẻ
    các tác vụ người đó làm trong dự án (giờ, % trên tổng giờ của người đó ở dự án; dòng tăng ca ghi "Tăng ca · tác vụ"),
    phần người đó chiếm trong tổng giờ dự án của kỳ, và giai đoạn.
@@ -4466,12 +4468,13 @@ const phaseDetailFromMemory = () => {
     for (const r of sentRows(bucket)) {
       if (isLeaveTask(r.taskId) || r.projectId === NO_PROJECT || !r.projectId) continue;
       const k = `${r.projectId}|${r.phaseId || DEFAULT_PHASE}`;
-      const o = out.get(k) || { w: {}, e: {}, t: {}, o: {}, first: "", last: "" };
+      const o = out.get(k) || { w: {}, e: {}, t: {}, o: {}, et: {}, first: "", last: "" };
       for (const [d, v] of Object.entries(r.days || {})) {
         const h = Number(v) || 0;
         if (h <= 0) continue;
         const wk = fmt(mondayOf(parseD(d)));
         o.w[wk] = (o.w[wk] || 0) + h; o.e[empId] = (o.e[empId] || 0) + h; o.t[r.taskId] = (o.t[r.taskId] || 0) + h;
+        { const et = (o.et[empId] ||= {}), tk = `${r.taskId}|${isOtId(r.taskId) ? r.otFor || "" : ""}`; et[tk] = (et[tk] || 0) + h; }   // v5.6
         if (isOtId(r.taskId)) { const ok = `${r.taskId}|${r.otFor || ""}|${otDayKind(d, hs)}`; o.o[ok] = (o.o[ok] || 0) + h; }   // v4.9
         if (!o.first || d < o.first) o.first = d;
         if (!o.last || d > o.last) o.last = d;
@@ -4493,8 +4496,21 @@ const buildPhaseInfo = (raw, cell, ctx) => {
   if (!raw) return null;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const thisMon = mondayOf(today);
+  /* v5.6 — tác vụ của từng người trong giai đoạn (cho thẻ rê chuột vào tên). Database cũ chưa có "et" thì tạm tính từ bộ nhớ. */
+  const etAll = raw.et || ctx.memEt?.(cell.key) || {};
+  const tName = (id) => { const t = ctx.taskById.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
+  const empTasks = (id) => {
+    const m = new Map();
+    for (const [key, hv] of Object.entries(etAll[id] || {})) {
+      const h = Number(hv) || 0; if (h <= 0) continue;
+      const [tid, forId = ""] = key.split("|");
+      const ot = isOtId(tid), lbl = ot ? `Tăng ca · ${forId ? tName(forId) : "chưa rõ tác vụ"}` : tName(tid);
+      const x = m.get(lbl) || { name: lbl, h: 0, ot }; x.h += h; m.set(lbl, x);
+    }
+    return [...m.values()].sort((a, b) => (a.ot - b.ot) || b.h - a.h);
+  };
   const people = Object.entries(raw.e || {})
-    .map(([id, h]) => { const e = ctx.empById.get(id); return { name: e?.name || "(nhân sự đã xoá)", role: e ? roleTitle(e.role) : "", h: Number(h) || 0 }; })
+    .map(([id, h]) => { const e = ctx.empById.get(id); return { id, name: e?.name || "(nhân sự đã xoá)", role: e ? roleTitle(e.role) : "", h: Number(h) || 0, tasks: empTasks(id) }; })
     .filter((x) => x.h > 0).sort((a, b) => b.h - a.h);
   let ot = 0;
   const tasks = [];
@@ -4567,12 +4583,13 @@ const phaseForecast = (cell, info) => {
 const FC_CLS = { ok: "bg-teal-400/[.07] text-teal-100", warn: "bg-amber-500/10 text-amber-200", over: "bg-rose-500/[.12] text-rose-200", idle: "bg-slate-800 text-slate-400" };
 
 /* Danh sách tên — giờ — % kèm thanh nhỏ (nhân sự / tác vụ) */
-const KvList = ({ items, total, n, withRole }) => {
+const KvList = ({ items, total, n, withRole, onTip }) => {
   const top = items[0]?.h || 1;
   return (
     <div>
       {items.slice(0, n).map((x, i) => (
-        <div key={i} className="grid grid-cols-[minmax(0,1fr)_52px_36px] items-center gap-x-1.5 py-[3px]">
+        <div key={i} className={`grid grid-cols-[minmax(0,1fr)_52px_36px] items-center gap-x-1.5 py-[3px] ${onTip ? "-mx-1.5 cursor-default rounded-md px-1.5 hover:bg-slate-800/70" : ""}`}
+          onMouseMove={onTip ? (e) => onTip({ x, cx: e.clientX, cy: e.clientY }) : undefined} onMouseLeave={onTip ? () => onTip(null) : undefined}>
           <span className="truncate text-slate-200">{x.name}{withRole && x.role && <span className="ml-1.5 text-[11px] text-slate-600">{x.role}</span>}</span>
           <span className="text-right font-mono text-slate-100">{fmtH(x.h)}</span>
           <span className="text-right font-mono text-[11px] text-slate-500">{Math.round((x.h / total) * 100)}%</span>
@@ -4626,6 +4643,7 @@ const REWORK_RE = /chỉnh sửa|sửa lại|góp ý|khách hàng/i;
 
 /* Khung chi tiết khi bấm vào ô giai đoạn (mở ngay dưới dòng dự án) */
 const PhaseDetail = ({ cell, info, onClose, partial }) => {
+  const [tip, setTip] = useState(null);   // v5.6: { x: người, cx, cy } — thẻ tác vụ khi rê chuột vào tên nhân sự
   const otPct = info.total ? Math.round((info.ot / info.total) * 100) : 0;
   const lv = otLevel(otPct);
   const fc = cell.open ? phaseForecast(cell, info) : null;
@@ -4647,7 +4665,7 @@ const PhaseDetail = ({ cell, info, onClose, partial }) => {
       </div>
       <div>
         <h4 className="mb-2 text-[11px] uppercase tracking-wider text-slate-500">Nhân sự ({info.people.length})</h4>
-        <KvList items={info.people} total={info.total} n={10} withRole />
+        <KvList items={info.people} total={info.total} n={10} withRole onTip={setTip} />
         {info.people.length > 10 && <div className="mt-1 text-[11px] text-slate-600">+ {info.people.length - 10} người khác</div>}
       </div>
       <div>
@@ -4674,6 +4692,28 @@ const PhaseDetail = ({ cell, info, onClose, partial }) => {
       </div>
       {info.otByTask?.length > 0 && <OtByTaskTable info={info} />}
       {info.otNoDetail && <div className="text-[11.5px] text-amber-500/80 lg:col-span-3">Chưa xem được tăng ca theo tác vụ — chạy lại supabase/schema.sql (bản v4.9) trên Supabase.</div>}
+      {tip && tip.x.tasks?.length > 0 && (() => {
+        /* v5.6 — thẻ tác vụ của một người trong giai đoạn: Tác vụ · Giờ · % (trên tổng giờ của người đó trong giai đoạn) */
+        const ts = tip.x.tasks, pc = pct100(ts.map((t) => t.h));
+        const W = 340, left = tip.cx + 14 + W > window.innerWidth - 8 ? tip.cx - W - 14 : tip.cx + 14;
+        const top = Math.max(8, Math.min(window.innerHeight - 64 - (ts.length + 2) * 24, tip.cy + 14));
+        return (
+          <div className="pointer-events-none fixed z-[70] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-[12.5px] shadow-2xl" style={{ left, top, width: W }}>
+            <div className="grid grid-cols-[minmax(0,1fr)_52px_40px] gap-2 pb-1 text-[10.5px] uppercase tracking-wider text-slate-600"><span>Tác vụ</span><span className="text-right">Giờ</span><span className="text-right">%</span></div>
+            {ts.map((t, i) => (
+              <div key={t.name} className="grid grid-cols-[minmax(0,1fr)_52px_40px] gap-2 py-0.5">
+                <span className={`truncate ${t.ot ? "text-teal-400" : "text-slate-100"}`}>{t.name}</span>
+                <span className="text-right font-mono text-slate-200">{fmtH(t.h)}</span>
+                <span className="text-right font-mono text-slate-400">{pc[i]}%</span>
+              </div>
+            ))}
+            <div className="mt-1.5 grid grid-cols-[1fr_auto] gap-x-3 border-t border-slate-800 pt-1.5">
+              <span className="text-slate-500">Chiếm trong giai đoạn</span>
+              <span className="text-right font-mono text-slate-100">{Math.round((tip.x.h / info.total) * 100)}% <span className="text-slate-600">/ {fmtH(info.total)} h</span></span>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
@@ -4771,7 +4811,7 @@ const PhaseHoverCard = ({ cell, info, canOpen }) => {
    · Giai đoạn đang mở: thanh màu theo mức (xanh < 80%, cam 80–100%, đỏ > 100%) + nhãn "mở".
    · Giai đoạn đã đóng: chìm xuống (thanh xám, chữ xám, % nhạt) — không cảnh báo nữa.
    · Tình trạng chỉ xét giai đoạn đang mở. Dự án nguy cơ vượt xếp đầu; dự án chưa có giờ gom vào một dòng mở rộng.
-   · Chỉ dự án đang chấm công (active). Bộ lọc "dự án" của Dashboard áp vào đây; bộ lọc kỳ / bộ phận / nhân sự thì không.
+   · Chỉ dự án đang chấm công (active). v5.6: có bộ lọc riêng (Vượt / Sắp vượt / Bình thường, tìm dự án) — không theo kỳ.
    · v4.7: rê chuột vào ô → thẻ tóm tắt; bấm vào ô → khung chi tiết dưới dòng dự án, các dự án khác mờ đi.
    · v4.8: ô giai đoạn đang mở tô nền màu của giai đoạn + vạch trái, số giờ đậm; ô đã đóng chìm xuống (97%, chữ xám).
            Cờ Urgent (project.urgent, lưu trong thiết lập chung): rê chuột vào tên dự án → bấm cờ để bật/tắt;
@@ -4811,7 +4851,9 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
     taskById: new Map((cfg.tasks || []).map((t) => [t.id, t])),
     taskOrder: new Map((cfg.tasks || []).map((t, k) => [t.id, k])),
     cfg,   // v4.9: hệ số tăng ca
-  }), [cfg]);
+    // v5.6: database chưa chạy schema.sql bản v5.6 (không có "et") → tạm lấy tác vụ theo người từ bộ nhớ; tính một lần rồi giữ lại
+    memEt: (() => { let m = null; return (key) => { if (!m) m = phaseDetailFromMemory(); return m.get(key)?.et; }; })(),
+  }), [cfg, dataTick]);
 
   const phases = PHASES.filter((ph) => ph.active !== false);
   const allRows = cfg.projects

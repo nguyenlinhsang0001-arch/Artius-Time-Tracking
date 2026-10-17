@@ -2,6 +2,7 @@
 -- Chạy trong Supabase → SQL Editor. Chạy lại nhiều lần được, không xoá dữ liệu.
 -- Nâng cấp từ bất kỳ bản v1.7 → v3.0: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v3.1.
 -- (Lịch gửi nhắc nhở nằm riêng ở supabase/cron.sql — chạy sau file này, xem README.)
+-- (v5.6 sửa mục 14: artius_phase_detail trả thêm "et" — giờ theo nhân sự × tác vụ, cho thẻ tác vụ khi rê chuột vào tên nhân sự.)
 -- (v4.7 thêm mục 14: hàm artius_phase_detail — chi tiết theo tuần / nhân sự / tác vụ của từng giai đoạn cho Dashboard.)
 -- (v2.1 thêm mục 9: hàm artius_usage tính tổng giờ toàn bộ dữ liệu cho tab Dự án và tab Thiết lập.)
 -- (v3.1 sửa mục 7c: nhân sự chấm được giai đoạn quản lý đang MỞ (project.phaseOpen); dự án chưa đặt mở/đóng thì theo giờ dự kiến như cũ.)
@@ -464,6 +465,7 @@ create policy "artius_push_log_admin_read" on public.artius_push_log
 --     Trả một khối JSON (không trả từng dòng) để không vướng giới hạn 1000 dòng của API. Chỉ tài khoản quản lý nhận được số liệu.
 --     v4.9: thêm "o": {"<mã hạng mục tăng ca>|<tăng ca cho tác vụ>|<n|s|h>": giờ} — giờ tăng ca theo khung giờ × tác vụ,
 --     n = ngày thường, s = Chủ nhật, h = ngày lễ (theo danh sách ngày lễ trong thiết lập). Dòng tăng ca cũ chưa có tác vụ: phần giữa rỗng.
+--     v5.6: thêm "et": {"<empId>": {"<taskId>|<otFor>": giờ}} — giờ của từng người theo từng tác vụ (otFor chỉ có ở dòng tăng ca).
 create or replace function public.artius_phase_detail()
 returns jsonb
 language sql stable security definer set search_path = public as $$
@@ -488,6 +490,10 @@ language sql stable security definer set search_path = public as $$
   w as (select k, jsonb_object_agg(wk, h) as o from (select k, to_char(date_trunc('week', day), 'YYYY-MM-DD') as wk, sum(h) as h from x group by 1, 2) a group by k),
   e as (select k, jsonb_object_agg(emp_id, h) as o from (select k, emp_id, sum(h) as h from x group by 1, 2) a group by k),
   tk as (select k, jsonb_object_agg(task_id, h) as o from (select k, task_id, sum(h) as h from x group by 1, 2) a group by k),
+  et as (select k, jsonb_object_agg(emp_id, o) as o
+         from (select k, emp_id, jsonb_object_agg(tko, h) as o
+               from (select k, emp_id, task_id || '|' || ot_for as tko, sum(h) as h from x group by 1, 2, 3) a group by 1, 2) b
+         group by k),
   r as (select k, min(day) as first, max(day) as last from x group by k),
   cf as (select coalesce((select c.value::jsonb from public.artius_config c where c.id = 'main'), '{}'::jsonb) as j),
   otid as (select tt ->> 'id' as id
@@ -504,9 +510,9 @@ language sql stable security definer set search_path = public as $$
                       sum(h) as h
                from x where task_id in (select id from otid) group by 1, 2) a
          group by k)
-  select coalesce(jsonb_object_agg(r.k, jsonb_build_object('w', w.o, 'e', e.o, 't', tk.o, 'o', coalesce(ot.o, '{}'::jsonb),
+  select coalesce(jsonb_object_agg(r.k, jsonb_build_object('w', w.o, 'e', e.o, 't', tk.o, 'o', coalesce(ot.o, '{}'::jsonb), 'et', coalesce(et.o, '{}'::jsonb),
                                                            'first', to_char(r.first, 'YYYY-MM-DD'), 'last', to_char(r.last, 'YYYY-MM-DD'))), '{}'::jsonb)
-  from r join w using (k) join e using (k) join tk using (k) left join ot using (k);
+  from r join w using (k) join e using (k) join tk using (k) left join ot using (k) left join et using (k);
 $$;
 revoke all on function public.artius_phase_detail() from public, anon;
 grant execute on function public.artius_phase_detail() to authenticated, service_role;

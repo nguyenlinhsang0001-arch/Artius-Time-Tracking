@@ -28,7 +28,7 @@ Ghi chú:
 
 ## Mới ở v5.6 — Dashboard tách tab Dự án | Nhân sự
 
-Không đổi database — **bỏ qua bước 1** (không cần chạy lại `schema.sql`), chỉ upload folder lên GitHub.
+**Có đổi database — làm đủ 2 bước:** chạy lại `supabase/schema.sql` trên Supabase (mục 14 trả thêm giờ theo nhân sự × tác vụ), rồi upload folder lên GitHub.
 
 - Đầu Dashboard có nút chuyển **Dự án | Nhân sự** (app nhớ tab đang mở).
 - **Tab Dự án** — tiến độ giờ đã dùng **từ trước tới nay** so với dự kiến, không phụ thuộc kỳ. Bộ lọc riêng:
@@ -38,6 +38,9 @@ Không đổi database — **bỏ qua bước 1** (không cần chạy lại `sc
   lọc bộ phận, tìm nhân sự, Tải lại, Excel. 6 KPI: tổng giờ công / công suất, OT, giờ cố gắng, quá tải, thiếu giờ, chưa chấm.
   Người chưa chấm giờ nào trong kỳ gom thành một dòng ở cuối, không tính vào Quá tải / Thiếu giờ.
 - Bỏ ô lọc Dự án / Giai đoạn chung ở đầu trang (trước đây chỉ tác động một phần, dễ gây hiểu nhầm).
+- Khung chi tiết giai đoạn (bấm vào ô giai đoạn ở tab Dự án): **rê chuột vào tên nhân sự** → thẻ tác vụ của người đó trong giai đoạn
+  (Tác vụ · Giờ · %; tăng ca màu xanh ngọc, ghi "Tăng ca · tác vụ"; chân thẻ: người đó chiếm bao nhiêu % tổng giờ giai đoạn).
+  Chưa chạy lại `schema.sql` thì thẻ tạm tính từ dữ liệu đã tải (khoảng 6 tháng gần nhất).
 
 ## Mới ở v5.5 — Chi tiết nhân sự theo dự án và tác vụ
 
