@@ -41,6 +41,7 @@ Ghi chú:
 - Khung chi tiết giai đoạn (bấm vào ô giai đoạn ở tab Dự án): **rê chuột vào tên nhân sự** → thẻ tác vụ của người đó trong giai đoạn
   (Tác vụ · Giờ · %; tăng ca màu xanh ngọc, ghi "Tăng ca · tác vụ"; chân thẻ: người đó chiếm bao nhiêu % tổng giờ giai đoạn).
   Chưa chạy lại `schema.sql` thì thẻ tạm tính từ dữ liệu đã tải (khoảng 6 tháng gần nhất).
+- Khi bấm xem chi tiết một giai đoạn: dòng dự án và khung chi tiết được bao bằng viền teal mảnh bo góc, tách khỏi phần còn lại.
 
 ## Mới ở v5.5 — Chi tiết nhân sự theo dự án và tác vụ
 

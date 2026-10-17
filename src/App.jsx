@@ -23,6 +23,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
        gom một dòng cuối. Bỏ ô lọc Dự án / Giai đoạn chung ở đầu trang.
      · Khung chi tiết giai đoạn: rê chuột vào tên nhân sự → thẻ tác vụ của người đó trong giai đoạn (Tác vụ · Giờ · %).
        Cần chạy lại supabase/schema.sql (mục 14 trả thêm "et"); chưa chạy thì tạm tính từ dữ liệu đã tải.
+     · Giai đoạn đang xem chi tiết: viền teal mảnh bo góc bao trọn dòng dự án + khung chi tiết.
    Mới ở v5.5 — Phân bổ nhân sự, chi tiết một người: thêm cột % thời gian theo dự án; rê chuột vào dự án hiện thẻ
    các tác vụ người đó làm trong dự án (giờ, % trên tổng giờ của người đó ở dự án; dòng tăng ca ghi "Tăng ca · tác vụ"),
    phần người đó chiếm trong tổng giờ dự án của kỳ, và giai đoạn.
@@ -4945,7 +4946,7 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
   const line = (r) => {
     const dim = selProj && r.p.id !== selProj, focus = selProj && r.p.id === selProj;
     const out = [(
-      <tr key={r.p.id} className={`group border-b border-slate-800 last:border-0 ${dim ? "opacity-25 hover:opacity-60" : ""} ${focus ? "bg-[#0f1a30]" : r.p.urgent ? "bg-rose-500/[.035]" : ""}`}>
+      <tr key={r.p.id} className={`group border-b border-slate-800 ${dim ? "opacity-25 hover:opacity-60" : ""} ${focus ? "bg-[#0f1a30]" : r.p.urgent ? "bg-rose-500/[.035]" : ""}`}>
         <td className="relative whitespace-nowrap py-2.5 pl-2 pr-2.5 text-sm text-slate-100">
           {r.p.urgent && <span className="absolute bottom-1.5 left-0 top-1.5 w-[3px] rounded-sm bg-rose-500" />}
           <button onClick={() => toggleUrgent(r.p)} title={r.p.urgent ? "Bỏ đánh dấu Urgent" : "Đánh dấu Urgent — đưa dự án lên đầu"}
@@ -4969,7 +4970,7 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
     if (focus) {
       const info = buildPhaseInfo(detail.get(sel), selCell, ctx);
       out.push(
-        <tr key={`${r.p.id}-detail`} className="border-b border-slate-800">
+        <tr key={`${r.p.id}-detail`}>
           <td colSpan={phases.length + 4} className="bg-[#081022] p-0">
             {info ? <PhaseDetail cell={selCell} info={info} partial={partial} onClose={() => setSel(null)} />
               : <div className="relative p-4 text-sm text-slate-500">
@@ -4980,7 +4981,12 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
         </tr>
       );
     }
-    return out;
+    /* v5.6 — mỗi dự án một <tbody>; dự án đang mở chi tiết có viền teal mảnh bo góc bao trọn dòng dự án + khung chi tiết */
+    return (
+      <tbody key={r.p.id} className={focus ? "rounded-[10px] outline outline-1 -outline-offset-1 outline-teal-700" : undefined}>
+        {out}
+      </tbody>
+    );
   };
   const PKpi = ({ l, v, cls = "text-slate-50" }) => (
     <div className="bg-slate-900 px-3 py-2.5">
@@ -5029,12 +5035,10 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
               <th className="whitespace-nowrap px-2.5 py-2 text-center font-normal" style={{ width: "12%" }}>Tình trạng</th>
             </tr>
           </thead>
-          <tbody>
-            {active.filter((r) => r.p.urgent).map(line)}
-            {urgentIdle.map(line)}
-            {active.filter((r) => !r.p.urgent).map(line)}
-            {showIdle && idle.map(line)}
-          </tbody>
+          {active.filter((r) => r.p.urgent).map(line)}
+          {urgentIdle.map(line)}
+          {active.filter((r) => !r.p.urgent).map(line)}
+          {showIdle && idle.map(line)}
         </table>
       </div>
       {active.length === 0 && urgentIdle.length === 0 && !showIdle && <p className="px-2.5 pt-2 text-sm text-slate-500">Chưa dự án nào có giờ công đã gửi.</p>}
