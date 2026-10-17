@@ -25,6 +25,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
        Cần chạy lại supabase/schema.sql (mục 14 trả thêm "et"); chưa chạy thì tạm tính từ dữ liệu đã tải.
      · Giai đoạn đang xem chi tiết: viền teal mảnh bo góc bao trọn dòng dự án + khung chi tiết.
      · Bảng "Tăng ca theo tác vụ" trong khung chi tiết mặc định thu gọn (chỉ hiện số tổng) — bấm tiêu đề để mở.
+       Bảng không hiện hệ số / giờ quy đổi (vẫn có trong file Excel); cột "Trong đó CN / lễ" chỉ hiện khi có giờ tăng ca CN / lễ.
    Mới ở v5.5 — Phân bổ nhân sự, chi tiết một người: thêm cột % thời gian theo dự án; rê chuột vào dự án hiện thẻ
    các tác vụ người đó làm trong dự án (giờ, % trên tổng giờ của người đó ở dự án; dòng tăng ca ghi "Tăng ca · tác vụ"),
    phần người đó chiếm trong tổng giờ dự án của kỳ, và giai đoạn.
@@ -4732,16 +4733,15 @@ const OtByTaskTable = ({ info }) => {
         className="-mx-2 flex min-h-[44px] items-center gap-2 rounded-md px-2 text-left hover:bg-slate-800/50">
         {open ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
         <span className="text-[11px] uppercase tracking-wider text-slate-400">Tăng ca theo tác vụ</span>
-        <span className="text-[12px] text-slate-500">· {info.otByTask.length} tác vụ · <span className="font-mono text-teal-400">{fmtH(info.ot)} h</span> · quy đổi <span className="font-mono text-slate-300">{fmtH(info.otW)} h</span></span>
+        <span className="text-[12px] text-slate-500">· {info.otByTask.length} tác vụ · <span className="font-mono text-teal-400">{fmtH(info.ot)} h</span></span>
       </button>
       {open && <table className="mt-1 w-full text-[13px]">
         <thead>
           <tr className="border-b border-slate-800 text-[11.5px] text-slate-500">
             <th className="py-1.5 pr-3 text-left font-medium">Tác vụ</th>
-            {bands.map((b) => <th key={b.id} className="px-2 py-1.5 text-right font-medium text-teal-400">{b.label}{b.rate != null && <span className="ml-1 text-slate-500">×{fmtH(b.rate)}</span>}</th>)}
-            <th className="px-2 py-1.5 text-right font-medium" title="Phần giờ rơi vào Chủ nhật hoặc ngày lễ (đã gồm trong các cột khung giờ)">Trong đó CN / lễ</th>
-            <th className="px-2 py-1.5 text-right font-medium">Tổng tăng ca</th>
-            <th className="py-1.5 pl-2 text-right font-medium" title="Giờ × hệ số — dùng tính chi phí dự án">Giờ quy đổi</th>
+            {bands.map((b) => <th key={b.id} className="px-2 py-1.5 text-right font-medium text-teal-400">{b.label}</th>)}
+            {sp > 0 && <th className="px-2 py-1.5 text-right font-medium" title="Phần giờ rơi vào Chủ nhật hoặc ngày lễ (đã gồm trong các cột khung giờ)">Trong đó CN / lễ</th>}
+            <th className="py-1.5 pl-2 text-right font-medium">Tổng tăng ca</th>
           </tr>
         </thead>
         <tbody>
@@ -4749,9 +4749,8 @@ const OtByTaskTable = ({ info }) => {
             <tr key={x.forId || "_"} className={`border-b border-slate-800/70 ${x.forId ? "" : "text-slate-500"}`}>
               <td className={`py-1.5 pr-3 ${x.forId ? "text-slate-200" : ""}`}>{x.name}</td>
               {bands.map((b) => <td key={b.id} className="px-2 py-1.5 text-right font-mono">{x.b[b.id] ? fmtH(x.b[b.id]) : ""}</td>)}
-              <td className="px-2 py-1.5 text-right font-mono">{x.special ? fmtH(x.special) : ""}</td>
-              <td className="px-2 py-1.5 text-right font-mono text-teal-300">{fmtH(x.h)}</td>
-              <td className="py-1.5 pl-2 text-right font-mono text-slate-100">{fmtH(x.w)}</td>
+              {sp > 0 && <td className="px-2 py-1.5 text-right font-mono">{x.special ? fmtH(x.special) : ""}</td>}
+              <td className="py-1.5 pl-2 text-right font-mono text-teal-300">{fmtH(x.h)}</td>
             </tr>
           ))}
         </tbody>
@@ -4759,9 +4758,8 @@ const OtByTaskTable = ({ info }) => {
           <tr className="text-slate-400">
             <td className="py-1.5 pr-3">Tổng</td>
             {bands.map((b) => <td key={b.id} className="px-2 py-1.5 text-right font-mono">{fmtH(col(b.id))}</td>)}
-            <td className="px-2 py-1.5 text-right font-mono">{sp ? fmtH(sp) : ""}</td>
-            <td className="px-2 py-1.5 text-right font-mono text-teal-300">{fmtH(info.ot)}</td>
-            <td className="py-1.5 pl-2 text-right font-mono text-slate-100">{fmtH(info.otW)}</td>
+            {sp > 0 && <td className="px-2 py-1.5 text-right font-mono">{fmtH(sp)}</td>}
+            <td className="py-1.5 pl-2 text-right font-mono text-teal-300">{fmtH(info.ot)}</td>
           </tr>
         </tfoot>
       </table>}
