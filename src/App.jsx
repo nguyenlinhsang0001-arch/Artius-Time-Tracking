@@ -15,7 +15,10 @@ import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus 
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v5.4
+   ARTIUS — Quản lý giờ công theo dự án · v5.5
+   Mới ở v5.5 — Phân bổ nhân sự, chi tiết một người: thêm cột % thời gian theo dự án; rê chuột vào dự án hiện thẻ
+   các tác vụ người đó làm trong dự án (giờ, % trên tổng giờ của người đó ở dự án; dòng tăng ca ghi "Tăng ca · tác vụ"),
+   phần người đó chiếm trong tổng giờ dự án của kỳ, và giai đoạn.
    Mới ở v5.4 — "Phân bổ giờ công theo nhân sự" (Theo người): chi tiết khi bấm một người chỉ còn chữ + số
    (dòng Giờ chuẩn · OT · cố gắng, rồi mỗi dự án một dòng tên — giờ), bỏ các thanh màu nhỏ; thanh tải có khe tách
    nhẹ giữa các khúc Giờ chuẩn / OT / cố gắng.
@@ -154,7 +157,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v5.4";
+const APP_VERSION = "v5.5";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -4415,7 +4418,9 @@ function Dashboard({ cfg, saveCfg, flash }) {
             right={<span className="flex items-center gap-1.5 text-xs text-slate-500"><span className="inline-block h-3 border-l-2 border-dashed border-amber-400" />Giờ chuẩn của kỳ: <span className="font-mono text-amber-400">{fmtH(stdPeriod)} h</span></span>}>
             <StaffAllocation matrix={agg.matrix} otByEmp={agg.otByEmp} effortByEmp={agg.effortByEmp} std={stdPeriod} cfg={cfg}
               staff={fProj === "all" && fPhase === "all" ? cfg.employees.filter((e) => matchEmp(e.id)) : []}
-              empName={empName} projMapById={projMapById} />
+              empName={empName} projMapById={projMapById} detail={agg.detail}
+              projDetail={data.detail.filter((d) => fPhase === "all" || (d.projectId !== NO_PROJECT && !isLeaveTask(d.taskId) && (d.phaseId || DEFAULT_PHASE) === fPhase))}
+              taskLabel={taskLabel} />
           </Panel>
         </>
       )}
@@ -4960,6 +4965,15 @@ function ProjectProgress({ cfg, fProj, dataTick, saveCfg, flash }) {
      cuối hàng là tổng, % tải và số dự án (≥ 3 dự án tô vàng); cuối cột là tổng giờ từng dự án.
    Ngưỡng: Quá tải khi tổng giờ > cfg.allocOver % giờ chuẩn kỳ (mặc định 110); Thiếu giờ khi giờ chuẩn < cfg.allocUnder % (mặc định 90).
    Chỉnh ở Thiết lập. Nhân sự chưa chấm giờ nào trong kỳ vẫn hiện (khi không lọc theo dự án / giai đoạn) để thấy ai thiếu. */
+/* v5.5 — làm tròn % sao cho tổng đúng 100 (phương pháp phần dư lớn nhất) */
+const pct100 = (vals) => {
+  const t = vals.reduce((a, v) => a + v, 0);
+  if (!t) return vals.map(() => 0);
+  const raw = vals.map((v) => (v / t) * 100), out = raw.map(Math.floor);
+  let left = 100 - out.reduce((a, v) => a + v, 0);
+  raw.map((v, i) => [v - out[i], i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if (left > 0) { out[i] += 1; left -= 1; } });
+  return out;
+};
 const ALLOC_PAL = ["#2dd4bf", "#f59e0b", "#60a5fa", "#a78bfa", "#f472b6", "#34d399", "#fb923c", "#38bdf8", "#c084fc", "#facc15", "#4ade80", "#f87171"];
 const allocLimits = (cfg) => ({
   over: Math.max(100, Number(cfg?.allocOver) || 110),
@@ -4970,8 +4984,28 @@ const ALLOC_ST = {
   lo: ["Thiếu giờ", "border-amber-900 bg-amber-950/70 text-amber-300"],
   ok: ["Bình thường", "border-teal-900 bg-teal-950 text-teal-300"],
 };
-function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empName, projMapById }) {
+function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empName, projMapById, detail = [], projDetail = [], taskLabel }) {
   const [view, setView] = useState("people");   // "people" | "matrix"
+  const [tip, setTip] = useState(null);         // v5.5: { eid, k, x, y } — thẻ khi rê chuột vào dự án trong phần chi tiết
+  /* v5.5 — tác vụ theo người × dự án (theo kỳ và bộ lọc), và tổng giờ từng dự án trong kỳ (mọi nhân sự, không theo bộ lọc bộ phận / tên) */
+  const byEP = useMemo(() => {
+    const m = new Map();
+    for (const d of detail) {
+      const k = `${d.empId}|${isLeaveTask(d.taskId) ? NO_PROJECT : d.projectId}`;
+      const o = m.get(k) || { tasks: new Map(), phases: new Set() };
+      const ot = isOtId(d.taskId);
+      const lbl = ot ? `Tăng ca · ${d.otFor ? taskLabel(d.otFor) : "chưa rõ tác vụ"}` : taskLabel(d.taskId);
+      const t = o.tasks.get(lbl) || { h: 0, ot }; t.h += d.hours; o.tasks.set(lbl, t);
+      if (d.projectId !== NO_PROJECT && !isLeaveTask(d.taskId)) o.phases.add(d.phaseId || DEFAULT_PHASE);
+      m.set(k, o);
+    }
+    return m;
+  }, [detail, taskLabel]);
+  const projTot = useMemo(() => {
+    const m = new Map();
+    for (const d of projDetail) { const k = isLeaveTask(d.taskId) ? NO_PROJECT : d.projectId; m.set(k, (m.get(k) || 0) + d.hours); }
+    return m;
+  }, [projDetail]);
   const [fSt, setFSt] = useState("all");        // all | hi | lo | ok
   const [sort, setSort] = useState("load");     // load | extra | name
   const [open, setOpen] = useState(() => new Set());
@@ -5097,15 +5131,22 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
                     {op && (
                       <div className="bg-slate-950/40 px-3 pb-3 pt-1.5 md:pl-[232px] md:pr-4">
                         {/* v5.4: chi tiết chỉ bằng chữ + số, không vẽ thanh — đỡ rối mắt */}
-                        <div className="max-w-md text-[13px]">
+                        <div className="max-w-xl text-[13px]">
                           <div className="py-1 text-slate-500">Giờ chuẩn {fmtH(x.s)} · OT {fmtH(x.o)} · cố gắng {fmtH(x.c)}</div>
-                          {x.mm.size === 0 ? <div className="py-1 text-slate-500">Chưa chấm giờ nào trong kỳ.</div>
-                            : cols.filter((k) => x.mm.get(k)).sort((a, b) => x.mm.get(b) - x.mm.get(a)).map((k) => (
-                              <div key={k} className="flex items-baseline justify-between gap-4 py-0.5">
-                                <span className="truncate text-slate-200" title={name(k)}>{k === NO_PROJECT ? "" : `${code(k)} · `}{name(k)}</span>
-                                <span className="shrink-0 font-mono text-slate-100">{fmtH(x.mm.get(k))} h</span>
+                          {x.mm.size === 0 ? <div className="py-1 text-slate-500">Chưa chấm giờ nào trong kỳ.</div> : (<>
+                            <div className="grid grid-cols-[minmax(0,1fr)_72px_52px] gap-3 py-0.5 text-[10.5px] uppercase tracking-wider text-slate-600">
+                              <span>Dự án</span><span className="text-right">Giờ</span><span className="text-right">%</span>
+                            </div>
+                            {(() => { const ks = cols.filter((k) => x.mm.get(k)).sort((a, b) => x.mm.get(b) - x.mm.get(a)), pc = pct100(ks.map((k) => x.mm.get(k))); return ks.map((k, i) => (
+                              /* v5.5: rê chuột vào dự án → thẻ tác vụ của người này trong dự án */
+                              <div key={k} className="-mx-1.5 grid cursor-default grid-cols-[minmax(0,1fr)_72px_52px] items-baseline gap-3 rounded-md px-1.5 py-0.5 hover:bg-slate-800/70"
+                                onMouseMove={(e) => setTip({ eid: x.eid, k, x: e.clientX, y: e.clientY })} onMouseLeave={() => setTip(null)}>
+                                <span className="truncate text-slate-200">{k === NO_PROJECT ? "" : `${code(k)} · `}{name(k)}</span>
+                                <span className="text-right font-mono text-slate-100">{fmtH(x.mm.get(k))} h</span>
+                                <span className="text-right font-mono text-slate-400">{pc[i]}%</span>
                               </div>
-                            ))}
+                            )); })()}
+                          </>)}
                         </div>
                       </div>
                     )}
@@ -5116,6 +5157,30 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
           ))}
         </div>
       )}
+
+      {tip && (() => {
+        const o = byEP.get(`${tip.eid}|${tip.k}`), ph = matrix.get(tip.eid)?.get(tip.k) || 0;
+        if (!o || !ph) return null;
+        const tasks = [...o.tasks.entries()].sort((a, b) => (a[1].ot - b[1].ot) || b[1].h - a[1].h);
+        const pt = projTot.get(tip.k) || 0;
+        const W = 360, left = Math.min(window.innerWidth - W - 12, tip.x + 14), top = Math.min(window.innerHeight - 40 - (tasks.length + 3) * 24, tip.y + 14);
+        return (
+          <div className="pointer-events-none fixed z-50 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-[12.5px] shadow-2xl" style={{ left, top, width: W }}>
+            <div className="grid grid-cols-[minmax(0,1fr)_52px_40px] gap-2 pb-1 text-[10.5px] uppercase tracking-wider text-slate-600"><span>Tác vụ</span><span className="text-right">Giờ</span><span className="text-right">%</span></div>
+            {(() => { const pc = pct100(tasks.map(([, t]) => t.h)); return tasks.map(([lbl, t], i) => (
+              <div key={lbl} className="grid grid-cols-[minmax(0,1fr)_52px_40px] gap-2 py-0.5">
+                <span className={`truncate ${t.ot ? "text-teal-400" : "text-slate-100"}`}>{lbl}</span>
+                <span className="text-right font-mono text-slate-200">{fmtH(t.h)}</span>
+                <span className="text-right font-mono text-slate-400">{pc[i]}%</span>
+              </div>
+            )); })()}
+            <div className="mt-1.5 grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 border-t border-slate-800 pt-1.5">
+              {pt > 0 && <><span className="text-slate-500">Chiếm trong tổng giờ dự án</span><span className="text-right font-mono text-slate-100">{Math.round((ph / pt) * 100)}% <span className="text-slate-600">/ {fmtH(pt)} h</span></span></>}
+              {o.phases.size > 0 && <><span className="text-slate-500">Giai đoạn</span><span className="text-right text-slate-100">{[...o.phases].sort().map((p) => phaseLabel(p)).join(", ")}</span></>}
+            </div>
+          </div>
+        );
+      })()}
 
       {view === "matrix" && list.length > 0 && (() => {
         const maxV = Math.max(1, ...list.flatMap((x) => [...x.mm.values()]));

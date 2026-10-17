@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v5.4 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v5.5 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v5.4`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v5.5`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,14 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v5.5 — Chi tiết nhân sự theo dự án và tác vụ
+
+Chỉ đổi giao diện, **không cần chạy lại `schema.sql`**.
+
+- Bấm một người ở "Phân bổ giờ công theo nhân sự": danh sách dự án có thêm cột **%** (phần thời gian của người đó cho từng dự án, cộng đủ 100%).
+- **Rê chuột vào một dự án** → thẻ hiện các **tác vụ** người đó làm trong dự án: giờ và % (trên tổng giờ của người đó ở dự án này);
+  dòng tăng ca ghi "Tăng ca · tác vụ" màu xanh ngọc. Cuối thẻ: người đó chiếm bao nhiêu % tổng giờ dự án trong kỳ, và giai đoạn.
 
 ## Mới ở v5.4 — Phân bổ nhân sự gọn hơn
 
