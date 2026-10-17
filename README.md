@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v5.5 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v5.6 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v5.5`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v5.6`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,19 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v5.6 — Dashboard tách tab Dự án | Nhân sự
+
+Không đổi database — **bỏ qua bước 1** (không cần chạy lại `schema.sql`), chỉ upload folder lên GitHub.
+
+- Đầu Dashboard có nút chuyển **Dự án | Nhân sự** (app nhớ tab đang mở).
+- **Tab Dự án** — tiến độ giờ đã dùng **từ trước tới nay** so với dự kiến, không phụ thuộc kỳ. Bộ lọc riêng:
+  Tất cả / Vượt / Sắp vượt / Bình thường (kèm số đếm) và ô tìm dự án. KPI: dự án đang mở, vượt dự kiến, sắp vượt (≥ 80%), Urgent.
+  Thêm cột **Người tuần này** (số người có giờ đã gửi vào dự án trong tuần hiện tại).
+- **Tab Nhân sự** — mọi số liệu theo kỳ. Chọn nhanh **Tuần này / 7 ngày qua / Tháng này** hoặc chọn ngày trên lịch (đổi kỳ là tính lại ngay),
+  lọc bộ phận, tìm nhân sự, Tải lại, Excel. 6 KPI: tổng giờ công / công suất, OT, giờ cố gắng, quá tải, thiếu giờ, chưa chấm.
+  Người chưa chấm giờ nào trong kỳ gom thành một dòng ở cuối, không tính vào Quá tải / Thiếu giờ.
+- Bỏ ô lọc Dự án / Giai đoạn chung ở đầu trang (trước đây chỉ tác động một phần, dễ gây hiểu nhầm).
 
 ## Mới ở v5.5 — Chi tiết nhân sự theo dự án và tác vụ
 

@@ -15,7 +15,12 @@ import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus 
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v5.5
+   ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v5.6 — Dashboard tách hai tab "Dự án | Nhân sự", mỗi tab có bộ lọc riêng:
+     · Dự án: tiến độ từ trước tới nay (không theo kỳ); lọc Vượt / Sắp vượt / Bình thường, tìm dự án; KPI đang mở / vượt /
+       sắp vượt / Urgent; thêm cột "Người tuần này".
+     · Nhân sự: kỳ chọn nhanh Tuần này / 7 ngày qua / Tháng này hoặc lịch, bộ phận, tìm người, Excel; 6 KPI; người chưa chấm
+       gom một dòng cuối. Bỏ ô lọc Dự án / Giai đoạn chung ở đầu trang.
    Mới ở v5.5 — Phân bổ nhân sự, chi tiết một người: thêm cột % thời gian theo dự án; rê chuột vào dự án hiện thẻ
    các tác vụ người đó làm trong dự án (giờ, % trên tổng giờ của người đó ở dự án; dòng tăng ca ghi "Tăng ca · tác vụ"),
    phần người đó chiếm trong tổng giờ dự án của kỳ, và giai đoạn.
@@ -157,7 +162,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v5.5";
+const APP_VERSION = "v5.6";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -941,15 +946,19 @@ const btnDanger = `${btnBase} border border-rose-900 bg-rose-950 text-rose-300 h
 const iconBtn = "flex h-9 w-9 items-center justify-center rounded-md border border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-100";
 const GUT = 36; // bằng đúng bề rộng iconBtn — giữ ô Dự án và ô Hạng mục thẳng hàng nhau
 
-const Panel = ({ title, right, children }) => (
+const Panel = ({ title, sub, right, flush = false, children }) => (
   <section className="rounded-xl border border-slate-800 bg-slate-900">
     {title && (
-      <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2.5">
-        <h3 className="text-sm font-medium text-slate-200">{title}</h3>
+      <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-2.5">
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium text-slate-200">{title}</h3>
+          {sub && <div className="mt-0.5 text-[11.5px] text-slate-500">{sub}</div>}
+        </div>
         {right}
       </div>
     )}
-    <div className="p-3 md:p-4">{children}</div>
+    {/* v5.6: flush = phần thân không đệm, để thanh công cụ / KPI chạy sát mép khung */}
+    <div className={flush ? "" : "p-3 md:p-4"}>{children}</div>
   </section>
 );
 const Kpi = ({ label, value, unit }) => (
@@ -4100,8 +4109,11 @@ function Dashboard({ cfg, saveCfg, flash }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [fDept, setFDept] = useState("all");   // lọc bộ phận
-  const [fProj, setFProj] = useState("all");   // lọc dự án
-  const [fPhase, setFPhase] = useState("all"); // lọc giai đoạn
+  /* v5.6 — Dashboard tách hai tab: "Dự án" (tiến độ từ trước tới nay, không theo kỳ) và "Nhân sự" (theo kỳ).
+     Bỏ ô lọc Dự án / Giai đoạn chung ở đầu trang — mỗi tab có bộ lọc riêng, chỉ tác động lên chính tab đó. */
+  const fProj = "all", fPhase = "all";
+  const [dTab, setDTab0] = useState(() => { try { return localStorage.getItem("artius.dashTab") === "proj" ? "proj" : "ppl"; } catch { return "ppl"; } });
+  const setDTab = (t) => { setDTab0(t); try { localStorage.setItem("artius.dashTab", t); } catch { /* bỏ qua */ } };
   const [q, setQ] = useState("");              // tìm theo tên nhân sự
   const [rebuilding, setRebuilding] = useState(false);
 
@@ -4115,8 +4127,16 @@ function Dashboard({ cfg, saveCfg, flash }) {
     for (let d = from; d <= to; d = fmt(addDays(parseD(d), 1))) t += minHoursFor(d, hoursCfg, holidaySet) || 0;
     return t;
   }, [from, to, hoursCfg, holidaySet]);
-  const clearFilters = () => { setFDept("all"); setFProj("all"); setFPhase("all"); setQ(""); };
-  const hasFilter = fDept !== "all" || fProj !== "all" || fPhase !== "all" || q.trim() !== "";
+  const clearFilters = () => { setFDept("all"); setQ(""); };
+  const hasFilter = fDept !== "all" || q.trim() !== "";
+  // v5.6: chọn nhanh kỳ — Tuần này (T2 → hôm nay), 7 ngày qua, Tháng này (ngày 1 → hôm nay)
+  const today = fmt(now);
+  const QUICK = [
+    ["week", "Tuần này", fmt(mondayOf(now)), today],
+    ["7d", "7 ngày qua", fmt(addDays(now, -6)), today],
+    ["month", "Tháng này", fmt(firstOfMonth(now)), today],
+  ];
+  const quickOn = QUICK.find(([, , a, b]) => a === from && b === to)?.[0];
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -4142,7 +4162,24 @@ function Dashboard({ cfg, saveCfg, flash }) {
     setData({ detail, status, yms }); setLoading(false);
   }, [from, to, cfg.employees]);
 
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // v5.6: đổi kỳ (chọn nhanh hoặc lịch) là tính lại ngay — không cần bấm "Cập nhật"
+  useEffect(() => { load(); }, [from, to]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* v5.6 — số người có giờ (đã gửi) vào từng dự án trong tuần hiện tại (T2 → CN) — cột "Người tuần này" ở tab Dự án */
+  const weekPeople = useMemo(() => {
+    const m = new Map();
+    const mon = fmt(mondayOf(new Date())), sun = fmt(addDays(mondayOf(new Date()), 6));
+    for (const e of cfg.employees) for (const ym of new Set([ymOf(mon), ymOf(sun)])) {
+      const d = dbTsSent(e.id, ym);
+      if (!d?.rows) continue;
+      for (const r of d.rows) {
+        if (r.projectId === NO_PROJECT || isLeaveTask(r.taskId)) continue;
+        if (!Object.entries(r.days || {}).some(([k, h]) => Number(h) && k >= mon && k <= sun)) continue;
+        const st = m.get(r.projectId) || new Set(); st.add(e.id); m.set(r.projectId, st);
+      }
+    }
+    return m;
+  }, [cfg.employees, dataTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // v1.9: có dòng bảng công vừa đổi trên server thì tính lại ngay, không cần bấm Tải lại
   const firstTick = useRef(dataTick);
@@ -4337,96 +4374,69 @@ function Dashboard({ cfg, saveCfg, flash }) {
       .sort((a, b) => b.total - a.total);
   }, [agg, projMapById]);
 
+  const nProjActive = cfg.projects.filter((p) => p.active).length;
+  const segBtn = (on) => `${CTRL} whitespace-nowrap px-3 text-[13px] ${on ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`;
   return (
     <div className="space-y-3 md:space-y-4">
-      <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div className="md:w-96">
-            <DateRangeField from={from} to={to} onChange={setRange} />
-          </div>
-          {/* nhóm hành động: luôn ép sát mép phải của khung, thẳng hàng đáy với ô ngày */}
-          <div className="flex items-center gap-2 md:gap-3">
-            {loading && <Loader2 className="animate-spin text-slate-500" size={16} />}
-            <button onClick={load} className={`flex-1 md:flex-none ${btnGhost}`}>Cập nhật</button>
-            <button onClick={rebuild} disabled={rebuilding} title="Kéo lại bản mới nhất từ lưu trữ, để thấy bảng công người khác vừa gửi"
-              className={`flex-1 md:flex-none ${btnGhost} disabled:opacity-40`}>
-              {rebuilding ? <Loader2 className="animate-spin" size={15} /> : <RotateCcw size={15} />} Tải lại
-            </button>
-            <button onClick={exportExcel} className={`flex-1 md:flex-none ${btnPrimary}`}><Download size={15} /> Xuất Excel</button>
-          </div>
-        </div>
-
-        {/* Bộ lọc — thu hẹp báo cáo theo bộ phận, dự án hoặc một người cụ thể. Áp cho cả biểu đồ lẫn file Excel.
-            Dùng flex + flexBasis inline thay cho grid-cols giá trị tuỳ chỉnh, vì lớp đó không có hiệu lực ở đây. */}
-        <div className="mt-3 flex flex-col gap-2 border-t border-slate-800 pt-3 md:flex-row md:items-center md:gap-2.5">
-          <div className="min-w-0" style={{ flexBasis: "20%", flexGrow: 1 }}>
-            <select value={fDept} onChange={(e) => setFDept(e.target.value)} className={selectCls}>
-              <option value="all">Tất cả bộ phận</option>
-              {DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </div>
-          <div className="min-w-0" style={{ flexBasis: "26%", flexGrow: 1 }}>
-            <select value={fProj} onChange={(e) => setFProj(e.target.value)} className={selectCls}>
-              <option value="all">Tất cả dự án</option>
-              {cfg.projects.map((p) => <option key={p.id} value={p.id}>{p.code ? `[${p.code}] ` : ""}{p.name}</option>)}
-            </select>
-          </div>
-          <div className="min-w-0" style={{ flexBasis: "22%", flexGrow: 1 }}>
-            <select value={fPhase} onChange={(e) => setFPhase(e.target.value)} className={selectCls}>
-              <option value="all">Tất cả giai đoạn</option>
-              {PHASES.map((p) => <option key={p.id} value={p.id}>{p.id} · {p.name}</option>)}
-            </select>
-          </div>
-          <div className="relative min-w-0" style={{ flexBasis: "26%", flexGrow: 1 }}>
-            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm tên hoặc mã nhân sự" className={`pl-9 ${inputCls}`} />
-          </div>
-          <button onClick={clearFilters} disabled={!hasFilter} className={`shrink-0 whitespace-nowrap ${btnGhost} disabled:opacity-30`}><X size={14} /> Bỏ lọc</button>
-        </div>
+      {/* v5.6 — chuyển tab Dự án | Nhân sự */}
+      <div className="flex rounded-xl border border-slate-800 bg-slate-900 p-1 md:inline-flex">
+        {[["proj", "Dự án", nProjActive], ["ppl", "Nhân sự", cfg.employees.length]].map(([k, l, n]) => (
+          <button key={k} onClick={() => setDTab(k)} aria-pressed={dTab === k}
+            className={`${CTRL} flex flex-1 items-center justify-center gap-2 rounded-lg px-6 text-sm font-medium md:flex-none ${dTab === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>
+            {l}<span className={`rounded-full px-1.5 font-mono text-[11px] ${dTab === k ? "bg-teal-900/60 text-teal-300" : "bg-slate-800 text-slate-500"}`}>{n}</span>
+          </button>
+        ))}
       </div>
 
-      {agg && (
-        <>
-          {/* 6 ô chia đều một hàng ngang; flexBasis 0 + grow 1 để mọi ô rộng bằng nhau bất kể độ dài chữ */}
-          <div className="grid grid-cols-2 gap-2 md:flex md:gap-3">
-            {[
-              ["Tổng giờ công", agg.total.toFixed(1), "giờ"],
-              ["Trong đó OT", agg.otTotal.toFixed(1), "giờ"],
-              ["Giờ cố gắng", agg.effortTotal.toFixed(1), "giờ"],
-              ["Giờ vắng mặt", agg.leaveTotal.toFixed(1), "giờ"],
-              ["Dự án phát sinh", agg.projCount, ""],
-              ["Nhân sự đã chấm", agg.byEmp.size, ""],
-              ["Giờ TB / nhân sự", agg.byEmp.size ? (agg.total / agg.byEmp.size).toFixed(1) : "0", "giờ"],
-            ].map(([l, v, u]) => (
-              <div key={l} className="min-w-0" style={{ flexBasis: 0, flexGrow: 1 }}>
-                <Kpi label={l} value={v} unit={u} />
-              </div>
-            ))}
-          </div>
+      {dTab === "proj" && (
+        <Panel title="Tiến độ dự án" sub="Giờ đã dùng từ trước tới nay so với giờ dự kiến từng giai đoạn — không phụ thuộc kỳ" flush>
+          <ProjectProgress cfg={cfg} weekPeople={weekPeople} dataTick={dataTick} saveCfg={saveCfg} flash={flash} />
+        </Panel>
+      )}
 
-          {hasFilter && agg.detail.length === 0 && (
-            <div className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-8 text-center text-sm text-slate-400">
-              Không có giờ công nào khớp bộ lọc này. Nới bộ lọc hoặc chọn kỳ báo cáo khác.
+      {dTab === "ppl" && (
+        <Panel title="Nhân sự theo kỳ" flush
+          sub={<>{QUICK.find(([k]) => k === quickOn)?.[1] || "Kỳ tuỳ chọn"} · {dLabel(from)} – {dLabel(to)} · giờ chuẩn của kỳ <span className="font-mono text-amber-400">{fmtH(stdPeriod)} h</span></>}
+          right={loading ? <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} /> : null}>
+          {/* thanh công cụ của tab: kỳ, bộ phận, tìm người, tải lại, Excel — chỉ tác động lên tab Nhân sự */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
+            <div className="flex max-w-full overflow-x-auto rounded-md border border-slate-700">
+              {QUICK.map(([k, l, a, b]) => (
+                <button key={k} onClick={() => setRange(a, b)} className={segBtn(quickOn === k)}>{l}</button>
+              ))}
             </div>
-          )}
-
-          <Panel title="Tiến độ dự án — giờ đã dùng so với dự kiến" right={<ProgressLegend />}>
-            <ProjectProgress cfg={cfg} fProj={fProj} dataTick={dataTick} saveCfg={saveCfg} flash={flash} />
-          </Panel>
-
-          <Panel title="Phân bổ giờ công theo nhân sự"
-            right={<span className="flex items-center gap-1.5 text-xs text-slate-500"><span className="inline-block h-3 border-l-2 border-dashed border-amber-400" />Giờ chuẩn của kỳ: <span className="font-mono text-amber-400">{fmtH(stdPeriod)} h</span></span>}>
+            <div className="w-full sm:w-72"><DateRangeField from={from} to={to} onChange={setRange} /></div>
+            <div className="w-full sm:w-48">
+              <select value={fDept} onChange={(e) => setFDept(e.target.value)} className={selectCls} aria-label="Bộ phận">
+                <option value="all">Tất cả bộ phận</option>
+                {DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <div className="relative w-full sm:w-56">
+              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm nhân sự" className={`pl-9 ${inputCls}`} />
+            </div>
+            {hasFilter && <button onClick={clearFilters} className={`shrink-0 whitespace-nowrap ${btnGhost}`}><X size={14} /> Bỏ lọc</button>}
+            <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
+              <button onClick={rebuild} disabled={rebuilding} title="Kéo lại bản mới nhất từ lưu trữ, để thấy bảng công người khác vừa gửi"
+                className={`flex-1 sm:flex-none ${btnGhost} disabled:opacity-40`}>
+                {rebuilding ? <Loader2 className="animate-spin" size={15} /> : <RotateCcw size={15} />} Tải lại
+              </button>
+              <button onClick={exportExcel} className={`flex-1 sm:flex-none ${btnPrimary}`}><Download size={15} /> Excel</button>
+            </div>
+          </div>
+          {!agg ? <p className="px-4 py-6 text-sm text-slate-500">Đang tải…</p> : (
             <StaffAllocation matrix={agg.matrix} otByEmp={agg.otByEmp} effortByEmp={agg.effortByEmp} std={stdPeriod} cfg={cfg}
-              staff={fProj === "all" && fPhase === "all" ? cfg.employees.filter((e) => matchEmp(e.id)) : []}
+              staff={cfg.employees.filter((e) => matchEmp(e.id))}
               empName={empName} projMapById={projMapById} detail={agg.detail}
-              projDetail={data.detail.filter((d) => fPhase === "all" || (d.projectId !== NO_PROJECT && !isLeaveTask(d.taskId) && (d.phaseId || DEFAULT_PHASE) === fPhase))}
-              taskLabel={taskLabel} />
-          </Panel>
-        </>
+              projDetail={data.detail} taskLabel={taskLabel} />
+          )}
+        </Panel>
       )}
     </div>
   );
 }
+
 
 /* Biểu đồ gộp cho khối dự án: mỗi dự án là một cột chồng chia theo 4 giai đoạn,
    kèm mốc giờ dự kiến. Một hình trả lời được cả ba câu: dự án nào ngốn giờ,
@@ -4766,7 +4776,9 @@ const PhaseHoverCard = ({ cell, info, canOpen }) => {
    · v4.8: ô giai đoạn đang mở tô nền màu của giai đoạn + vạch trái, số giờ đậm; ô đã đóng chìm xuống (97%, chữ xám).
            Cờ Urgent (project.urgent, lưu trong thiết lập chung): rê chuột vào tên dự án → bấm cờ để bật/tắt;
            dự án Urgent có vạch đỏ + nhãn URGENT và luôn xếp lên đầu (trong nhóm vẫn xếp theo mức nguy cơ vượt). */
-function ProjectProgress({ cfg, fProj, dataTick, saveCfg, flash }) {
+function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
+  const [pf, setPf] = useState("all");   // v5.6: all | x (vượt) | w (sắp vượt) | ok
+  const [pq, setPq] = useState("");      // v5.6: tìm dự án theo mã / tên
   const usage = useUsage();
   const detailRaw = usePhaseDetail();
   const [showIdle, setShowIdle] = useState(false);
@@ -4802,8 +4814,8 @@ function ProjectProgress({ cfg, fProj, dataTick, saveCfg, flash }) {
   }), [cfg]);
 
   const phases = PHASES.filter((ph) => ph.active !== false);
-  const rows = cfg.projects
-    .filter((p) => p.active && (fProj === "all" || p.id === fProj))
+  const allRows = cfg.projects
+    .filter((p) => p.active)
     .map((p) => {
       const budgets = projBudgets(p);
       const u = used.get(p.id) || {};
@@ -4818,8 +4830,13 @@ function ProjectProgress({ cfg, fProj, dataTick, saveCfg, flash }) {
       for (const c of cells) if (c.open && c.b) { const v = c.pct || 0; if (worst == null || v > worst) { worst = v; worstPh = c.ph.id; } }
       const nOver = cells.filter((c) => c.open && c.b && c.h > c.b).length;
       const noOpen = !cells.some((c) => c.open);
-      return { p, cells, bt, ut, worst, worstPh, nOver, noOpen };
+      const L = noOpen ? "none" : pgLevel(worst);
+      const st = L === "over" ? "x" : L === "warn" ? "w" : L === "ok" ? "ok" : "none";
+      return { p, cells, bt, ut, worst, worstPh, nOver, noOpen, st };
     });
+  const pcnt = (k) => allRows.filter((r) => k === "all" || r.st === k).length;
+  const kw = pq.trim().toLowerCase();
+  const rows = allRows.filter((r) => (pf === "all" || r.st === pf) && (!kw || `${r.p.code || ""} ${r.p.name}`.toLowerCase().includes(kw)));
   const byUrgent = (a, b) => (b.p.urgent ? 1 : 0) - (a.p.urgent ? 1 : 0);
   const active = rows.filter((r) => r.ut > 0).sort((a, b) => byUrgent(a, b) || (b.worst ?? -1) - (a.worst ?? -1) || b.ut - a.ut);
   // v4.8: dự án Urgent chưa có giờ vẫn hiện ở đầu bảng (không bị gom vào dòng "chưa có giờ")
@@ -4835,7 +4852,7 @@ function ProjectProgress({ cfg, fProj, dataTick, saveCfg, flash }) {
   const selCell = sel ? findCell(sel) : null;
   const selProj = selCell ? sel.split("|")[0] : null;
   useEffect(() => { if (sel && !selCell) setSel(null); }, [sel, selCell]);
-  if (rows.length === 0) return <p className="text-sm text-slate-500">Chưa có dự án đang chấm công.</p>;
+  if (allRows.length === 0) return <p className="p-4 text-sm text-slate-500">Chưa có dự án đang chấm công.</p>;
 
   // đặt thẻ rê chuột cạnh con trỏ, lật sang trái / lên trên khi sát mép màn hình (đổi trực tiếp vị trí, không vẽ lại bảng)
   const placeCard = (e) => {
@@ -4900,6 +4917,10 @@ function ProjectProgress({ cfg, fProj, dataTick, saveCfg, flash }) {
         <td className="whitespace-nowrap px-2.5 py-2.5 text-center font-mono text-sm">
           <span className={totColor(r)}>{fmtH(r.ut)}</span><span className="text-slate-500"> / {fmtH(r.bt)} h</span>
         </td>
+        <td className="whitespace-nowrap px-2.5 py-2.5 text-center font-mono text-sm text-slate-300"
+          title={weekPeople?.get(r.p.id)?.size ? "Số người có giờ đã gửi vào dự án trong tuần này" : undefined}>
+          {weekPeople?.get(r.p.id)?.size || <span className="text-slate-700">—</span>}
+        </td>
         <td className="whitespace-nowrap px-2.5 py-2.5 text-center">{statusBadge(r)}</td>
       </tr>
     )];
@@ -4907,7 +4928,7 @@ function ProjectProgress({ cfg, fProj, dataTick, saveCfg, flash }) {
       const info = buildPhaseInfo(detail.get(sel), selCell, ctx);
       out.push(
         <tr key={`${r.p.id}-detail`} className="border-b border-slate-800">
-          <td colSpan={phases.length + 3} className="bg-[#081022] p-0">
+          <td colSpan={phases.length + 4} className="bg-[#081022] p-0">
             {info ? <PhaseDetail cell={selCell} info={info} partial={partial} onClose={() => setSel(null)} />
               : <div className="relative p-4 text-sm text-slate-500">
                   {detailRaw === undefined ? "Đang tải chi tiết…" : "Chưa có giờ công đã gửi vào giai đoạn này."}
@@ -4919,10 +4940,40 @@ function ProjectProgress({ cfg, fProj, dataTick, saveCfg, flash }) {
     }
     return out;
   };
+  const PKpi = ({ l, v, cls = "text-slate-50" }) => (
+    <div className="bg-slate-900 px-3 py-2.5">
+      <div className="text-[10.5px] uppercase tracking-wider text-slate-500">{l}</div>
+      <div className={`mt-0.5 font-mono text-lg font-semibold ${cls}`}>{v}</div>
+    </div>
+  );
   return (
     <div>
+      {/* v5.6 — KPI + bộ lọc riêng của tab Dự án */}
+      <div className="grid grid-cols-2 gap-px border-b border-slate-800 bg-slate-800 md:grid-cols-4">
+        <PKpi l="Dự án đang mở" v={allRows.length} />
+        <PKpi l="Vượt dự kiến" v={pcnt("x")} cls={pcnt("x") ? "text-rose-400" : "text-slate-50"} />
+        <PKpi l="Sắp vượt (≥ 80%)" v={pcnt("w")} cls={pcnt("w") ? "text-amber-400" : "text-slate-50"} />
+        <PKpi l="Urgent" v={allRows.filter((r) => r.p.urgent).length} cls={allRows.some((r) => r.p.urgent) ? "text-rose-400" : "text-slate-50"} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
+        <div className="flex max-w-full overflow-x-auto rounded-md border border-slate-700">
+          {[["all", "Tất cả"], ["x", "Vượt"], ["w", "Sắp vượt"], ["ok", "Bình thường"]].map(([k, l]) => (
+            <button key={k} onClick={() => setPf(k)}
+              className={`${CTRL} whitespace-nowrap px-3 text-[13px] ${pf === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>
+              {l}<span className="ml-1.5 font-mono text-slate-500">{pcnt(k)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="relative w-full sm:w-60">
+          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input value={pq} onChange={(e) => setPq(e.target.value)} placeholder="Tìm dự án" className={`pl-9 ${inputCls}`} />
+        </div>
+        <div className="sm:ml-auto"><ProgressLegend /></div>
+      </div>
+      <div className="p-3 md:p-4">
+      {rows.length === 0 ? <p className="px-2.5 text-sm text-slate-500">Không có dự án khớp bộ lọc.</p> : (<>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[960px] border-collapse">
+        <table className="w-full min-w-[1040px] border-collapse">
           <thead>
             <tr className="border-b border-slate-800 text-left text-[11px] uppercase tracking-wider text-slate-500">
               <th className="px-2.5 py-2 font-normal">Dự án</th>
@@ -4932,6 +4983,7 @@ function ProjectProgress({ cfg, fProj, dataTick, saveCfg, flash }) {
                 </th>
               ))}
               <th className="whitespace-nowrap px-2.5 py-2 text-center font-normal" style={{ width: "12%" }}>Giờ hiện tại / dự kiến</th>
+              <th className="whitespace-nowrap px-2.5 py-2 text-center font-normal" style={{ width: "7%" }}>Người tuần này</th>
               <th className="whitespace-nowrap px-2.5 py-2 text-center font-normal" style={{ width: "12%" }}>Tình trạng</th>
             </tr>
           </thead>
@@ -4949,6 +5001,8 @@ function ProjectProgress({ cfg, fProj, dataTick, saveCfg, flash }) {
           {showIdle ? "▲ Ẩn" : "▼ Hiện"} {idle.length} dự án đang mở nhưng chưa có giờ
         </button>
       )}
+      </>)}
+      </div>
       <div ref={cardRef} className="pointer-events-none fixed z-[60] w-[360px] rounded-xl border border-slate-700 bg-[#030a1a] px-3.5 py-3 shadow-[0_18px_40px_rgba(0,0,0,.6)]"
         style={{ display: hoverCell ? "block" : "none" }}>
         {hoverCell && <PhaseHoverCard cell={hoverCell} info={buildPhaseInfo(detail.get(hover), hoverCell, ctx)} canOpen />}
@@ -5013,7 +5067,7 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
   const empById = new Map((cfg.employees || []).map((e) => [e.id, e]));
   // mọi người cần hiện: có giờ trong kỳ + (nếu không lọc dự án / giai đoạn) người chưa chấm giờ nào
   const ids = new Set([...matrix.keys(), ...staff.map((e) => e.id)]);
-  const people = [...ids].map((eid) => {
+  const everyone = [...ids].map((eid) => {
     const mm = matrix.get(eid) || new Map();
     const t = [...mm.values()].reduce((a, v) => a + v, 0);
     const o = otByEmp.get(eid) || 0, c = effortByEmp.get(eid) || 0;
@@ -5022,7 +5076,10 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
     const e = empById.get(eid);
     return { eid, mm, t, s, o, c, st, dept: e?.dept || "Khác", role: e ? roleTitle(e.role) : "" };
   });
-  if (people.length === 0) return <p className="text-sm text-slate-500">Chưa có giờ công trong kỳ này.</p>;
+  // v5.6: người chưa chấm giờ nào trong kỳ tách riêng (gom một dòng cuối), không tính vào Quá tải / Thiếu giờ / Bình thường
+  const people = everyone.filter((x) => x.t > 0);
+  const zero = everyone.filter((x) => x.t === 0).sort((a, b) => empName(a.eid).localeCompare(empName(b.eid), "vi"));
+  if (everyone.length === 0) return <p className="px-4 py-6 text-sm text-slate-500">Không có nhân sự nào khớp bộ lọc.</p>;
   const colT = new Map();
   for (const x of people) for (const [k, v] of x.mm) colT.set(k, (colT.get(k) || 0) + v);
   const cols = [...colT.keys()].filter((k) => k !== NO_PROJECT).sort((a, b) => colT.get(b) - colT.get(a));
@@ -5036,8 +5093,8 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
   const cnt = (k) => people.filter((x) => k === "all" || x.st === k).length;
   const list = people.filter((x) => fSt === "all" || x.st === fSt)
     .sort(sort === "load" ? (a, b) => b.t - a.t : sort === "extra" ? (a, b) => (b.o + b.c) - (a.o + a.c) || b.t - a.t : (a, b) => empName(a.eid).localeCompare(empName(b.eid), "vi"));
-  const used = people.reduce((a, x) => a + x.t, 0), cap = people.length * std;
-  const free = people.reduce((a, x) => a + Math.max(0, std - x.s), 0);
+  const used = people.reduce((a, x) => a + x.t, 0), cap = everyone.length * std;
+  const otSum = people.reduce((a, x) => a + x.o, 0), cgSum = people.reduce((a, x) => a + x.c, 0);
   const toggle = (eid) => setOpen((s) => { const n = new Set(s); n.has(eid) ? n.delete(eid) : n.add(eid); return n; });
 
   const Kpi = ({ l, v, cls = "text-slate-50", sub }) => (
@@ -5053,18 +5110,20 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
   for (const x of list) { let g = groups.find((y) => y.dept === x.dept); if (!g) { g = { dept: x.dept, items: [] }; groups.push(g); } g.items.push(x); }
 
   return (
-    <div className="-m-3 md:-m-4">
-      <div className="grid grid-cols-2 gap-px border-b border-slate-800 bg-slate-800 md:grid-cols-5">
-        <Kpi l="Công suất kỳ" v={`${fmtH(cap)} h`} sub={`${people.length} người`} />
-        <Kpi l="Đã dùng" v={`${fmtH(used)} h`} sub={cap ? `${Math.round((used / cap) * 100)}%` : ""} />
+    <div>
+      {/* v5.6 — 6 KPI của tab Nhân sự */}
+      <div className="grid grid-cols-2 gap-px border-b border-slate-800 bg-slate-800 md:grid-cols-6">
+        <Kpi l="Tổng giờ công" v={fmtH(used)} sub={`/ ${fmtH(cap)} h`} />
+        <Kpi l="Trong đó OT" v={`${fmtH(otSum)} h`} cls="text-teal-400" />
+        <Kpi l="Giờ cố gắng" v={`${fmtH(cgSum)} h`} cls="text-violet-400" />
         <Kpi l={`Quá tải (>${lim.over}%)`} v={`${cnt("hi")} người`} cls={cnt("hi") ? "text-rose-400" : "text-slate-50"} />
-        <Kpi l={`Thiếu giờ chuẩn (<${lim.under}%)`} v={`${cnt("lo")} người`} cls={cnt("lo") ? "text-amber-400" : "text-slate-50"} />
-        <Kpi l="Còn trống có thể giao" v={`${fmtH(free)} h`} cls="text-teal-400" />
+        <Kpi l={`Thiếu giờ (<${lim.under}%)`} v={`${cnt("lo")} người`} cls={cnt("lo") ? "text-amber-400" : "text-slate-50"} />
+        <Kpi l="Chưa chấm" v={`${zero.length} người`} cls={zero.length ? "text-amber-400" : "text-slate-50"} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
         <div className="flex max-w-full overflow-x-auto rounded-md border border-slate-700">
-          {[["all", "Tất cả"], ["hi", "Quá tải"], ["lo", "Thiếu giờ"], ["ok", "Bình thường"]].map(([k, l]) => (
+          {[["all", "Đã chấm"], ["hi", "Quá tải"], ["lo", "Thiếu giờ"], ["ok", "Bình thường"]].map(([k, l]) => (
             <button key={k} onClick={() => setFSt(k)}
               className={`${CTRL} whitespace-nowrap px-3 text-[13px] ${fSt === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>
               {l}<span className="ml-1.5 font-mono text-slate-500">{cnt(k)}</span>
@@ -5086,7 +5145,7 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
         </div>
       </div>
 
-      {list.length === 0 && <p className="px-5 py-4 text-sm text-slate-500">Không có nhân sự nào ở nhóm này.</p>}
+      {list.length === 0 && <p className="px-5 py-4 text-sm text-slate-500">{people.length ? "Không có nhân sự nào ở nhóm này." : "Chưa ai có giờ công đã gửi trong kỳ này."}</p>}
 
       {view === "people" && list.length > 0 && (
         <div>
@@ -5234,6 +5293,13 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
           </div>
         );
       })()}
+
+      {fSt === "all" && zero.length > 0 && (
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-t border-slate-800 px-3 py-2.5 text-[13px] md:px-4">
+          <span className="whitespace-nowrap text-amber-400">Chưa chấm giờ nào · {zero.length} người:</span>
+          <span className="text-slate-400">{zero.map((x) => empName(x.eid)).join(", ")}</span>
+        </div>
+      )}
     </div>
   );
 }
