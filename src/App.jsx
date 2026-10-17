@@ -24,6 +24,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
      · Khung chi tiết giai đoạn: rê chuột vào tên nhân sự → thẻ tác vụ của người đó trong giai đoạn (Tác vụ · Giờ · %).
        Cần chạy lại supabase/schema.sql (mục 14 trả thêm "et"); chưa chạy thì tạm tính từ dữ liệu đã tải.
      · Giai đoạn đang xem chi tiết: viền teal mảnh bo góc bao trọn dòng dự án + khung chi tiết.
+     · Bảng "Tăng ca theo tác vụ" trong khung chi tiết mặc định thu gọn (chỉ hiện số tổng) — bấm tiêu đề để mở.
    Mới ở v5.5 — Phân bổ nhân sự, chi tiết một người: thêm cột % thời gian theo dự án; rê chuột vào dự án hiện thẻ
    các tác vụ người đó làm trong dự án (giờ, % trên tổng giờ của người đó ở dự án; dòng tăng ca ghi "Tăng ca · tác vụ"),
    phần người đó chiếm trong tổng giờ dự án của kỳ, và giai đoạn.
@@ -4721,13 +4722,19 @@ const PhaseDetail = ({ cell, info, onClose, partial }) => {
 
 /* v4.9 — Bảng tăng ca theo tác vụ × khung giờ trong khung chi tiết giai đoạn (chỉ giờ đã gửi) */
 const OtByTaskTable = ({ info }) => {
+  const [open, setOpen] = useState(false);   // v5.6: mặc định thu gọn, bấm tiêu đề để mở bảng
   const bands = info.otBandsUsed || [];
   const col = (bid) => info.otByTask.reduce((a, x) => a + (x.b[bid] || 0), 0);
   const sp = info.otByTask.reduce((a, x) => a + x.special, 0);
   return (
     <div className="overflow-x-auto lg:col-span-3 lg:-mr-[102px]">
-      <h4 className="mb-2 text-[11px] uppercase tracking-wider text-slate-500">Tăng ca theo tác vụ</h4>
-      <table className="w-full text-[13px]">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
+        className="-mx-2 flex min-h-[44px] items-center gap-2 rounded-md px-2 text-left hover:bg-slate-800/50">
+        {open ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
+        <span className="text-[11px] uppercase tracking-wider text-slate-400">Tăng ca theo tác vụ</span>
+        <span className="text-[12px] text-slate-500">· {info.otByTask.length} tác vụ · <span className="font-mono text-teal-400">{fmtH(info.ot)} h</span> · quy đổi <span className="font-mono text-slate-300">{fmtH(info.otW)} h</span></span>
+      </button>
+      {open && <table className="mt-1 w-full text-[13px]">
         <thead>
           <tr className="border-b border-slate-800 text-[11.5px] text-slate-500">
             <th className="py-1.5 pr-3 text-left font-medium">Tác vụ</th>
@@ -4757,7 +4764,7 @@ const OtByTaskTable = ({ info }) => {
             <td className="py-1.5 pl-2 text-right font-mono text-slate-100">{fmtH(info.otW)}</td>
           </tr>
         </tfoot>
-      </table>
+      </table>}
     </div>
   );
 };
@@ -4972,7 +4979,7 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
       out.push(
         <tr key={`${r.p.id}-detail`}>
           <td colSpan={phases.length + 4} className="bg-[#081022] p-0">
-            {info ? <PhaseDetail cell={selCell} info={info} partial={partial} onClose={() => setSel(null)} />
+            {info ? <PhaseDetail key={sel} cell={selCell} info={info} partial={partial} onClose={() => setSel(null)} />
               : <div className="relative p-4 text-sm text-slate-500">
                   {detailRaw === undefined ? "Đang tải chi tiết…" : "Chưa có giờ công đã gửi vào giai đoạn này."}
                   <button onClick={() => setSel(null)} className="absolute right-4 top-3 h-[30px] rounded-md border border-slate-700 px-2.5 text-xs text-slate-400 hover:text-slate-100">Đóng ✕</button>
