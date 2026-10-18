@@ -11,11 +11,14 @@ import {
 } from "lucide-react";
 import { fetchConfig, saveConfig, fetchTs, fetchTsChanges, fetchTsStamps, saveTs, deleteAllTs, fetchUsage, fetchPhaseDetail } from "./data.js";
 import { mergeConfig } from "./merge.js";
-import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus } from "./push.js";
+import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus, sendNudge, fetchNudgeLog } from "./push.js";
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v5.9 — Bảng công (quản lý): "Tổng quan bảng công" thay khung Tình trạng nộp + Ma trận giờ công.
+     Tuần = lưới ngày (giờ từng ngày, tăng ca "+h", tổng / chuẩn, trạng thái nộp, cột Nhắc gửi thông báo);
+     Tháng = lịch nhiệt (ô nhỏ mỗi ngày, cùng bộ màu; chấm trạng thái nộp từng tuần, bấm để mở tuần). Hiện ngày lễ.
    Mới ở v5.8 — Tab Nhân sự, chi tiết một người: thêm bảng Tác vụ · Giờ · % (gộp mọi dự án trong kỳ) bên phải bảng Dự án.
    Mới ở v5.7 — Tab Nhân sự, thanh từng người: số giờ nằm trong từng khúc (Giờ chuẩn / OT / cố gắng), bên phải chỉ còn giờ tổng;
      ngoặc vàng phía trên thanh chỉ khoảng thiếu giờ chuẩn ("thiếu x h"); vạch giờ chuẩn của kỳ đổi trắng mờ, mảnh 1px;
@@ -171,7 +174,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v5.8";
+const APP_VERSION = "v5.9";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -3382,29 +3385,437 @@ function HoursMatrix({ cfg, ym, flash, onPickEmp }) {
   );
 }
 
+/* v5.9 — Tổng quan bảng công (quản lý). Thay khung "Tình trạng nộp bảng công" + Ma trận giờ công cũ.
+   · Tuần: lưới ngày T2 → CN, mỗi ô ghi giờ đã gửi của ngày (tăng ca ghi "+h" xanh ngọc); cuối dòng: tổng / chuẩn,
+     trạng thái nộp tuần và cột Nhắc (chuông — rê chuột xem lý do; bấm gửi thông báo nhắc qua /api/push "nudge").
+   · Tháng: lịch nhiệt — mỗi ngày một ô nhỏ cùng bộ màu với ô tuần; bên phải tổng / chuẩn và chấm trạng thái nộp từng
+     tuần (bấm chấm → mở tuần đó ở chế độ Tuần).
+   Màu ô (dùng chung hai chế độ): đủ giờ (xanh dương nhạt) · thiếu giờ (viền vàng) · nháp chưa gửi (sọc vàng) ·
+   bỏ trống (viền đỏ) · nghỉ phép (xanh nhạt, "P") · ngày lễ (sọc xám, "Lễ") · CN / chưa tới (trống).
+   Chỉ giờ của ngày ĐÃ GỬI được cộng vào tổng; giờ đã lưu nhưng chưa gửi hiện là "nháp". */
+const DAY_ST = {
+  full: { background: "#60a5fa26", color: "#dbeafe" },
+  part: { background: "#fbbf2414", color: "#fbbf24", boxShadow: "inset 0 0 0 1px #fbbf2455" },
+  draft: { background: "repeating-linear-gradient(135deg,#fbbf2412 0 6px,transparent 6px 12px)", color: "#fbbf24", boxShadow: "inset 0 0 0 1px #fbbf2466" },
+  none: { background: "#fb71850f", color: "#fb7185", boxShadow: "inset 0 0 0 1px #fb718540" },
+  leave: { background: "#38bdf81f", color: "#38bdf8" },
+  hol: { background: "repeating-linear-gradient(45deg,#cbd5e112 0 4px,transparent 4px 8px)", color: "#cbd5e1", boxShadow: "inset 0 0 0 1px #cbd5e140" },
+  off: { color: "#334155" },
+  fut: { color: "#334155", boxShadow: "inset 0 0 0 1px #1e293b80" },
+};
+/* ô nhỏ của chế độ Tháng: cùng bộ màu, đậm hơn một chút để thấy rõ ở kích thước 22px */
+const DAY_ST_SM = {
+  full: { background: "#60a5fa38" },
+  part: { background: "#fbbf2420", boxShadow: "inset 0 0 0 1px #fbbf2466" },
+  draft: { background: "repeating-linear-gradient(135deg,#fbbf2426 0 3px,transparent 3px 6px)", boxShadow: "inset 0 0 0 1px #fbbf2466" },
+  none: { boxShadow: "inset 0 0 0 1px #fb718566" },
+  leave: { background: "#38bdf833" },
+  hol: { background: "repeating-linear-gradient(45deg,#cbd5e133 0 3px,transparent 3px 6px)" },
+  off: { background: "#1e293b33" },
+  fut: { boxShadow: "inset 0 0 0 1px #1e293b80" },
+};
+const WEEK_ST = {
+  ok: ["Đã nộp", "border-teal-900 bg-teal-950 text-teal-300", "#2dd4bf"],
+  dr: ["Còn nháp", "border-amber-900 bg-amber-950/70 text-amber-300", "#fbbf24"],
+  gap: ["Bỏ trống ngày", "border-amber-900 bg-amber-950/70 text-amber-300", "#fbbf24"],
+  no: ["Chưa nộp", "border-rose-900 bg-rose-950 text-rose-300", "#fb7185"],
+  fut: ["—", "", "#1e293b"],
+};
+const DOW_OF = (d) => DOW[(parseD(d).getDay() + 6) % 7];
+
+function TimesheetBoard({ cfg, flash, onPickEmp }) {
+  const dataTick = useDataTick();
+  const today = fmt(new Date());
+  const [mode, setMode] = useState("week");                     // week | month
+  const [monday, setMonday] = useState(fmt(mondayOf(new Date())));
+  const [ym, setYm] = useState(ymOf(today));
+  const [q, setQ] = useState("");
+  const [fDept, setFDept] = useState("all");
+  const [tip, setTip] = useState(null);                         // { eid, d, x, y } — thẻ chi tiết một ngày
+  const [nudged, setNudged] = useState(() => new Map());        // empId -> giờ đã nhắc (tuần đang xem)
+  const [nudging, setNudging] = useState(false);
+  const [, setLoadTick] = useState(0);
+
+  const hoursCfg = cfg.hours || DEFAULT_HOURS;
+  const hs = useMemo(() => makeHolidayIndex(cfg.holidays), [cfg.holidays]);
+  const lim = allocLimits(cfg);
+  const days = mode === "week" ? weekDays(monday) : (() => { const a = parseD(`${ym}-01`), b = lastOfMonth(a); const o = []; for (let d = a; d <= b; d = addDays(d, 1)) o.push(fmt(d)); return o; })();
+  const from = days[0], to = days[days.length - 1];
+  const weeks = mode === "week" ? [monday] : mondaysOfMonth(ym);
+  const rangeYms = ymsBetween(weeks[0], fmt(addDays(parseD(weeks[weeks.length - 1]), 6)));
+  useEffect(() => { ensureMonths([prevYm(rangeYms[0]), ...rangeYms]).then(() => setLoadTick((t) => t + 1)); }, [rangeYms.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const projById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
+  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
+  const tName = (id) => { const t = taskById.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
+  const pName = (id) => { if (!id || id === NO_PROJECT) return "Việc chung"; const p = projById.get(id); return p ? (p.code ? `${p.code} · ${p.name}` : p.name) : "(dự án đã xoá)"; };
+
+  /* giờ từng người × ngày trong các tuần đang xem: reg (giờ thường đã gửi), ot, leave (vắng mặt đã gửi), draft (đã lưu, chưa gửi) */
+  const cellOf = useMemo(() => {
+    const m = new Map();
+    const lo = weeks[0], hi = fmt(addDays(parseD(weeks[weeks.length - 1]), 6));
+    for (const e of cfg.employees) for (const y of ymsBetween(lo, hi)) {
+      const b = dbTs(e.id, y); if (!b?.rows) continue;
+      const sent = b.sent || {};
+      for (const r of b.rows) for (const [d, hv] of Object.entries(r.days || {})) {
+        const h = Number(hv) || 0; if (h <= 0 || d < lo || d > hi) continue;
+        const k = `${e.id}|${d}`;
+        const c = m.get(k) || { reg: 0, ot: 0, leave: 0, draft: 0, items: [] };
+        const ok = !!sent[d];
+        if (!ok) c.draft += h; else if (isOtId(r.taskId)) c.ot += h; else if (isLeaveTask(r.taskId)) c.leave += h; else c.reg += h;
+        c.items.push({ ot: isOtId(r.taskId), sent: ok, h,
+          label: isOtId(r.taskId) ? `Tăng ca · ${r.otFor ? tName(r.otFor) : "chưa rõ tác vụ"}` : isLeaveTask(r.taskId) ? tName(r.taskId) : `${pName(r.projectId)} · ${tName(r.taskId)}` });
+        m.set(k, c);
+      }
+    }
+    return m;
+  }, [cfg.employees, weeks.join(","), dataTick, taskById, projById]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stdOf = (d) => (d > today ? 0 : minHoursFor(d, hoursCfg, hs) || 0);
+  const dayInfo = (eid, d) => {
+    const c = cellOf.get(`${eid}|${d}`) || { reg: 0, ot: 0, leave: 0, draft: 0, items: [] };
+    const std = minHoursFor(d, hoursCfg, hs) || 0, done = c.reg + c.leave;
+    let st;
+    if (hs.has(d)) st = "hol";
+    else if (d > today) st = "fut";
+    else if (!std) st = done + c.ot > 0 ? (c.draft ? "draft" : "full") : c.draft ? "draft" : "off";
+    else if (c.leave > 0 && c.reg === 0 && !c.draft) st = "leave";
+    else if (done >= std) st = "full";
+    else if (c.draft > 0) st = "draft";
+    else st = done > 0 ? "part" : "none";
+    return { ...c, std, done, st };
+  };
+  const sumOf = (eid, list) => {
+    let reg = 0, ot = 0, std = 0, miss = [], draft = 0;
+    for (const d of list) {
+      const x = dayInfo(eid, d); reg += x.done; ot += x.ot; draft += x.draft; std += stdOf(d);
+      if (d <= today && stdOf(d) > 0 && x.done === 0 && x.draft === 0) miss.push(d);
+    }
+    return { reg, ot, t: reg + ot, std, miss, draft };
+  };
+  const weekState = (eid, mon) => {
+    if (mon > today) return "fut";
+    if (weekDone(eid, mon)) return "ok";
+    const s = sumOf(eid, weekDays(mon));
+    if (s.draft > 0) return "dr";
+    return s.reg + s.ot > 0 ? "gap" : "no";
+  };
+  /* lý do cần nhắc trong tuần đang xem (rỗng = không cần nhắc) */
+  const reasons = (eid) => {
+    const wd = weekDays(monday), s = sumOf(eid, wd), out = [];
+    const due = wd.filter((d) => d <= today && stdOf(d) > 0);
+    if (due.length && s.miss.length === due.length) out.push("Chưa chấm cả tuần");
+    else if (s.miss.length) out.push(`Bỏ trống ${s.miss.map((d) => `${DOW_OF(d)} ${dLabel(d)}`).join(", ")}`);
+    if (s.draft > 0) out.push(`Còn ${fmtH(s.draft)} h nháp — chưa bấm gửi`);
+    if (!out.length && s.std > 0 && s.reg < (s.std * lim.under) / 100) out.push(`Thiếu ${fmtH(s.std - s.reg)} h giờ chuẩn`);
+    return out;
+  };
+
+  const emps = cfg.employees.filter((e) => {
+    if (fDept !== "all" && (e.dept || "") !== fDept) return false;
+    const kw = q.trim().toLowerCase();
+    return !kw || `${e.name} ${e.code || ""} ${e.dept || ""} ${e.role || ""}`.toLowerCase().includes(kw);
+  });
+  const groups = [...DEPTS, ""].map((d) => ({ dept: d || "Khác", items: emps.filter((e) => (DEPTS.includes(e.dept) ? e.dept : "") === d) })).filter((g) => g.items.length);
+
+  /* KPI của kỳ đang xem */
+  const sums = new Map(emps.map((e) => [e.id, sumOf(e.id, days)]));
+  const due = weeks.filter((m) => m <= today);
+  const okN = emps.filter((e) => due.every((m) => weekDone(e.id, m))).length;
+  const totT = [...sums.values()].reduce((a, s) => a + s.t, 0), totStd = [...sums.values()].reduce((a, s) => a + s.std, 0), totOt = [...sums.values()].reduce((a, s) => a + s.ot, 0);
+  const lowN = [...sums.values()].filter((s) => s.std > 0 && s.reg < (s.std * lim.under) / 100).length;
+
+  /* nhắc đã gửi trong tuần đang xem (đọc nhật ký nhắc — quản lý đọc được) */
+  useEffect(() => {
+    let alive = true;
+    fetchNudgeLog(monday).then((rows) => { if (alive) setNudged(new Map(rows.map((r) => [r.emp_id, r.sent_at]))); }).catch(() => {});
+    return () => { alive = false; };
+  }, [monday]);
+  const needIds = mode === "week" ? emps.filter((e) => reasons(e.id).length > 0).map((e) => e.id) : [];
+  const toNudge = needIds.filter((id) => !nudged.has(id));
+  const nudge = async (ids) => {
+    if (!ids.length || nudging) return;
+    setNudging(true);
+    try {
+      const r = await sendNudge(ids, monday, fmt(addDays(parseD(monday), 6)));
+      const at = new Date().toISOString();
+      setNudged((m) => { const n = new Map(m); for (const id of r.sent || []) n.set(id, at); return n; });
+      const nm = (id) => cfg.employees.find((e) => e.id === id)?.name || id;
+      if (r.noDevice?.length) flash(`${r.sent?.length ? `Đã nhắc ${r.sent.length} người. ` : ""}Chưa bật thông báo trên máy nào: ${r.noDevice.map(nm).join(", ")}.`, r.sent?.length ? "ok" : "err");
+      else flash(ids.length === 1 ? `Đã nhắc ${nm(ids[0])}.` : `Đã nhắc ${r.sent?.length || 0} người.`);
+    } catch (e) { flash(`Chưa gửi được nhắc nhở — ${e.message}`, "err"); }
+    setNudging(false);
+  };
+
+  const exportXlsx = async () => {
+    const XLSX = await loadXlsx();
+    const wb = XLSX.utils.book_new();
+    const LBL = { full: "", part: "thiếu", draft: "nháp", none: "bỏ trống", leave: "nghỉ phép", hol: "lễ", off: "", fut: "" };
+    const grid = emps.map((e) => {
+      const row = { "Mã": e.code || "", "Nhân sự": e.name, "Bộ phận": e.dept || "", "Vai trò": roleTitle(e.role) };
+      for (const d of days) { const x = dayInfo(e.id, d); row[`${DOW_OF(d)} ${dLabel(d)}`] = x.done + x.ot ? +(x.done + x.ot).toFixed(2) : LBL[x.st] || ""; }
+      const s = sums.get(e.id);
+      row["Giờ đã gửi"] = +s.t.toFixed(2); row["Trong đó tăng ca"] = +s.ot.toFixed(2); row["Giờ chuẩn tới hôm nay"] = s.std;
+      return row;
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(grid), "Bảng công");
+    const detail = [];
+    for (const e of emps) for (const d of days) for (const it of (cellOf.get(`${e.id}|${d}`)?.items || [])) {
+      detail.push({ "Nhân sự": e.name, "Bộ phận": e.dept || "", "Ngày": d, "Thứ": DOW_OF(d), "Dự án · tác vụ": it.label, "Giờ": it.h, "Trạng thái": it.sent ? "Đã gửi" : "Nháp" });
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail.length ? detail : [{ "Nhân sự": "(chưa có giờ)" }]), "Chi tiết");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(emps.map((e) => {
+      const row = { "Nhân sự": e.name, "Bộ phận": e.dept || "" };
+      for (const m of weeks) row[`Tuần ${dLabel(m)}`] = WEEK_ST[weekState(e.id, m)][0];
+      return row;
+    })), "Tình trạng nộp");
+    const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const a = document.createElement("a"); a.href = url; a.download = `ARTIUS_bang-cong_${from}_den_${to}.xlsx`; a.click();
+    URL.revokeObjectURL(url);
+    flash("Đã xuất file Excel.");
+  };
+
+  const shift = (n) => {
+    if (mode === "week") setMonday(fmt(addDays(parseD(monday), 7 * n)));
+    else { const [y, m] = ym.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }
+  };
+  const isNow = mode === "week" ? monday === fmt(mondayOf(new Date())) : ym === ymOf(today);
+  const perLabel = mode === "week" ? `Tuần ${dLabel(monday)} – ${dLabel(fmt(addDays(parseD(monday), 6)))}` : ymLabel(ym);
+  const switchMode = (m) => { if (m === "month") setYm(ymOf(monday)); else setMonday(fmt(mondayOf(ym === ymOf(today) ? new Date() : parseD(`${ym}-01`)))); setMode(m); };
+
+  const totCell = (s) => {
+    const pc = s.std ? Math.min(100, (s.reg / s.std) * 100) : s.reg ? 100 : 0, oc = s.std ? Math.min(100 - pc, (s.ot / s.std) * 100) : 0;
+    const ok = !s.std || s.reg >= (s.std * lim.under) / 100;
+    return (
+      <div className="min-w-[120px]">
+        <div className="font-mono text-sm"><span className="font-semibold text-slate-100">{fmtH(s.t)}</span><span className="text-slate-500"> / {fmtH(s.std)} h</span></div>
+        <div className="mt-1 flex h-[5px] gap-px overflow-hidden rounded-full bg-slate-800">
+          <i className="block h-full" style={{ width: `${pc}%`, background: ok ? "#60a5fa" : "#fbbf24" }} />
+          {oc > 0 && <i className="block h-full bg-teal-400" style={{ width: `${oc}%` }} />}
+        </div>
+      </div>
+    );
+  };
+  const dayHandlers = (eid, d) => ({
+    onMouseMove: (e) => setTip({ eid, d, x: e.clientX, y: e.clientY }),
+    onMouseLeave: () => setTip(null),
+  });
+  const Legend = () => (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-800 px-3 py-2 text-xs text-slate-400 md:px-4">
+      {[["full", "Đủ giờ chuẩn"], ["part", "Thiếu giờ"], ["draft", "Nháp chưa gửi"], ["none", "Bỏ trống"], ["leave", "Nghỉ phép"], ["hol", "Ngày lễ"], ["fut", "CN / chưa tới"]].map(([k, l]) => (
+        <span key={k} className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded-[3px]" style={DAY_ST_SM[k]} />{l}</span>
+      ))}
+      <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full bg-teal-400" />Tăng ca (ô tuần ghi <span className="font-mono text-teal-400">+h</span>)</span>
+      <span className="text-slate-600">Rê chuột vào ô để xem giờ theo dự án · bấm tên để mở bảng công</span>
+    </div>
+  );
+  const NameCell = ({ e }) => (
+    <td className="sticky left-0 z-10 border-b border-slate-800/70 bg-slate-900 px-3 py-1.5 md:px-4">
+      <button onClick={() => onPickEmp(e.id)} title="Xem và sửa bảng công chi tiết" className="block w-full min-w-[150px] text-left">
+        <span className="block truncate text-sm text-slate-100 hover:text-teal-300">{e.name}</span>
+        <span className="block truncate text-[11px] text-slate-500">{roleTitle(e.role) || e.dept}</span>
+      </button>
+    </td>
+  );
+  const DeptRow = ({ g, span }) => (
+    <tr key={`d-${g.dept}`}><td colSpan={span} className="border-b border-slate-800 bg-slate-950/60 px-3 py-1.5 text-[11px] uppercase tracking-wider text-slate-500 md:px-4">{g.dept} · {g.items.length} người</td></tr>
+  );
+
+  /* ---- chế độ Tuần ---- */
+  const WeekView = () => (
+    <table className="min-w-full border-separate border-spacing-0">
+      <thead>
+        <tr className="text-[11px] uppercase tracking-wider text-slate-500">
+          <th className="sticky left-0 z-10 border-b border-slate-800 bg-slate-900 px-3 py-2 text-left font-normal md:px-4">Nhân sự</th>
+          {days.map((d) => (
+            <th key={d} title={hs.get(d) || undefined} className={`border-b border-slate-800 px-1 py-2 font-normal ${d === today ? "text-slate-100" : ""}`}>
+              {DOW_OF(d)} {dLabel(d)}
+              {hs.has(d) && <span className="mx-auto mt-0.5 block w-max rounded bg-slate-300 px-1.5 text-[10px] normal-case leading-[15px] tracking-normal text-slate-900">Lễ</span>}
+            </th>
+          ))}
+          <th className="border-b border-slate-800 px-3 py-2 text-left font-normal">Tổng / chuẩn</th>
+          <th className="border-b border-slate-800 px-2 py-2 font-normal">Nộp tuần</th>
+          <th className="w-24 whitespace-nowrap border-b border-slate-800 px-2 py-2 font-normal">
+            Nhắc{toNudge.length > 0 && (
+              <button onClick={() => nudge(toNudge)} disabled={nudging} title={`Nhắc tất cả ${toNudge.length} người cần xử lý`}
+                className="ml-1.5 inline-flex h-8 items-center gap-1 rounded-md border border-slate-700 px-2 align-middle font-mono text-xs normal-case text-amber-400 hover:bg-slate-800 disabled:opacity-40">
+                <Bell size={12} />{toNudge.length}
+              </button>
+            )}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {groups.map((g) => [DeptRow({ g, span: days.length + 4 }), ...g.items.map((e) => {
+          const ws = weekState(e.id, monday), rs = reasons(e.id), at = nudged.get(e.id);
+          return (
+            <tr key={e.id}>
+              {NameCell({ e })}
+              {days.map((d) => {
+                const x = dayInfo(e.id, d);
+                const txt = x.st === "hol" ? "Lễ" : x.st === "leave" ? "P" : x.st === "none" ? "—" : x.st === "fut" || x.st === "off" ? (x.done ? fmtH(x.done) : "") : fmtH(x.st === "draft" ? x.done + x.draft : x.done);
+                const plus = x.st === "hol" ? x.done + x.ot : x.ot;
+                return (
+                  <td key={d} className="border-b border-slate-800/70 px-1 py-1.5">
+                    <div {...dayHandlers(e.id, d)} style={DAY_ST[x.st]}
+                      className={`mx-auto flex h-11 min-w-[54px] max-w-[110px] cursor-default flex-col items-center justify-center rounded-md ${x.st === "hol" ? "text-[13px] font-medium" : "font-mono text-[13px] font-semibold"}`}>
+                      {txt}
+                      {plus > 0 && <small className="font-mono text-[10px] font-medium leading-none text-teal-400">+{fmtH(plus)}</small>}
+                    </div>
+                  </td>
+                );
+              })}
+              <td className="border-b border-slate-800/70 px-3 py-1.5">{totCell(sums.get(e.id))}</td>
+              <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
+                {ws === "fut" ? <span className="text-slate-600">—</span> : <span className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] ${WEEK_ST[ws][1]}`}>{WEEK_ST[ws][0]}</span>}
+              </td>
+              <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
+                {rs.length > 0 && (at
+                  ? <span title={`Đã nhắc lúc ${new Date(at).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })} — ${rs.join(" · ")}`}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-teal-900 text-teal-300"><Check size={15} /></span>
+                  : <button onClick={() => nudge([e.id])} disabled={nudging} title={`Nhắc nộp — ${rs.join(" · ")}`}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-amber-400 hover:bg-slate-800 disabled:opacity-40"><Bell size={15} /></button>)}
+              </td>
+            </tr>
+          );
+        })])}
+      </tbody>
+    </table>
+  );
+
+  /* ---- chế độ Tháng ---- */
+  const MonthView = () => (
+    <table className="min-w-full border-separate border-spacing-0">
+      <thead>
+        <tr className="text-[11px] uppercase tracking-wider text-slate-500">
+          <th className="sticky left-0 z-10 border-b border-slate-800 bg-slate-900 px-3 py-2 text-left font-normal md:px-4">Nhân sự</th>
+          <th className="border-b border-slate-800 px-2 py-2 text-left font-normal">
+            <div className="flex gap-0.5 font-mono text-[10px] normal-case tracking-normal">
+              {days.map((d, i) => (
+                <span key={d} title={hs.get(d) || undefined} className={`w-[22px] shrink-0 text-center ${i > 0 && parseD(d).getDay() === 1 ? "ml-2" : ""}
+                  ${hs.has(d) ? "rounded-[3px] bg-slate-300 text-slate-900" : d === today ? "text-slate-100" : parseD(d).getDay() === 0 ? "text-slate-700" : "text-slate-600"}`}>{+d.slice(8)}</span>
+              ))}
+            </div>
+          </th>
+          <th className="border-b border-slate-800 px-3 py-2 text-left font-normal">Tổng / chuẩn</th>
+          <th className="whitespace-nowrap border-b border-slate-800 px-3 py-2 font-normal">Nộp từng tuần</th>
+        </tr>
+      </thead>
+      <tbody>
+        {groups.map((g) => [DeptRow({ g, span: 4 }), ...g.items.map((e) => (
+          <tr key={e.id}>
+            {NameCell({ e })}
+            <td className="border-b border-slate-800/70 px-2 py-1.5">
+              <div className="flex gap-0.5">
+                {days.map((d, i) => {
+                  const x = dayInfo(e.id, d);
+                  return (
+                    <span key={d} {...dayHandlers(e.id, d)} style={DAY_ST_SM[x.st]}
+                      className={`relative h-[22px] w-[22px] shrink-0 cursor-default rounded ${i > 0 && parseD(d).getDay() === 1 ? "ml-2" : ""} ${d === today ? "outline outline-1 outline-offset-2 outline-slate-100/40" : ""}`}>
+                      {x.ot + (x.st === "hol" ? x.done : 0) > 0 && <i className="absolute right-0.5 top-0.5 h-[5px] w-[5px] rounded-full bg-teal-400" />}
+                    </span>
+                  );
+                })}
+              </div>
+            </td>
+            <td className="border-b border-slate-800/70 px-3 py-1.5">{totCell(sums.get(e.id))}</td>
+            <td className="border-b border-slate-800/70 px-3 py-1.5 text-center">
+              <span className="inline-flex gap-1.5">
+                {weeks.map((m) => {
+                  const ws = weekState(e.id, m);
+                  return (
+                    <button key={m} onClick={() => { setMonday(m); setMode("week"); }} title={`Tuần ${dLabel(m)} — ${WEEK_ST[ws][0] === "—" ? "chưa tới" : WEEK_ST[ws][0]} · bấm để mở tuần`}
+                      className="h-3 w-3 rounded-full transition-transform hover:scale-125" style={{ background: WEEK_ST[ws][2] }} />
+                  );
+                })}
+              </span>
+            </td>
+          </tr>
+        ))])}
+      </tbody>
+    </table>
+  );
+
+  const tipBox = tip && (() => {
+    const x = dayInfo(tip.eid, tip.d), e = cfg.employees.find((y) => y.id === tip.eid);
+    const W = 320, left = tip.x + 14 + W > window.innerWidth - 8 ? tip.x - W - 14 : tip.x + 14;
+    const top = Math.max(8, Math.min(window.innerHeight - 80 - (x.items.length + 2) * 22, tip.y + 14));
+    return (
+      <div className="pointer-events-none fixed z-50 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-[12.5px] shadow-2xl" style={{ left, top, width: W }}>
+        <div className="mb-1.5"><span className="text-slate-100">{e?.name}</span><span className="text-slate-500"> · {DOW_OF(tip.d)} {dLabel(tip.d)}</span></div>
+        {hs.has(tip.d) && <div className="mb-1 text-slate-300">Ngày lễ · {hs.get(tip.d)}{x.items.length ? "" : " — không tính giờ chuẩn"}</div>}
+        {x.items.length === 0 ? (
+          !hs.has(tip.d) && <div className={x.st === "none" ? "text-rose-400" : "text-slate-500"}>{tip.d > today ? "Chưa tới ngày" : x.std ? `Chưa chấm giờ — giờ chuẩn ${fmtH(x.std)} h` : "Ngày nghỉ"}</div>
+        ) : (
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5">
+            {x.items.map((it, i) => (
+              <React.Fragment key={i}>
+                <span className={`truncate ${it.ot ? "text-teal-400" : "text-slate-200"}`}>{it.label}{!it.sent && <span className="text-amber-400"> · nháp</span>}</span>
+                <span className="text-right font-mono text-slate-200">{fmtH(it.h)}</span>
+              </React.Fragment>
+            ))}
+            <span className="mt-1 border-t border-slate-800 pt-1 text-slate-500">Đã gửi{x.draft ? ` · nháp ${fmtH(x.draft)} h` : ""}</span>
+            <span className="mt-1 border-t border-slate-800 pt-1 text-right font-mono text-slate-100">{fmtH(x.done + x.ot)}{x.std ? ` / ${fmtH(x.std)}` : ""} h</span>
+          </div>
+        )}
+        {hs.has(tip.d) && x.items.length > 0 && <div className="mt-1 text-[11px] text-slate-500">Giờ chấm vào ngày lễ không tính giờ chuẩn</div>}
+      </div>
+    );
+  })();
+
+  const Kpi = ({ l, v, sub, cls = "text-slate-50" }) => (
+    <div className="bg-slate-900 px-3 py-2.5">
+      <div className="text-[10.5px] uppercase tracking-wider text-slate-500">{l}</div>
+      <div className={`mt-0.5 font-mono text-lg font-semibold ${cls}`}>{v}{sub && <span className="ml-1.5 font-sans text-xs font-normal text-slate-500">{sub}</span>}</div>
+    </div>
+  );
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-900">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
+        <div className="flex rounded-md border border-slate-700">
+          {[["week", "Tuần"], ["month", "Tháng"]].map(([k, l]) => (
+            <button key={k} onClick={() => switchMode(k)} className={`${CTRL} px-4 text-sm ${mode === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>{l}</button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={() => shift(-1)} className={`${CTRL} w-11 rounded-md border border-slate-700 text-slate-400 hover:text-slate-100`}><ChevronLeft size={16} className="mx-auto" /></button>
+          <span className="min-w-[150px] text-center text-sm text-slate-100">{perLabel}</span>
+          <button onClick={() => shift(1)} className={`${CTRL} w-11 rounded-md border border-slate-700 text-slate-400 hover:text-slate-100`}><ChevronRight size={16} className="mx-auto" /></button>
+          {!isNow && <button onClick={() => { setMonday(fmt(mondayOf(new Date()))); setYm(ymOf(today)); }} className="ml-1 text-xs text-teal-400 hover:text-teal-300">{mode === "week" ? "Tuần này" : "Tháng này"}</button>}
+        </div>
+        <select value={fDept} onChange={(e) => setFDept(e.target.value)} className={`w-full sm:w-44 ${selectCls}`} aria-label="Bộ phận">
+          <option value="all">Mọi bộ phận</option>
+          {DEPTS.map((d) => <option key={d}>{d}</option>)}
+        </select>
+        <div className="relative w-full sm:w-56">
+          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm nhân sự" className={`pl-9 ${inputCls}`} />
+        </div>
+        <button onClick={exportXlsx} disabled={emps.length === 0} className={`w-full sm:ml-auto sm:w-auto ${btnPrimary} disabled:opacity-40`}><Download size={15} /> Xuất Excel</button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-px border-b border-slate-800 bg-slate-800 md:grid-cols-5">
+        <Kpi l="Đã nộp đủ" v={okN} sub={`/ ${emps.length} người`} cls={okN < emps.length ? "text-amber-400" : "text-teal-300"} />
+        <Kpi l="Chưa nộp / còn nháp" v={emps.length - okN} sub="người" cls={emps.length - okN ? "text-rose-400" : "text-slate-50"} />
+        <Kpi l="Tổng giờ đã gửi" v={fmtH(totT)} sub={`/ ${fmtH(totStd)} h chuẩn`} />
+        <Kpi l="Trong đó tăng ca" v={fmtH(totOt)} sub="h" cls="text-teal-400" />
+        <Kpi l={`Thiếu giờ chuẩn (<${lim.under}%)`} v={lowN} sub="người" cls={lowN ? "text-amber-400" : "text-slate-50"} />
+      </div>
+
+      {Legend()}
+      {emps.length === 0 ? <p className="px-4 py-6 text-sm text-slate-500">Không có nhân sự nào khớp bộ lọc.</p> : (
+        <div className="overflow-x-auto pb-1">{mode === "week" ? WeekView() : MonthView()}</div>
+      )}
+      {tipBox}
+    </div>
+  );
+}
+
 function AdminTimesheet({ cfg, flash, onDirtyChange }) {
-  const dataTick = useDataTick();   // v1.9: tình trạng nộp tự cập nhật
   const [empId, setEmpId] = useState(cfg.employees[0]?.id || "");
   const [q, setQ] = useState("");
-  const [ym, setYm] = useState(ymOf(fmt(new Date())));
-  useEffect(() => { ensureMonths([prevYm(ym), ym]); }, [ym]);   // v2.1: tháng cũ thì tải thêm
-  const [openStatus, setOpenStatus] = useState(true);   // bảng tình trạng nộp: mở/thu gọn
-  const [mode, setMode] = useState("matrix");              // v1.6: "matrix" tổng quát | "detail" từng nhân sự
-
-  const shiftYm = (v, n) => { const [y, m] = v.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
-  const empName = (id) => cfg.employees.find((e) => e.id === id)?.name || "(đã xoá)";
-
-  /* Ai còn thiếu tuần nào trong tháng đang xem. Dữ liệu đã nằm trong bộ nhớ nên không tốn lệnh lưu trữ. */
-  const missing = useMemo(() => {
-    const need = mondaysDue(ym);
-    const out = [];
-    for (const e of cfg.employees) {
-      const miss = need.filter((m) => !weekDone(e.id, m));
-      if (miss.length) out.push({ empId: e.id, need: need.length, missing: miss });
-    }
-    return out;
-  }, [cfg.employees, ym, dataTick]);
-
+  const [mode, setMode] = useState("matrix");              // v1.6: "matrix" tổng quan | "detail" từng nhân sự
   const list = cfg.employees.filter((e) => {
     const kw = q.trim().toLowerCase();
     return !kw || `${e.name} ${e.code || ""} ${e.dept} ${e.role || ""}`.toLowerCase().includes(kw);
@@ -3420,7 +3831,7 @@ function AdminTimesheet({ cfg, flash, onDirtyChange }) {
   return (
     <div className="space-y-3 md:space-y-4">
       <div className="inline-flex rounded-lg border border-slate-800 bg-slate-900 p-1">
-        {[["matrix", "Ma trận giờ công", Grid3x3], ["detail", "Chi tiết nhân viên", User]].map(([k, label, Ico]) => (
+        {[["matrix", "Tổng quan bảng công", Grid3x3], ["detail", "Chi tiết nhân viên", User]].map(([k, label, Ico]) => (
           <button key={k} onClick={() => setMode(k)}
             className={`inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm ${mode === k ? "bg-teal-600 text-white" : "text-slate-400 hover:text-slate-200"}`}>
             <Ico size={14} /> {label}
@@ -3428,48 +3839,8 @@ function AdminTimesheet({ cfg, flash, onDirtyChange }) {
         ))}
       </div>
 
-      {/* Tình trạng nộp lên đầu: nhìn ai còn thiếu rồi bấm thẳng vào để mở bảng công của người đó */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900">
-        <button onClick={() => setOpenStatus((o) => !o)}
-          className="flex w-full items-center gap-3 px-3 py-3 text-left md:px-4">
-          <ClipboardList size={16} className="shrink-0 text-slate-500" />
-          <span className="text-sm font-medium text-slate-100">Tình trạng nộp bảng công</span>
-          <span className={`rounded-md border px-2 py-0.5 text-[11px] ${missing.length === 0 ? "border-teal-800 bg-teal-950 text-teal-300" : "border-amber-800 bg-amber-950 text-amber-300"}`}>
-            {missing.length === 0 ? "Đủ" : `${missing.length} người thiếu`}
-          </span>
-          <span className="ml-auto flex items-center gap-2 text-xs text-slate-500">
-            {ymLabel(ym)}
-            {openStatus ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-          </span>
-        </button>
-
-        {openStatus && (
-          <div className="border-t border-slate-800 p-3 md:p-4">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <button onClick={() => setYm(shiftYm(ym, -1))} className={iconBtn}><ChevronLeft size={15} /></button>
-              <span className="font-mono text-sm text-slate-200">{ymLabel(ym)}</span>
-              <button onClick={() => setYm(shiftYm(ym, 1))} className={iconBtn}><ChevronRight size={15} /></button>
-              <button onClick={() => setYm(ymOf(fmt(new Date())))} className="text-xs text-teal-400 hover:text-teal-300">Tháng này</button>
-            </div>
-            {missing.length === 0 ? (
-              <p className="text-sm text-slate-400">Mọi nhân sự đã nộp đủ các tuần của tháng này.</p>
-            ) : (
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {missing.map((m) => (
-                  <button key={m.empId} onClick={() => { setEmpId(m.empId); setMode("detail"); }}
-                    className={`rounded-lg border border-l-4 bg-slate-950 px-3 py-2 text-left text-sm hover:border-slate-600
-                      ${m.empId === empId ? "border-teal-700 border-l-teal-500" : "border-slate-800 border-l-amber-500"}`}>
-                    <div className="font-medium text-slate-100">{empName(m.empId)}</div>
-                    <div className="text-xs text-slate-400">Thiếu {m.missing.length}/{m.need} tuần: {m.missing.map(dLabel).join(", ")}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {mode === "matrix" && <HoursMatrix key={ym} cfg={cfg} ym={ym} flash={flash} onPickEmp={(id) => { setEmpId(id); setMode("detail"); }} />}
+      {/* v5.9: Tuần (lưới ngày + cột Nhắc) / Tháng (lịch nhiệt) — thay khung Tình trạng nộp + Ma trận giờ công cũ */}
+      {mode === "matrix" && <TimesheetBoard cfg={cfg} flash={flash} onPickEmp={(id) => { setEmpId(id); setMode("detail"); }} />}
 
       {/* Chọn nhân sự để xem và sửa bảng công */}
       {mode === "detail" && <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">

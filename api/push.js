@@ -14,6 +14,7 @@
      unsubscribe  (đã đăng nhập)         -> bỏ trình duyệt này
      test         (đã đăng nhập)         -> gửi thử một thông báo tới các trình duyệt của chính mình
      cron         (header x-cron-secret) -> chạy đợt nhắc nếu tới lịch; gọi 15 phút/lần từ Supabase
+     nudge        (quản lý)              -> v5.9: nhắc nộp ngay một số nhân sự { empIds, from, to } (nút chuông ở Bảng công)
    ============================================================ */
 import { createClient } from "@supabase/supabase-js";
 import webpush from "web-push";
@@ -112,6 +113,35 @@ const actions = {
       url: "/",
     });
     return { devices: subs.length, delivered: n };
+  },
+
+  /* v5.9 — quản lý bấm chuông ở Bảng công. Ghi nhật ký kind 'manual', period '<thứ Hai>@<thời điểm>'
+     (mỗi lần bấm là một dòng mới, không chặn nhắc lại). Chỉ ghi khi có ít nhất một thiết bị nhận. */
+  async nudge(sb, req, body) {
+    vapidReady();
+    const me = await requireMember(sb, req);
+    if (!me.is_admin) throw new HttpError(403, "Chỉ tài khoản quản lý được nhắc nộp.");
+    const ids = [...new Set((Array.isArray(body.empIds) ? body.empIds : []).map(String).filter(Boolean))].slice(0, 300);
+    const from = String(body.from || ""), to = String(body.to || "");
+    if (!ids.length) throw new HttpError(400, "Chưa chọn người cần nhắc.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) throw new HttpError(400, "Kỳ nhắc không hợp lệ.");
+    const { data: subs, error } = await sb.from("artius_push").select("*").in("emp_id", ids);
+    if (error) throw dbFail("Đọc đăng ký thông báo", error);
+    const byEmp = new Map();
+    for (const s of subs || []) { if (!byEmp.has(s.emp_id)) byEmp.set(s.emp_id, []); byEmp.get(s.emp_id).push(s); }
+    const dm = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+    const payload = { title: "ARTIUS — Nhắc nộp bảng công", body: `Quản lý nhắc bạn hoàn thành và gửi bảng công tuần ${dm(from)} – ${dm(to)}.`, url: "/" };
+    const stamp = new Date().toISOString();
+    const out = { sent: [], noDevice: [] };
+    for (const id of ids) {
+      const list = byEmp.get(id) || [];
+      const n = list.length ? await sendTo(sb, list, payload) : 0;
+      if (n > 0) {
+        out.sent.push(id);
+        await sb.from("artius_push_log").upsert({ kind: "manual", period: `${from}@${stamp}`, emp_id: id, missing: 0, devices: n }, { onConflict: "kind,period,emp_id" });
+      } else out.noDevice.push(id);
+    }
+    return out;
   },
 
   async cron(sb, req) {

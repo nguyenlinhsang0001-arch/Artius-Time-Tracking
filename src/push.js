@@ -71,6 +71,17 @@ export function askPermission() {
 
 export const sendTestPush = () => api("test");
 
+/* v5.9 — Quản lý bấm chuông ở Bảng công: gửi thông báo nhắc nộp tuần [from, to] tới các nhân sự empIds.
+   Trả về { sent: [empId], noDevice: [empId] } (noDevice = người chưa bật thông báo trên máy nào). */
+export const sendNudge = (empIds, from, to) => api("nudge", { empIds, from, to });
+
+/* v5.9 — Những lần quản lý đã nhắc trong tuần bắt đầu từ thứ Hai `monday` (nhật ký kind 'manual'). */
+export async function fetchNudgeLog(monday) {
+  const { data, error } = await supabase.from("artius_push_log").select("emp_id,sent_at,period").eq("kind", "manual").like("period", `${monday}@%`).order("sent_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
 /* Màn quản lý: ai đã bật thông báo (ít nhất một trình duyệt) và các lần nhắc gần nhất. Chỉ tài khoản quản lý đọc được. */
 export async function fetchPushStatus() {
   const [a, b] = await Promise.all([

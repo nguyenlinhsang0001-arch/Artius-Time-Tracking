@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v5.8 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v5.9 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v5.8`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v5.9`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,24 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v5.9 — Tổng quan bảng công (Tuần / Tháng) + nút nhắc nộp
+
+Không đổi database — **bỏ qua bước 1** (`schema.sql` chỉ sửa chú thích), chỉ upload folder lên GitHub. (Nếu chưa chạy `schema.sql` của bản v5.6 thì vẫn cần chạy một lần.)
+Nút nhắc dùng hệ thống thông báo đã có từ v2.6 (cần biến môi trường VAPID trên Vercel như trước).
+
+Bảng công → **Tổng quan bảng công** (thay khung "Tình trạng nộp bảng công" và "Ma trận giờ công"):
+- **Tuần**: mỗi người một dòng, mỗi ngày một ô ghi giờ đã gửi; tăng ca ghi "+h" xanh ngọc. Màu ô: đủ giờ (xanh dương nhạt) ·
+  thiếu giờ (viền vàng) · nháp chưa gửi (sọc vàng) · bỏ trống (viền đỏ) · nghỉ phép ("P") · ngày lễ (sọc xám, "Lễ") · CN / chưa tới (trống).
+  Cuối dòng: tổng / giờ chuẩn, trạng thái nộp tuần (Đã nộp / Còn nháp / Bỏ trống ngày / Chưa nộp) và cột **Nhắc**:
+  chuông 🔔 cho người cần xử lý (rê chuột xem lý do), bấm để gửi thông báo nhắc nộp; đầu cột có nút nhắc tất cả.
+  Đã nhắc thì chuông đổi thành ✓ (rê chuột xem giờ nhắc). Người chưa bật thông báo trên máy nào sẽ được báo tên.
+- **Tháng**: lịch nhiệt — mỗi ngày một ô nhỏ cùng bộ màu, chấm xanh ngọc = có tăng ca; bên phải tổng / chuẩn và
+  chấm trạng thái nộp từng tuần — bấm chấm để mở tuần đó ở chế độ Tuần.
+- Rê chuột vào ô ngày: giờ theo dự án · tác vụ (phần nháp ghi rõ). Bấm tên người để mở Chi tiết nhân viên.
+- 5 KPI: đã nộp đủ, chưa nộp / còn nháp, tổng giờ đã gửi / chuẩn, tăng ca, thiếu giờ chuẩn. Xuất Excel theo kỳ đang xem
+  (sheet Bảng công · Chi tiết · Tình trạng nộp).
+- Ma trận nhân sự × dự án vẫn xem được ở Dashboard → tab Nhân sự → Ma trận.
 
 ## Mới ở v5.8 — Tác vụ trong chi tiết nhân sự
 
