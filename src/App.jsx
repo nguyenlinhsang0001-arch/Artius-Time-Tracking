@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, Legend, ReferenceArea,
   ComposedChart, Line, LabelList,
@@ -16,6 +16,8 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v6.1 — Hộp sửa nhanh ô ngày luôn nằm trọn trong màn hình (lật lên trên ô khi sát đáy, cuộn bên trong nếu quá dài).
+     Bỏ tab "Chi tiết nhân viên" ở Bảng công — sửa cả tuần bằng ngăn kéo (✎ hoặc bấm tên).
    Mới ở v6.0 — Tổng quan bảng công: sửa giờ ngay tại chỗ, không chuyển tab.
      · Bấm một ô ngày → hộp sửa nhanh các dòng giờ của ngày đó (giữ dấu đã gửi; ngày hết giờ thì bỏ dấu).
      · Bấm ✎ hoặc tên người → ngăn kéo bên phải với bảng sửa cả tuần (dùng lại bảng của Chi tiết nhân viên): thêm dòng,
@@ -179,7 +181,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v6.0";
+const APP_VERSION = "v6.1";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -3485,6 +3487,17 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
   const [leaveAsk, setLeaveAsk] = useState(false);              // đang hỏi bỏ thay đổi chưa lưu
   const [pop, setPop] = useState(null);                         // v6.0 (C): { eid, d, x, y, items, vals } — sửa nhanh một ô ngày
   const [popSaving, setPopSaving] = useState(false);
+  const popRef = useRef(null);
+  /* v6.1 — hộp sửa nhanh luôn nằm trọn trong màn hình: đo chiều cao thật rồi đặt dưới ô; không đủ chỗ thì lật lên trên ô;
+     vẫn không đủ thì kẹp sát mép và cho cuộn bên trong hộp */
+  useLayoutEffect(() => {
+    const el = popRef.current; if (!el || !pop) return;
+    const h = el.offsetHeight, vh = window.innerHeight, m = 8;
+    let top = pop.cellBottom + 6;
+    if (top + h > vh - m) top = pop.cellTop - 6 - h;
+    if (top < m) top = Math.max(m, vh - m - h);
+    el.style.top = `${top}px`; el.style.visibility = "visible";
+  }, [pop?.eid, pop?.d, pop?.items?.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [loadTick, setLoadTick] = useState(0);
 
   const hoursCfg = cfg.hours || DEFAULT_HOURS;
@@ -3664,9 +3677,9 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
       h: Number(r.days?.[d]) || 0,
     })).sort((a, b2) => (a.ot - b2.ot) || b2.h - a.h);
     const rect = ev.currentTarget.getBoundingClientRect();
-    const W = 360, x = Math.min(window.innerWidth - W - 8, Math.max(8, rect.left)), y = rect.bottom + 6;
+    const W = 360, x = Math.min(window.innerWidth - W - 8, Math.max(8, rect.left));
     setTip(null);
-    setPop({ eid, d, x, y, items, vals: Object.fromEntries(items.map((it) => [it.key, it.h ? String(it.h) : ""])) });
+    setPop({ eid, d, x, y: rect.bottom + 6, cellTop: rect.top, cellBottom: rect.bottom, items, vals: Object.fromEntries(items.map((it) => [it.key, it.h ? String(it.h) : ""])) });
   };
   const savePop = async () => {
     if (!pop || popSaving) return;
@@ -3920,11 +3933,10 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
       {pop && (() => {
         const e = cfg.employees.find((y) => y.id === pop.eid), std = minHoursFor(pop.d, hoursCfg, hs) || 0;
         const sum = Object.values(pop.vals).reduce((a, v) => a + (Number(v) || 0), 0);
-        const top = Math.min(pop.y, window.innerHeight - 120 - pop.items.length * 54);
         return (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setPop(null)} />
-            <div className="fixed z-50 w-[360px] max-w-[calc(100vw-16px)] rounded-xl border border-slate-700 bg-slate-950 p-3 shadow-2xl" style={{ left: pop.x, top: Math.max(8, top) }}>
+            <div ref={popRef} className="fixed z-50 max-h-[calc(100vh-16px)] w-[360px] max-w-[calc(100vw-16px)] overflow-y-auto rounded-xl border border-slate-700 bg-slate-950 p-3 shadow-2xl" style={{ left: pop.x, top: pop.y, visibility: "hidden" }}>
               <div className="mb-2 flex items-center gap-2">
                 <div className="min-w-0 flex-1 truncate"><span className="text-sm text-slate-100">{e?.name}</span><span className="text-sm text-slate-500"> · {DOW_OF(pop.d)} {dLabel(pop.d)}{hs.has(pop.d) ? " · ngày lễ" : ""}</span></div>
                 <button onClick={() => setPop(null)} className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-700 text-slate-400 hover:text-slate-100"><X size={14} /></button>
@@ -4005,63 +4017,15 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
   );
 }
 
+/* v6.1 — Bảng công (quản lý) chỉ còn Tổng quan bảng công: xem Tuần / Tháng, sửa nhanh từng ô, sửa cả tuần trong ngăn kéo.
+   Bỏ tab "Chi tiết nhân viên" (ngăn kéo đã dùng đúng bảng sửa đó). */
 function AdminTimesheet({ cfg, flash, onDirtyChange }) {
-  const [empId, setEmpId] = useState(cfg.employees[0]?.id || "");
-  const [q, setQ] = useState("");
-  const [mode, setMode] = useState("matrix");              // v1.6: "matrix" tổng quan | "detail" từng nhân sự
-  const [pickWeek, setPickWeek] = useState(null);          // v5.9: tuần mở sẵn khi bấm Sửa / tên người ở Tổng quan
-  const list = cfg.employees.filter((e) => {
-    const kw = q.trim().toLowerCase();
-    return !kw || `${e.name} ${e.code || ""} ${e.dept} ${e.role || ""}`.toLowerCase().includes(kw);
-  });
-  const emp = cfg.employees.find((e) => e.id === empId);
-
   if (cfg.employees.length === 0) return (
     <Panel title="Bảng công nhân sự">
       <p className="text-sm text-slate-500">Chưa có nhân sự nào. Thêm nhân sự ở tab Nhân sự trước đã.</p>
     </Panel>
   );
-
-  return (
-    <div className="space-y-3 md:space-y-4">
-      <div className="inline-flex rounded-lg border border-slate-800 bg-slate-900 p-1">
-        {[["matrix", "Tổng quan bảng công", Grid3x3], ["detail", "Chi tiết nhân viên", User]].map(([k, label, Ico]) => (
-          <button key={k} onClick={() => setMode(k)}
-            className={`inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm ${mode === k ? "bg-teal-600 text-white" : "text-slate-400 hover:text-slate-200"}`}>
-            <Ico size={14} /> {label}
-          </button>
-        ))}
-      </div>
-
-      {/* v5.9: Tuần (lưới ngày + cột Nhắc) / Tháng (lịch nhiệt) — thay khung Tình trạng nộp + Ma trận giờ công cũ */}
-      {mode === "matrix" && <TimesheetBoard cfg={cfg} flash={flash} onDirtyChange={onDirtyChange} />}
-
-      {/* Chọn nhân sự để xem và sửa bảng công */}
-      {mode === "detail" && <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
-          <div className="relative min-w-0" style={{ flexBasis: "30%", flexGrow: 1 }}>
-            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm nhân sự" className={`pl-9 ${inputCls}`} />
-          </div>
-          <div className="min-w-0" style={{ flexBasis: "44%", flexGrow: 1 }}>
-            <select value={empId} onChange={(e) => setEmpId(e.target.value)} className={selectCls}>
-              {list.length === 0 && <option value="">Không có ai khớp từ khoá</option>}
-              {list.map((e) => <option key={e.id} value={e.id}>{e.code ? `[${e.code}] ` : ""}{e.name} — {e.dept}{e.role ? ` · ${e.role}` : ""}</option>)}
-            </select>
-          </div>
-          <span className="min-w-0 truncate text-xs text-slate-500 md:text-right" style={{ flexBasis: "26%" }}>
-            {emp ? `${emp.name} · ${emp.dept}${emp.role ? ` · ${roleLabel(emp.role)}` : ""}` : "Chọn một nhân sự"}
-          </span>
-        </div>
-        <p className="mt-3 border-t border-slate-800 pt-3 text-xs text-slate-500">
-          Ở đây bạn sửa được cả ngày đã gửi mà không cần mở khoá. Mọi thay đổi ghi thẳng vào bảng công của nhân sự — nên báo cho họ biết khi bạn sửa số liệu.
-        </p>
-      </div>}
-
-      {/* key theo empId để reset toàn bộ state khi đổi người, tránh dính dữ liệu của người trước */}
-      {mode === "detail" && emp && <EmployeeArea key={`${emp.id}|${pickWeek || ""}`} cfg={cfg} empId={emp.id} flash={flash} admin onDirtyChange={onDirtyChange} initialMonday={pickWeek} />}
-    </div>
-  );
+  return <TimesheetBoard cfg={cfg} flash={flash} onDirtyChange={onDirtyChange} />;
 }
 
 /* --------- cảnh báo hạn chốt công (ẩn tạm trong phiên, hoặc tắt vĩnh viễn theo thiết bị) --------- */

@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v6.0 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v6.1 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.0`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.1`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -26,6 +26,13 @@ Ghi chú:
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
 
+## Mới ở v6.1 — Sửa lỗi vị trí hộp sửa nhanh, bỏ tab Chi tiết nhân viên
+
+Không đổi database — **bỏ qua bước 1**, chỉ upload folder lên GitHub.
+
+- Hộp sửa nhanh khi bấm ô ngày luôn nằm trọn trong màn hình: đặt dưới ô, sát đáy thì tự lật lên trên ô; hộp quá dài thì cuộn bên trong.
+- Bảng công (quản lý) chỉ còn **Tổng quan bảng công** — bỏ tab "Chi tiết nhân viên". Sửa cả tuần của một người: bấm ✎ hoặc bấm tên → ngăn kéo bên phải.
+
 ## Mới ở v6.0 — Sửa giờ công ngay tại Tổng quan bảng công
 
 Không đổi database — **bỏ qua bước 1**, chỉ upload folder lên GitHub. (Nếu chưa chạy `schema.sql` của bản v5.6 thì vẫn cần chạy một lần.)
@@ -36,7 +43,7 @@ Không đổi database — **bỏ qua bước 1**, chỉ upload folder lên GitH
 - **Sửa cả tuần**: bấm ✎ (cột Mở khoá / sửa) hoặc bấm tên người → ngăn kéo trượt ra bên phải với đúng bảng sửa của Chi tiết nhân viên
   (thêm dòng, tăng ca, chép tuần trước, Lưu thay đổi, Đánh dấu đã gửi, Mở khoá). Bảng tổng quan vẫn nằm phía sau;
   nút ‹ › chuyển sang người kế tiếp; Esc hoặc ✕ để đóng — còn thay đổi chưa lưu thì app hỏi lại.
-- Đóng ngăn kéo / lưu ô xong, dòng trên bảng tổng quan tự cập nhật. Tab "Chi tiết nhân viên" vẫn giữ để xem sâu.
+- Đóng ngăn kéo / lưu ô xong, dòng trên bảng tổng quan tự cập nhật. (v6.1: tab "Chi tiết nhân viên" đã bỏ.)
 
 ## Mới ở v5.9 — Tổng quan bảng công (Tuần / Tháng) + nút nhắc nộp
 
