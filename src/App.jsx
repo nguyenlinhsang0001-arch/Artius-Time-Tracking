@@ -16,6 +16,10 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v6.0 — Tổng quan bảng công: sửa giờ ngay tại chỗ, không chuyển tab.
+     · Bấm một ô ngày → hộp sửa nhanh các dòng giờ của ngày đó (giữ dấu đã gửi; ngày hết giờ thì bỏ dấu).
+     · Bấm ✎ hoặc tên người → ngăn kéo bên phải với bảng sửa cả tuần (dùng lại bảng của Chi tiết nhân viên): thêm dòng,
+       tăng ca, chép tuần trước, lưu, mở khoá; nút ‹ › sang người kế tiếp; Esc / ✕ để đóng (hỏi nếu còn thay đổi chưa lưu).
    Mới ở v5.9 — Bảng công (quản lý): "Tổng quan bảng công" thay khung Tình trạng nộp + Ma trận giờ công.
      Tuần = lưới ngày (giờ từng ngày, tăng ca "+h", tổng / chuẩn, trạng thái nộp, cột Nhắc gửi thông báo);
      Tháng = lịch nhiệt (ô nhỏ mỗi ngày, cùng bộ màu; chấm trạng thái nộp từng tuần, bấm để mở tuần). Hiện ngày lễ.
@@ -175,7 +179,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v5.9";
+const APP_VERSION = "v6.0";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -3442,7 +3446,29 @@ const unlockWeekTs = async (empId, monday) => {
   return ok;
 };
 
-function TimesheetBoard({ cfg, flash, onPickEmp }) {
+/* v6.0 — sửa nhanh một ô ngày (quản lý): ghi giờ của ngày `d` cho các dòng `vals` { "<khoá dòng>": giờ }.
+   Đọc lại bản mới nhất trước khi ghi; giữ nguyên dấu đã gửi của ngày (giống quản lý sửa ở Chi tiết nhân viên);
+   ngày không còn giờ nào thì bỏ dấu đã gửi. Dòng không còn giờ nào trong tháng thì bỏ. */
+const tsRowKey = (r) => `${r.projectId}|${r.phaseId || DEFAULT_PHASE}|${r.taskId}|${r.otFor || ""}`;
+const saveDayTs = async (empId, d, vals) => {
+  const ym = ymOf(d);
+  if (!(await refreshTs(empId, [ym]))) return false;
+  const b = dbTs(empId, ym) || { rows: [], weeks: {}, sent: {} };
+  const rows = (b.rows || []).map((r) => {
+    const k = tsRowKey(r);
+    if (!(k in vals)) return r;
+    const days = { ...r.days }, h = Number(vals[k]) || 0;
+    if (h > 0) days[d] = h; else delete days[d];
+    return { ...r, days };
+  }).filter((r) => Object.values(r.days || {}).some((v) => Number(v) > 0));
+  const sent = { ...(b.sent || {}) };
+  if (!rows.some((r) => Number(r.days[d]) > 0)) delete sent[d];
+  const ok = await commitTs({ [slot(empId, ym)]: { ...b, rows, sent } });
+  bumpData();
+  return ok;
+};
+
+function TimesheetBoard({ cfg, flash, onDirtyChange }) {
   const dataTick = useDataTick();
   const today = fmt(new Date());
   const [mode, setMode] = useState("week");                     // week | month
@@ -3454,7 +3480,12 @@ function TimesheetBoard({ cfg, flash, onPickEmp }) {
   const [nudged, setNudged] = useState(() => new Map());        // empId -> giờ đã nhắc (tuần đang xem)
   const [nudging, setNudging] = useState(false);
   const [unlockFor, setUnlockFor] = useState(null);             // empId đang chờ xác nhận mở khoá tuần
-  const [, setLoadTick] = useState(0);
+  const [drawer, setDrawer] = useState(null);                   // v6.0 (A): empId đang mở ngăn kéo sửa cả tuần
+  const [drawerDirty, setDrawerDirty] = useState(false);
+  const [leaveAsk, setLeaveAsk] = useState(false);              // đang hỏi bỏ thay đổi chưa lưu
+  const [pop, setPop] = useState(null);                         // v6.0 (C): { eid, d, x, y, items, vals } — sửa nhanh một ô ngày
+  const [popSaving, setPopSaving] = useState(false);
+  const [loadTick, setLoadTick] = useState(0);
 
   const hoursCfg = cfg.hours || DEFAULT_HOURS;
   const hs = useMemo(() => makeHolidayIndex(cfg.holidays), [cfg.holidays]);
@@ -3489,7 +3520,7 @@ function TimesheetBoard({ cfg, flash, onPickEmp }) {
       }
     }
     return m;
-  }, [cfg.employees, weeks.join(","), dataTick, taskById, projById]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cfg.employees, weeks.join(","), dataTick, loadTick, taskById, projById]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stdOf = (d) => (d > today ? 0 : minHoursFor(d, hoursCfg, hs) || 0);
   const dayInfo = (eid, d) => {
@@ -3618,8 +3649,52 @@ function TimesheetBoard({ cfg, flash, onPickEmp }) {
     );
   };
   const dayHandlers = (eid, d) => ({
-    onMouseMove: (e) => setTip({ eid, d, x: e.clientX, y: e.clientY }),
+    onMouseMove: (e) => { if (!pop) setTip({ eid, d, x: e.clientX, y: e.clientY }); },
     onMouseLeave: () => setTip(null),
+    onClick: (e) => openPop(eid, d, e),
+  });
+  /* v6.0 (C) — bấm một ô ngày: hộp sửa nhanh các dòng giờ của ngày đó (dòng có giờ trong tuần của ngày) */
+  const openPop = (eid, d, ev) => {
+    if (d > today) return;
+    const wd = weekDays(fmt(mondayOf(parseD(d)))), b = dbTs(eid, ymOf(d));
+    const items = (b?.rows || []).filter((r) => wd.some((x) => Number(r.days?.[x]) > 0)).map((r) => ({
+      key: tsRowKey(r), ot: isOtId(r.taskId),
+      label: isOtId(r.taskId) ? `Tăng ca · ${r.otFor ? tName(r.otFor) : "chưa rõ tác vụ"}` : isLeaveTask(r.taskId) ? tName(r.taskId) : tName(r.taskId),
+      sub: isLeaveTask(r.taskId) ? "Vắng mặt" : `${pName(r.projectId)}${r.projectId && r.projectId !== NO_PROJECT ? ` · ${r.phaseId || DEFAULT_PHASE}` : ""}`,
+      h: Number(r.days?.[d]) || 0,
+    })).sort((a, b2) => (a.ot - b2.ot) || b2.h - a.h);
+    const rect = ev.currentTarget.getBoundingClientRect();
+    const W = 360, x = Math.min(window.innerWidth - W - 8, Math.max(8, rect.left)), y = rect.bottom + 6;
+    setTip(null);
+    setPop({ eid, d, x, y, items, vals: Object.fromEntries(items.map((it) => [it.key, it.h ? String(it.h) : ""])) });
+  };
+  const savePop = async () => {
+    if (!pop || popSaving) return;
+    for (const v of Object.values(pop.vals)) { const n = Number(v || 0); if (!(n >= 0 && n <= 24)) return flash("Giờ phải từ 0 đến 24.", "err"); }
+    const changed = Object.fromEntries(pop.items.filter((it) => (Number(pop.vals[it.key]) || 0) !== it.h).map((it) => [it.key, Number(pop.vals[it.key]) || 0]));
+    if (!Object.keys(changed).length) { setPop(null); return; }
+    setPopSaving(true);
+    const ok = await saveDayTs(pop.eid, pop.d, changed);
+    setPopSaving(false);
+    if (ok) { setPop(null); setLoadTick((t) => t + 1); flash(`Đã lưu giờ ${DOW_OF(pop.d)} ${dLabel(pop.d)} — ${cfg.employees.find((e) => e.id === pop.eid)?.name || ""}.`); }
+    else flash(`Chưa lưu được — ${LAST_STORAGE_ERROR || "mất kết nối"}`, "err");
+  };
+  /* v6.0 (A) — ngăn kéo sửa cả tuần: dùng lại đúng bảng sửa của Chi tiết nhân viên (quản lý) */
+  const drawerDirtyCb = useCallback((v) => { setDrawerDirty(v); onDirtyChange?.(v); }, [onDirtyChange]);
+  const openDrawer = (eid) => { setPop(null); setTip(null); setDrawer(eid); };
+  const closeDrawer = (force = false) => {
+    if (drawerDirty && !force) { setLeaveAsk(true); return; }
+    setLeaveAsk(false); setDrawer(null); setDrawerDirty(false); onDirtyChange?.(false); setLoadTick((t) => t + 1);
+  };
+  const stepDrawer = (n) => {
+    if (drawerDirty) { setLeaveAsk(true); return; }
+    const i = emps.findIndex((e) => e.id === drawer), nx = emps[(i + n + emps.length) % emps.length];
+    if (nx) { setDrawer(nx.id); setLoadTick((t) => t + 1); }
+  };
+  useEffect(() => {
+    if (!drawer && !pop) return;
+    const h = (e) => { if (e.key === "Escape") { if (pop) setPop(null); else closeDrawer(); } };
+    window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
   });
   const Legend = () => (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-800 px-3 py-2 text-xs text-slate-400 md:px-4">
@@ -3627,12 +3702,12 @@ function TimesheetBoard({ cfg, flash, onPickEmp }) {
         <span key={k} className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded-[3px]" style={DAY_ST_SM[k]} />{l}</span>
       ))}
       <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full bg-teal-400" />Tăng ca (ô tuần ghi <span className="font-mono text-teal-400">+h</span>)</span>
-      <span className="text-slate-600">Rê chuột vào ô để xem giờ theo dự án · bấm tên để mở bảng công</span>
+      <span className="text-slate-600">Rê chuột vào ô để xem giờ theo dự án · bấm ô để sửa nhanh · bấm tên hoặc ✎ để sửa cả tuần</span>
     </div>
   );
   const NameCell = ({ e }) => (
     <td className="sticky left-0 z-10 border-b border-slate-800/70 bg-slate-900 px-3 py-1.5 md:px-4">
-      <button onClick={() => onPickEmp(e.id, mode === "week" ? monday : null)} title="Xem và sửa bảng công chi tiết" className="block w-full min-w-[150px] text-left">
+      <button onClick={() => { if (mode === "month") setMonday(fmt(mondayOf(ym === ymOf(today) ? new Date() : parseD(`${ym}-01`)))); openDrawer(e.id); }} title="Sửa giờ công tuần này" className="block w-full min-w-[150px] text-left">
         <span className="block truncate text-sm text-slate-100 hover:text-teal-300">{e.name}</span>
         <span className="block truncate text-[11px] text-slate-500">{roleTitle(e.role) || e.dept}</span>
       </button>
@@ -3681,7 +3756,7 @@ function TimesheetBoard({ cfg, flash, onPickEmp }) {
                 return (
                   <td key={d} className="border-b border-slate-800/70 px-1 py-1.5">
                     <div {...dayHandlers(e.id, d)} style={DAY_ST[x.st]}
-                      className={`mx-auto flex h-11 min-w-[54px] max-w-[110px] cursor-default flex-col items-center justify-center rounded-md ${x.st === "hol" ? "text-[13px] font-medium" : "font-mono text-[13px] font-semibold"}`}>
+                      className={`mx-auto flex h-11 min-w-[54px] max-w-[110px] ${d > today ? "cursor-default" : "cursor-pointer hover:brightness-125"} flex-col items-center justify-center rounded-md ${x.st === "hol" ? "text-[13px] font-medium" : "font-mono text-[13px] font-semibold"}`}>
                       {txt}
                       {plus > 0 && <small className="font-mono text-[10px] font-medium leading-none text-teal-400">+{fmtH(plus)}</small>}
                     </div>
@@ -3698,7 +3773,7 @@ function TimesheetBoard({ cfg, flash, onPickEmp }) {
                     <button onClick={() => setUnlockFor(e.id)} title="Mở khoá cả tuần — nhân sự sửa lại và gửi lại được"
                       className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-slate-100"><Unlock size={15} /></button>
                   ) : <span className="inline-block w-9" />}
-                  <button onClick={() => onPickEmp(e.id, monday)} title="Sửa giờ công tuần này (Chi tiết nhân viên)"
+                  <button onClick={() => openDrawer(e.id)} title="Sửa giờ công cả tuần"
                     className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-slate-100"><Pencil size={15} /></button>
                 </span>
               </td>
@@ -3744,7 +3819,7 @@ function TimesheetBoard({ cfg, flash, onPickEmp }) {
                   const x = dayInfo(e.id, d);
                   return (
                     <span key={d} {...dayHandlers(e.id, d)} style={DAY_ST_SM[x.st]}
-                      className={`relative h-[22px] w-[22px] shrink-0 cursor-default rounded ${i > 0 && parseD(d).getDay() === 1 ? "ml-2" : ""} ${d === today ? "outline outline-1 outline-offset-2 outline-slate-100/40" : ""}`}>
+                      className={`relative h-[22px] w-[22px] shrink-0 rounded ${d > today ? "cursor-default" : "cursor-pointer hover:brightness-150"} ${i > 0 && parseD(d).getDay() === 1 ? "ml-2" : ""} ${d === today ? "outline outline-1 outline-offset-2 outline-slate-100/40" : ""}`}>
                       {x.ot + (x.st === "hol" ? x.done : 0) > 0 && <i className="absolute right-0.5 top-0.5 h-[5px] w-[5px] rounded-full bg-teal-400" />}
                     </span>
                   );
@@ -3839,7 +3914,82 @@ function TimesheetBoard({ cfg, flash, onPickEmp }) {
       {emps.length === 0 ? <p className="px-4 py-6 text-sm text-slate-500">Không có nhân sự nào khớp bộ lọc.</p> : (
         <div className="overflow-x-auto pb-1">{mode === "week" ? WeekView() : MonthView()}</div>
       )}
-      {tipBox}
+      {!pop && !drawer && tipBox}
+
+      {/* v6.0 (C) — hộp sửa nhanh một ô ngày */}
+      {pop && (() => {
+        const e = cfg.employees.find((y) => y.id === pop.eid), std = minHoursFor(pop.d, hoursCfg, hs) || 0;
+        const sum = Object.values(pop.vals).reduce((a, v) => a + (Number(v) || 0), 0);
+        const top = Math.min(pop.y, window.innerHeight - 120 - pop.items.length * 54);
+        return (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setPop(null)} />
+            <div className="fixed z-50 w-[360px] max-w-[calc(100vw-16px)] rounded-xl border border-slate-700 bg-slate-950 p-3 shadow-2xl" style={{ left: pop.x, top: Math.max(8, top) }}>
+              <div className="mb-2 flex items-center gap-2">
+                <div className="min-w-0 flex-1 truncate"><span className="text-sm text-slate-100">{e?.name}</span><span className="text-sm text-slate-500"> · {DOW_OF(pop.d)} {dLabel(pop.d)}{hs.has(pop.d) ? " · ngày lễ" : ""}</span></div>
+                <button onClick={() => setPop(null)} className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-700 text-slate-400 hover:text-slate-100"><X size={14} /></button>
+              </div>
+              {pop.items.length === 0 ? (
+                <p className="py-1 text-sm text-slate-500">Tuần này chưa có dòng giờ nào. Bấm "Sửa cả tuần" để thêm dự án · tác vụ.</p>
+              ) : pop.items.map((it) => (
+                <div key={it.key} className="grid grid-cols-[minmax(0,1fr)_72px] items-center gap-2 py-1">
+                  <div className="min-w-0">
+                    <div className={`truncate text-[13px] ${it.ot ? "text-teal-400" : "text-slate-200"}`}>{it.label}</div>
+                    <div className="truncate text-[11px] text-slate-500">{it.sub}</div>
+                  </div>
+                  <input type="number" inputMode="decimal" min="0" max="24" step="0.5" value={pop.vals[it.key]}
+                    onChange={(ev) => setPop((p) => ({ ...p, vals: { ...p.vals, [it.key]: ev.target.value } }))}
+                    onKeyDown={(ev) => { if (ev.key === "Enter") savePop(); }}
+                    className={`h-11 w-[72px] rounded-md border bg-slate-900 text-center font-mono text-sm focus:border-teal-500 focus:outline-none
+                      ${(Number(pop.vals[it.key]) || 0) !== it.h ? "border-amber-500" : "border-slate-700"} ${it.ot ? "text-teal-300" : "text-slate-100"}`} />
+                </div>
+              ))}
+              <div className="mt-2 flex items-center justify-between gap-2 border-t border-slate-800 pt-2">
+                <span className="text-xs text-slate-500">Tổng <span className="font-mono text-slate-200">{fmtH(sum)}</span>{std ? ` / chuẩn ${fmtH(std)} h` : ""}</span>
+                <span className="flex gap-2">
+                  <button onClick={() => setPop(null)} className={`${btnGhost} h-9 px-3`}>Huỷ</button>
+                  {pop.items.length > 0 && <button onClick={savePop} disabled={popSaving} className={`${btnPrimary} h-9 px-3 disabled:opacity-40`}>{popSaving ? <Loader2 className="animate-spin" size={14} /> : null} Lưu</button>}
+                </span>
+              </div>
+              <button onClick={() => { const id = pop.eid, d = pop.d; setMonday(fmt(mondayOf(parseD(d)))); setPop(null); openDrawer(id); }}
+                className="mt-2 text-xs text-teal-400 hover:text-teal-300">Sửa cả tuần · thêm dòng ›</button>
+            </div>
+          </>
+        );
+      })()}
+
+      {/* v6.0 (A) — ngăn kéo bên phải: sửa cả tuần của một người, bảng tổng quan vẫn nằm phía sau */}
+      {drawer && (() => {
+        const e = cfg.employees.find((y) => y.id === drawer);
+        if (!e) return null;
+        return (
+          <>
+            <div className="fixed inset-0 z-40 bg-slate-950/70" onClick={() => closeDrawer()} />
+            <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[1120px] flex-col border-l border-slate-700 bg-slate-950 shadow-[-20px_0_50px_rgba(0,0,0,.5)]">
+              <div className="flex items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
+                <button onClick={() => stepDrawer(-1)} title="Người trước" className={`${CTRL} w-11 rounded-md border border-slate-700 text-slate-400 hover:text-slate-100`}><ChevronLeft size={16} className="mx-auto" /></button>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-slate-100">{e.name}</div>
+                  <div className="truncate text-xs text-slate-500">{e.dept}{roleTitle(e.role) ? ` · ${roleTitle(e.role)}` : ""} · sửa giờ công (quản lý sửa được cả ngày đã gửi)</div>
+                </div>
+                <button onClick={() => stepDrawer(1)} title="Người kế tiếp" className={`${CTRL} w-11 rounded-md border border-slate-700 text-slate-400 hover:text-slate-100`}><ChevronRight size={16} className="mx-auto" /></button>
+                <button onClick={() => closeDrawer()} title="Đóng (Esc)" className={`${CTRL} w-11 rounded-md border border-slate-700 text-slate-400 hover:text-slate-100`}><X size={16} className="mx-auto" /></button>
+              </div>
+              {leaveAsk && (
+                <div className="flex flex-wrap items-center gap-2 border-b border-amber-900 bg-amber-950/60 px-4 py-2 text-sm text-amber-200">
+                  <span className="flex-1">Còn thay đổi chưa lưu. Bấm "Lưu thay đổi" trong bảng, hoặc bỏ thay đổi để đóng.</span>
+                  <button onClick={() => setLeaveAsk(false)} className={`${btnGhost} h-9 px-3`}>Ở lại</button>
+                  <button onClick={() => closeDrawer(true)} className={`${btnGhost} h-9 border-amber-700 px-3 text-amber-200`}>Bỏ thay đổi</button>
+                </div>
+              )}
+              <div className="flex-1 overflow-y-auto p-3 md:p-4">
+                <EmployeeArea key={`${drawer}|${monday}`} cfg={cfg} empId={drawer} flash={flash} admin initialMonday={monday} onDirtyChange={drawerDirtyCb} />
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
       <ConfirmDialog open={!!unlockFor} tone="ok"
         title={`Mở khoá tuần ${dLabel(monday)} – ${dLabel(fmt(addDays(parseD(monday), 6)))}?`}
         desc={`${cfg.employees.find((e) => e.id === unlockFor)?.name || ""} sẽ sửa lại và gửi lại được tuần này. Giờ công giữ nguyên, nhưng tạm chưa tính vào tổng hợp cho tới khi gửi lại.`}
@@ -3884,7 +4034,7 @@ function AdminTimesheet({ cfg, flash, onDirtyChange }) {
       </div>
 
       {/* v5.9: Tuần (lưới ngày + cột Nhắc) / Tháng (lịch nhiệt) — thay khung Tình trạng nộp + Ma trận giờ công cũ */}
-      {mode === "matrix" && <TimesheetBoard cfg={cfg} flash={flash} onPickEmp={(id, mon) => { setEmpId(id); setPickWeek(mon || null); setMode("detail"); }} />}
+      {mode === "matrix" && <TimesheetBoard cfg={cfg} flash={flash} onDirtyChange={onDirtyChange} />}
 
       {/* Chọn nhân sự để xem và sửa bảng công */}
       {mode === "detail" && <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
