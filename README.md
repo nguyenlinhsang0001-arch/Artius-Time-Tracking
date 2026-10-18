@@ -39,7 +39,10 @@ Bảng công → **Tổng quan bảng công** (thay khung "Tình trạng nộp b
   Đã nhắc thì chuông đổi thành ✓ (rê chuột xem giờ nhắc). Người chưa bật thông báo trên máy nào sẽ được báo tên.
 - **Tháng**: lịch nhiệt — mỗi ngày một ô nhỏ cùng bộ màu, chấm xanh ngọc = có tăng ca; bên phải tổng / chuẩn và
   chấm trạng thái nộp từng tuần — bấm chấm để mở tuần đó ở chế độ Tuần.
-- Rê chuột vào ô ngày: giờ theo dự án · tác vụ (phần nháp ghi rõ). Bấm tên người để mở Chi tiết nhân viên.
+- Cột **Mở khoá / sửa** (cạnh Nộp tuần): 🔓 mở khoá cả tuần cho nhân sự sửa và gửi lại (có hỏi xác nhận; chỉ hiện khi tuần đã có ngày gửi) ·
+  ✎ mở Chi tiết nhân viên đúng tuần đó để quản lý tự sửa giờ công.
+- Tiêu đề cột ngày: thứ ở trên, ngày ở dưới.
+- Rê chuột vào ô ngày: giờ theo dự án · tác vụ (phần nháp ghi rõ). Bấm tên người để mở Chi tiết nhân viên đúng tuần đang xem.
 - 5 KPI: đã nộp đủ, chưa nộp / còn nháp, tổng giờ đã gửi / chuẩn, tăng ca, thiếu giờ chuẩn. Xuất Excel theo kỳ đang xem
   (sheet Bảng công · Chi tiết · Tình trạng nộp).
 - Ma trận nhân sự × dự án vẫn xem được ở Dashboard → tab Nhân sự → Ma trận.

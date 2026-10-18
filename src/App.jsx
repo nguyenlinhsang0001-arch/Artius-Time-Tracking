@@ -19,6 +19,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    Mới ở v5.9 — Bảng công (quản lý): "Tổng quan bảng công" thay khung Tình trạng nộp + Ma trận giờ công.
      Tuần = lưới ngày (giờ từng ngày, tăng ca "+h", tổng / chuẩn, trạng thái nộp, cột Nhắc gửi thông báo);
      Tháng = lịch nhiệt (ô nhỏ mỗi ngày, cùng bộ màu; chấm trạng thái nộp từng tuần, bấm để mở tuần). Hiện ngày lễ.
+     Tiêu đề cột: thứ ở trên, ngày ở dưới. Cột "Mở khoá / sửa": mở khoá cả tuần cho nhân sự (có xác nhận) · mở Chi tiết đúng tuần để sửa.
    Mới ở v5.8 — Tab Nhân sự, chi tiết một người: thêm bảng Tác vụ · Giờ · % (gộp mọi dự án trong kỳ) bên phải bảng Dự án.
    Mới ở v5.7 — Tab Nhân sự, thanh từng người: số giờ nằm trong từng khúc (Giờ chuẩn / OT / cố gắng), bên phải chỉ còn giờ tổng;
      ngoặc vàng phía trên thanh chỉ khoảng thiếu giờ chuẩn ("thiếu x h"); vạch giờ chuẩn của kỳ đổi trắng mờ, mảnh 1px;
@@ -1785,10 +1786,11 @@ function SignIn({ onSignedIn, flash }) {
 }
 
 /* ============================ EMPLOYEE ============================ */
-function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange }) {
+function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initialMonday = null }) {
   const emp = cfg.employees.find((e) => e.id === empId);
   // v2.6: bấm thông báo nhắc thì mở thẳng tuần cần gửi (?tuan=YYYY-MM-DD), đọc xong xoá khỏi thanh địa chỉ
   const [monday, setMonday] = useState(() => {
+    if (initialMonday) return initialMonday;   // v5.9: mở từ Tổng quan bảng công → đúng tuần đang xem
     const t = new URLSearchParams(window.location.search).get("tuan") || "";
     if (/^\d{4}-\d{2}-\d{2}$/.test(t)) {
       try { window.history.replaceState(null, "", window.location.pathname); } catch { /* bỏ qua */ }
@@ -3422,6 +3424,23 @@ const WEEK_ST = {
   fut: ["—", "", "#1e293b"],
 };
 const DOW_OF = (d) => DOW[(parseD(d).getDay() + 6) % 7];
+/* v5.9 — quản lý mở khoá cả tuần của một nhân sự từ Tổng quan bảng công (giống nút "Mở khoá tuần này" ở Chi tiết nhân viên):
+   gỡ dấu đã gửi của 7 ngày + dấu tuần kiểu cũ; giờ công giữ nguyên, nhân sự sửa và gửi lại được. Đọc lại bản mới nhất trước khi ghi. */
+const unlockWeekTs = async (empId, monday) => {
+  const wd = weekDays(monday), yms = [...new Set(wd.map(ymOf))];
+  if (!(await refreshTs(empId, yms))) return false;
+  const changes = {};
+  for (const ym of yms) {
+    const b = dbTs(empId, ym); if (!b) continue;
+    const sent = { ...(b.sent || {}) }, weeks = { ...(b.weeks || {}) };
+    for (const d of wd) if (ymOf(d) === ym) delete sent[d];
+    delete weeks[monday];
+    changes[slot(empId, ym)] = { ...b, sent, weeks };
+  }
+  const ok = await commitTs(changes);
+  bumpData();
+  return ok;
+};
 
 function TimesheetBoard({ cfg, flash, onPickEmp }) {
   const dataTick = useDataTick();
@@ -3434,6 +3453,7 @@ function TimesheetBoard({ cfg, flash, onPickEmp }) {
   const [tip, setTip] = useState(null);                         // { eid, d, x, y } — thẻ chi tiết một ngày
   const [nudged, setNudged] = useState(() => new Map());        // empId -> giờ đã nhắc (tuần đang xem)
   const [nudging, setNudging] = useState(false);
+  const [unlockFor, setUnlockFor] = useState(null);             // empId đang chờ xác nhận mở khoá tuần
   const [, setLoadTick] = useState(0);
 
   const hoursCfg = cfg.hours || DEFAULT_HOURS;
@@ -3612,7 +3632,7 @@ function TimesheetBoard({ cfg, flash, onPickEmp }) {
   );
   const NameCell = ({ e }) => (
     <td className="sticky left-0 z-10 border-b border-slate-800/70 bg-slate-900 px-3 py-1.5 md:px-4">
-      <button onClick={() => onPickEmp(e.id)} title="Xem và sửa bảng công chi tiết" className="block w-full min-w-[150px] text-left">
+      <button onClick={() => onPickEmp(e.id, mode === "week" ? monday : null)} title="Xem và sửa bảng công chi tiết" className="block w-full min-w-[150px] text-left">
         <span className="block truncate text-sm text-slate-100 hover:text-teal-300">{e.name}</span>
         <span className="block truncate text-[11px] text-slate-500">{roleTitle(e.role) || e.dept}</span>
       </button>
@@ -3630,12 +3650,14 @@ function TimesheetBoard({ cfg, flash, onPickEmp }) {
           <th className="sticky left-0 z-10 border-b border-slate-800 bg-slate-900 px-3 py-2 text-left font-normal md:px-4">Nhân sự</th>
           {days.map((d) => (
             <th key={d} title={hs.get(d) || undefined} className={`border-b border-slate-800 px-1 py-2 font-normal ${d === today ? "text-slate-100" : ""}`}>
-              {DOW_OF(d)} {dLabel(d)}
+              <span className="block">{DOW_OF(d)}</span>
+              <span className="block font-mono text-[10.5px] tracking-normal">{dLabel(d)}</span>
               {hs.has(d) && <span className="mx-auto mt-0.5 block w-max rounded bg-slate-300 px-1.5 text-[10px] normal-case leading-[15px] tracking-normal text-slate-900">Lễ</span>}
             </th>
           ))}
           <th className="border-b border-slate-800 px-3 py-2 text-left font-normal">Tổng / chuẩn</th>
           <th className="border-b border-slate-800 px-2 py-2 font-normal">Nộp tuần</th>
+          <th className="whitespace-nowrap border-b border-slate-800 px-2 py-2 font-normal" title="Mở khoá tuần cho nhân sự sửa · Sửa giờ công">Mở khoá / sửa</th>
           <th className="w-24 whitespace-nowrap border-b border-slate-800 px-2 py-2 font-normal">
             Nhắc{toNudge.length > 0 && (
               <button onClick={() => nudge(toNudge)} disabled={nudging} title={`Nhắc tất cả ${toNudge.length} người cần xử lý`}
@@ -3647,7 +3669,7 @@ function TimesheetBoard({ cfg, flash, onPickEmp }) {
         </tr>
       </thead>
       <tbody>
-        {groups.map((g) => [DeptRow({ g, span: days.length + 4 }), ...g.items.map((e) => {
+        {groups.map((g) => [DeptRow({ g, span: days.length + 5 }), ...g.items.map((e) => {
           const ws = weekState(e.id, monday), rs = reasons(e.id), at = nudged.get(e.id);
           return (
             <tr key={e.id}>
@@ -3669,6 +3691,16 @@ function TimesheetBoard({ cfg, flash, onPickEmp }) {
               <td className="border-b border-slate-800/70 px-3 py-1.5">{totCell(sums.get(e.id))}</td>
               <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
                 {ws === "fut" ? <span className="text-slate-600">—</span> : <span className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] ${WEEK_ST[ws][1]}`}>{WEEK_ST[ws][0]}</span>}
+              </td>
+              <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
+                <span className="inline-flex gap-1.5">
+                  {weekDays(monday).some((d) => daySent(e.id, d)) ? (
+                    <button onClick={() => setUnlockFor(e.id)} title="Mở khoá cả tuần — nhân sự sửa lại và gửi lại được"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-slate-100"><Unlock size={15} /></button>
+                  ) : <span className="inline-block w-9" />}
+                  <button onClick={() => onPickEmp(e.id, monday)} title="Sửa giờ công tuần này (Chi tiết nhân viên)"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-slate-100"><Pencil size={15} /></button>
+                </span>
               </td>
               <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
                 {rs.length > 0 && (at
@@ -3808,6 +3840,17 @@ function TimesheetBoard({ cfg, flash, onPickEmp }) {
         <div className="overflow-x-auto pb-1">{mode === "week" ? WeekView() : MonthView()}</div>
       )}
       {tipBox}
+      <ConfirmDialog open={!!unlockFor} tone="ok"
+        title={`Mở khoá tuần ${dLabel(monday)} – ${dLabel(fmt(addDays(parseD(monday), 6)))}?`}
+        desc={`${cfg.employees.find((e) => e.id === unlockFor)?.name || ""} sẽ sửa lại và gửi lại được tuần này. Giờ công giữ nguyên, nhưng tạm chưa tính vào tổng hợp cho tới khi gửi lại.`}
+        confirmLabel="Mở khoá" cancelLabel="Thôi"
+        onCancel={() => setUnlockFor(null)}
+        onConfirm={async () => {
+          const id = unlockFor; setUnlockFor(null);
+          const ok = await unlockWeekTs(id, monday);
+          const nm = cfg.employees.find((e) => e.id === id)?.name || "";
+          flash(ok ? `Đã mở khoá tuần ${dLabel(monday)} cho ${nm}.` : `Chưa mở khoá được — ${LAST_STORAGE_ERROR || "mất kết nối"}`, ok ? "ok" : "err");
+        }} />
     </div>
   );
 }
@@ -3816,6 +3859,7 @@ function AdminTimesheet({ cfg, flash, onDirtyChange }) {
   const [empId, setEmpId] = useState(cfg.employees[0]?.id || "");
   const [q, setQ] = useState("");
   const [mode, setMode] = useState("matrix");              // v1.6: "matrix" tổng quan | "detail" từng nhân sự
+  const [pickWeek, setPickWeek] = useState(null);          // v5.9: tuần mở sẵn khi bấm Sửa / tên người ở Tổng quan
   const list = cfg.employees.filter((e) => {
     const kw = q.trim().toLowerCase();
     return !kw || `${e.name} ${e.code || ""} ${e.dept} ${e.role || ""}`.toLowerCase().includes(kw);
@@ -3840,7 +3884,7 @@ function AdminTimesheet({ cfg, flash, onDirtyChange }) {
       </div>
 
       {/* v5.9: Tuần (lưới ngày + cột Nhắc) / Tháng (lịch nhiệt) — thay khung Tình trạng nộp + Ma trận giờ công cũ */}
-      {mode === "matrix" && <TimesheetBoard cfg={cfg} flash={flash} onPickEmp={(id) => { setEmpId(id); setMode("detail"); }} />}
+      {mode === "matrix" && <TimesheetBoard cfg={cfg} flash={flash} onPickEmp={(id, mon) => { setEmpId(id); setPickWeek(mon || null); setMode("detail"); }} />}
 
       {/* Chọn nhân sự để xem và sửa bảng công */}
       {mode === "detail" && <div className="rounded-xl border border-slate-800 bg-slate-900 p-3">
@@ -3865,7 +3909,7 @@ function AdminTimesheet({ cfg, flash, onDirtyChange }) {
       </div>}
 
       {/* key theo empId để reset toàn bộ state khi đổi người, tránh dính dữ liệu của người trước */}
-      {mode === "detail" && emp && <EmployeeArea key={emp.id} cfg={cfg} empId={emp.id} flash={flash} admin onDirtyChange={onDirtyChange} />}
+      {mode === "detail" && emp && <EmployeeArea key={`${emp.id}|${pickWeek || ""}`} cfg={cfg} empId={emp.id} flash={flash} admin onDirtyChange={onDirtyChange} initialMonday={pickWeek} />}
     </div>
   );
 }
