@@ -16,6 +16,11 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v6.3 — Tăng ca là CÀI ĐẶT CHUNG (Thiết lập → Tăng ca): khung giờ (bắt đầu – kết thúc) + hệ số, áp cho mọi vai trò.
+     Không còn hạng mục [OT] ở tab Tác vụ (tạo tên "[OT]…" bị chặn) — xoá / sửa tác vụ không làm mất tăng ca.
+     Quản lý mở bản mới lần đầu: tự chuyển các hạng mục [OT] cũ sang khung chung khớp theo giờ (giữ hệ số), dữ liệu không đổi.
+     Khung có giờ chấm thì không xoá được; giờ OT của hạng mục [OT] đã xoá trước đây gán lại được vào khung.
+     Màn chấm công nhân viên giữ nguyên thao tác (Tăng ca cho tác vụ + Khung giờ, không hiện hệ số).
    Mới ở v6.2 — Bảng chấm công: bỏ tiêu đề "Công việc dự án"; nhóm "Công việc chung" / "Vắng mặt" của dòng Khác
      hiện thành nhãn màu bo tròn (xanh ngọc / xanh nhạt) + chú thích + đường kẻ mảnh, tách rõ khỏi tác vụ bên dưới.
    Mới ở v6.1 — Hộp sửa nhanh ô ngày luôn nằm trọn trong màn hình (lật lên trên ô khi sát đáy, cuộn bên trong nếu quá dài).
@@ -183,7 +188,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v6.2";
+const APP_VERSION = "v6.3";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -252,6 +257,8 @@ const TS_PREFIX = "artius:ts:";   // tiền tố khoá của file sao lưu đờ
    Khi ghi thì KHÔNG ghi lại cả khối như trước: thiết lập ghi vào dòng thiết lập, bảng công
    ghi đúng dòng (nhân sự, tháng) vừa sửa. Nhờ đó người này lưu không đè dữ liệu người kia.
    ------------------------------------------------------------------ */
+let OT_PENDING = -1;      // v6.3: >= 0 = cấu hình vừa chuyển sang khung tăng ca chung, chưa lưu (số hạng mục [OT] đã gỡ)
+let OT_MIG_NOTE = "";     // thông báo một lần ở Thiết lập → Tăng ca sau khi chuyển đổi
 let DB = null;            // { v, config, base, ts: { "<empId>:<ym>": bucket } } — base = bản thiết lập khớp với server lần gần nhất
 let DB_LOADED = false;
 const cloneJson = (o) => JSON.parse(JSON.stringify(o));
@@ -804,7 +811,26 @@ const taskText = (t) => (t?.code ? `${t.code} · ${t.name}` : t?.name || "");
 const isOtTask = (t) => /^\s*\[\s*ot\s*\]/i.test(t?.name || "");
 // v3.4: bản sống các id hạng mục Tăng ca — App chép từ cfg.tasks mỗi lần render (như ROLES), để mọi hàm tính giờ tra được
 const OT_IDS = new Set();
-const syncOtTasks = (list) => { OT_IDS.clear(); for (const t of Array.isArray(list) ? list : []) if (isOtTask(t)) OT_IDS.add(t.id); };
+/* v6.3 — Tăng ca là CÀI ĐẶT CHUNG (Thiết lập → Tăng ca): cfg.otBands = [{ id, from: "17:30", to: "21:00", rate }].
+   Mỗi khung giờ thành một "hạng mục ảo" (như LEAVE_TASKS) tên "[OT] 17:30 - 21:00", nên mọi hàm cũ (isOtTask, otSpan,
+   otBandKey…) chạy như trước. Dòng tăng ca lưu taskId = mã khung (OTB_…), mã cố định kể cả khi đổi giờ của khung.
+   cfg.otLegacy = { <mã hạng mục [OT] cũ>: <mã khung> }: dòng chấm trước v6.3 giữ nguyên mã cũ trong dữ liệu
+   (database khoá ngày đã gửi theo mã), app đọc mã cũ như khung tương ứng. */
+const OT_TASKS = [];
+const otBandName = (b) => `[OT] ${b.from} - ${b.to}`;
+const syncOtBands = (c) => {
+  const bands = Array.isArray(c?.otBands) ? c.otBands : [];
+  const byId = new Map(bands.map((b) => [b.id, b]));
+  const list = bands.map((b) => ({ id: b.id, name: otBandName(b), roles: [], depts: [], group: "Tăng ca", band: true }));
+  const legacy = Object.entries(c?.otLegacy || {}).filter(([, bid]) => byId.has(bid))
+    .map(([old, bid]) => ({ id: old, name: otBandName(byId.get(bid)), roles: [], depts: [], group: "Tăng ca", legacy: true, bandId: bid }));
+  OT_TASKS.splice(0, OT_TASKS.length, ...list, ...legacy);
+  OT_IDS.clear();
+  for (const t of OT_TASKS) OT_IDS.add(t.id);
+  for (const t of Array.isArray(c?.tasks) ? c.tasks : []) if (isOtTask(t)) OT_IDS.add(t.id);   // cấu hình chưa chuyển đổi
+};
+// các khung giờ chọn được (không gồm mã cũ)
+const otBandTasks = () => OT_TASKS.filter((t) => t.band);
 const isOtId = (id) => OT_IDS.has(id);
 const otText = (t) => (t?.name || "").replace(/^\s*\[\s*ot\s*\]\s*/i, "").replace(/\s+-\s+/g, " – ");
 /* v4.9 — Khung giờ của hạng mục tăng ca, đọc từ tên ("[OT] 17:30 - 21:00" → 17:30 tới 21:00).
@@ -835,6 +861,8 @@ const otDefaultRate = (t) => { const sp = otSpan(t); return sp && sp.start >= 17
 const otRateOf = (cfg, t) => {
   const ok = (v) => v != null && v !== "" && Number(v) > 0;
   if (!t) return 2;
+  const bd = (cfg?.otBands || []).find((b) => b.id === (t.bandId || t.id));   // v6.3: hệ số lưu ngay trong khung giờ
+  if (bd) return ok(bd.rate) ? Number(bd.rate) : otDefaultRate(t);
   const k = otBandKey(t), byKey = cfg?.otRates?.[k];   // v5.1: lưu theo khung giờ
   if (ok(byKey)) return Number(byKey);
   // v4.9 lưu theo mã hạng mục: lấy hệ số của chính hạng mục, không có thì của hạng mục cùng khung giờ (vai trò khác)
@@ -850,6 +878,27 @@ const otSpecialRate = (cfg, kind) => {
   return v != null && v !== "" && Number(v) > 0 ? Number(v) : null;
 };
 const otRateFor = (cfg, t, kind) => otSpecialRate(cfg, kind) ?? otRateOf(cfg, t);
+/* v6.3 — mã khung giờ suy từ giờ bắt đầu + số giờ (VD 17:30 – 21:00 → OTB_1050_3.5), để mọi máy chuyển đổi ra cùng một mã */
+const otBandIdFor = (from, to) => { const sp = otSpan({ name: `[OT] ${from} - ${to}` }); return sp ? `OTB_${sp.start}_${sp.hours}` : `OTB_${uid("x")}`; };
+const DEFAULT_OT_BANDS = () => [["17:30", "21:00", 1.5], ["21:00", "0:00", 2], ["0:00", "8:00", 2]]
+  .map(([from, to, rate]) => ({ id: otBandIdFor(from, to), from, to, rate }));
+const otHM = (min) => `${Math.floor((min % 1440) / 60)}:${pad(min % 60)}`;
+/* Chuyển cấu hình cũ (hạng mục [OT] theo vai trò) sang khung giờ chung. Trả về { cfg, moved } — moved = số hạng mục [OT] đã gỡ.
+   Không đụng tới dữ liệu bảng công: mã hạng mục cũ ghi vào otLegacy. */
+const migrateOtCfg = (c) => {
+  if (Array.isArray(c.otBands)) return { cfg: c, moved: 0 };
+  const olds = (c.tasks || []).filter(isOtTask);
+  const bands = [], legacy = {};
+  for (const t of [...olds].sort((a, b) => ((otSpan(a)?.start ?? 9999) + 1440 - 1020) % 1440 - ((otSpan(b)?.start ?? 9999) + 1440 - 1020) % 1440)) {
+    const sp = otSpan(t);
+    const from = sp ? otHM(sp.start) : "17:30", to = sp ? otHM(sp.start + sp.hours * 60) : "21:00";
+    const id = otBandIdFor(from, to);
+    if (!bands.some((b) => b.id === id)) bands.push({ id, from, to, rate: otRateOf(c, t) });
+    legacy[t.id] = id;
+  }
+  const out = { ...c, otBands: bands.length ? bands : DEFAULT_OT_BANDS(), otLegacy: legacy, tasks: (c.tasks || []).filter((t) => !isOtTask(t)) };
+  return { cfg: out, moved: olds.length };
+};
 // Bỏ dấu để gõ "khao sat" vẫn ra "Khảo sát". NFD không tách được đ nên phải thay tay.
 const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
 // bảng màu lặp lại theo thứ tự dự án, dùng cho biểu đồ cột chồng theo dự án
@@ -914,6 +963,7 @@ const emptyConfig = () => ({
   hours: { ...DEFAULT_HOURS }, holidays: [], roles: DEFAULT_ROLES.map((r) => ({ ...r })),
   leaveTypes: DEFAULT_LEAVE_TYPES.map((t) => ({ ...t })),
   depts: [...DEFAULT_DEPTS],
+  otBands: DEFAULT_OT_BANDS(), otLegacy: {},
 });
 
 /* Vắng mặt giờ là tác vụ chọn được ngay trong ô Tác vụ, không còn panel riêng.
@@ -1373,7 +1423,9 @@ function AppMain() {
       c.depts = Array.isArray(c.depts) && c.depts.length ? c.depts : [...DEFAULT_DEPTS];
       if (!c.depts.includes("Ban giám đốc")) c.depts = [...c.depts, "Ban giám đốc"];
       syncDepts(c.depts);
-      syncRoles(c.roles); syncOtTasks(c.tasks);
+      const needOtMig = !Array.isArray(c.otBands);   // v6.3: cấu hình cũ → khung tăng ca chung (quản lý mở app sẽ tự lưu)
+      const mig = migrateOtCfg(c); c = mig.cfg; OT_PENDING = needOtMig ? mig.moved : -1;
+      syncRoles(c.roles); syncOtBands(c);
       syncLeave(c.leaveTypes);
       c.phases = Array.isArray(c.phases) && c.phases.length ? c.phases : DEFAULT_PHASES.map((x) => ({ ...x }));
       syncPhases(c.phases);
@@ -1453,9 +1505,20 @@ function AppMain() {
     return true;
   }, [flash]);
 
+  /* v6.3 — quản lý mở bản mới lần đầu: lưu cấu hình đã chuyển sang khung tăng ca chung */
+  useEffect(() => {
+    if (!cfg || !who?.admin || OT_PENDING < 0) return;
+    const n = OT_PENDING; OT_PENDING = -1;
+    saveCfg(cfg).then((ok) => {
+      if (!ok) { OT_PENDING = n; return; }
+      OT_MIG_NOTE = n ? `Đã chuyển ${n} hạng mục [OT] theo vai trò sang ${cfg.otBands.length} khung tăng ca chung (khớp theo giờ). Giờ OT đã chấm giữ nguyên; các hạng mục [OT] cũ đã gỡ khỏi tab Tác vụ.` : "";
+      if (n) flash("Tăng ca đã chuyển thành cài đặt chung — xem Thiết lập → Tăng ca.");
+    });
+  }, [cfg, who?.admin]); // eslint-disable-line react-hooks/exhaustive-deps
+
   syncDepts(cfg?.depts);
   syncLeave(cfg?.leaveTypes);
-  syncOtTasks(cfg?.tasks);
+  syncOtBands(cfg);
   syncRoles(cfg?.roles);   // đồng bộ trước khi các màn con render (cfg còn null lúc app vừa mở)
   syncPhases(cfg?.phases);
 
@@ -1881,12 +1944,12 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   const commonIds = useMemo(() => new Set(cfg.tasks.filter((t) => taskRoles(t).length === 0).map((t) => t.id)), [cfg.tasks]);
   const isKhacTask = (id) => isLeaveTask(id) || commonIds.has(id);
   const commonTasks = myTasks.filter((t) => commonIds.has(t.id));
-  const taskOrder = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t, k) => [t.id, k])), [cfg.tasks]);
+  const taskOrder = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t, k) => [t.id, k])), [cfg.tasks]);
   const projTasks = myTasks.filter((t) => !commonIds.has(t.id));
   // v4.9: khung giờ tăng ca (hạng mục [OT]) và các tác vụ dự án chọn được làm "Tăng ca cho tác vụ"
-  const otBands = otBandList(projTasks).map((b) => b.task);   // v5.1: mỗi khung giờ một lần (người xem được mọi vai trò cũng chỉ thấy 3 khung)
+  const otBands = otBandTasks();   // v6.3: khung giờ chung từ Thiết lập → Tăng ca, mọi vai trò như nhau
   const otTargets = projTasks.filter((t) => !isOtTask(t));
-  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
+  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands, cfg.otLegacy]);
   const projName = (id) => cfg.projects.find((p) => p.id === id)?.name || "(dự án đã xoá)";
   // Tên kèm mã, dùng ở chỗ cần nhận diện nhanh bằng mã số
   const projFull = (id) => { if (id === NO_PROJECT) return "Khác"; const p = cfg.projects.find((x) => x.id === id); return p ? `${p.code ? `[${p.code}] ` : ""}${p.name}` : "(dự án đã xoá)"; };
@@ -3249,7 +3312,7 @@ function HoursMatrix({ cfg, ym, flash, onPickEmp }) {
   const from = `${ym}-01`;
   const to = fmt(lastOfMonth(parseD(from)));
   const projById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
-  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
+  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands, cfg.otLegacy]);
   const projLabel = (id) => { if (id === NO_PROJECT) return "Khác"; const x = projById.get(id); return x ? (x.code ? `[${x.code}] ${x.name}` : x.name) : "(dự án đã xoá)"; };
   const projShort = (id) => { if (id === NO_PROJECT) return "Khác"; const x = projById.get(id); return x ? (x.code ? `${x.code} ${x.name}` : x.name) : "(đã xoá)"; };
   const taskLabel = (id) => { const t = taskById.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
@@ -3528,7 +3591,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
   useEffect(() => { ensureMonths([prevYm(rangeYms[0]), ...rangeYms]).then(() => setLoadTick((t) => t + 1)); }, [rangeYms.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const projById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
-  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
+  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands, cfg.otLegacy]);
   const tName = (id) => { const t = taskById.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
   const pName = (id) => { if (!id || id === NO_PROJECT) return "Việc chung"; const p = projById.get(id); return p ? (p.code ? `${p.code} · ${p.name}` : p.name) : "(dự án đã xoá)"; };
 
@@ -4346,7 +4409,7 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
   useEffect(() => { load(); }, [load]);   // v3.8: đổi kỳ (hoặc bấm nút nhanh) là tải lại ngay, bỏ nút Cập nhật
 
   const projMapById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
-  const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
+  const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands, cfg.otLegacy]);
   const projLabel = (id) => { if (id === NO_PROJECT) return "Khác"; const p = projMapById.get(id); return p ? (p.code ? `[${p.code}] ${p.name}` : p.name) : "(dự án đã xoá)"; };
   const taskLabel = (id) => { const t = taskMap.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
 
@@ -4753,7 +4816,7 @@ function Dashboard({ cfg, saveCfg, flash }) {
   // Dựng Map một lần thay vì .find() trong vòng lặp — trước đây là O(n²) khi xuất Excel
   const empMap = useMemo(() => new Map(cfg.employees.map((e) => [e.id, e])), [cfg.employees]);
   const projMapById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
-  const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes]);
+  const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands, cfg.otLegacy]);
   const empName = (id) => empMap.get(id)?.name || "(đã xoá)";
   const empDept = (id) => empMap.get(id)?.dept || "";
   const empTitle = (id) => roleTitle(empMap.get(id)?.role);
@@ -5406,7 +5469,7 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
   const partial = detailRaw === null;
   const ctx = useMemo(() => ({
     empById: new Map((cfg.employees || []).map((e) => [e.id, e])),
-    taskById: new Map((cfg.tasks || []).map((t) => [t.id, t])),
+    taskById: new Map([...(cfg.tasks || []), ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])),
     taskOrder: new Map((cfg.tasks || []).map((t, k) => [t.id, k])),
     cfg,   // v4.9: hệ số tăng ca
     // v5.6: database chưa chạy schema.sql bản v5.6 (không có "et") → tạm lấy tác vụ theo người từ bộ nhớ; tính một lần rồi giữ lại
@@ -6757,6 +6820,7 @@ function Tasks({ cfg, saveCfg, flash }) {
   const add = async (key) => {
     const nm = (drafts[key] || "").trim();
     if (!nm) return;
+    if (isOtTask({ name: nm })) return flash("Tăng ca không còn là tác vụ — cài khung giờ và hệ số ở Thiết lập → Tăng ca.", "err");   // v6.3
     if (listOf(key).some((t) => t.name.toLowerCase() === nm.toLowerCase())) return flash("Ô này đã có tác vụ trùng tên.", "err");
     const ok = await saveCfg({ ...cfg, tasks: [...cfg.tasks, { id: uid("t"), name: nm, ...patchFor(key) }] });
     if (ok !== false) setDraft(key, "");
@@ -6764,6 +6828,7 @@ function Tasks({ cfg, saveCfg, flash }) {
 
   const commit = async () => {
     if (!editName.trim()) return flash("Tên tác vụ không được để trống.", "err");
+    if (isOtTask({ name: editName })) return flash("Tăng ca không còn là tác vụ — cài khung giờ và hệ số ở Thiết lập → Tăng ca.", "err");   // v6.3
     const desc = editDesc.trim();
     await saveCfg({ ...cfg, tasks: cfg.tasks.map((t) => {
       if (t.id !== editId) return t;
@@ -7577,62 +7642,129 @@ function ReminderPanel({ cfg, saveCfg, flash }) {
   );
 }
 
-/* v4.9 — Hệ số chi phí tăng ca. Mỗi khung giờ là một hạng mục [OT] (đổi giờ của khung = đổi tên hạng mục ở tab Tác vụ).
-   Chủ nhật / ngày lễ: một hệ số cho cả ngày, áp cho mọi khung giờ; để trống thì tính theo hệ số khung giờ.
-   Lưu ở thiết lập chung: cfg.otRates = { <khoá khung giờ>: số } (v5.1; v4.9 lưu theo mã hạng mục), cfg.otSunRate, cfg.otHolRate (null = để trống).
-   v5.1: hiện MỖI KHUNG GIỜ MỘT DÒNG, dù mỗi vai trò có hạng mục [OT] riêng. */
+/* v6.3 — Tăng ca là cài đặt chung: các khung giờ (bắt đầu – kết thúc) + hệ số, áp cho mọi nhân sự / vai trò.
+   Không còn hạng mục [OT] ở tab Tác vụ. Mã khung cố định nên đổi giờ của khung không làm mất giờ đã chấm.
+   Khung đang có giờ chấm thì không xoá được. Chủ nhật / ngày lễ: một hệ số cho cả ngày (để trống = theo khung giờ).
+   Lưu: cfg.otBands = [{ id, from, to, rate }], cfg.otSunRate, cfg.otHolRate, cfg.otLegacy (mã [OT] cũ → khung). */
+const OT_TIME_RE = /^\s*(\d{1,2})\s*[:h.]\s*(\d{2})\s*$/;
+const otParseTime = (x) => { const m = OT_TIME_RE.exec(x || ""); if (!m) return null; const h = +m[1], mi = +m[2]; return h <= 24 && mi < 60 && h * 60 + mi <= 1440 ? `${h % 24}:${pad(mi)}` : null; };
 function OtRatePanel({ cfg, saveCfg, flash }) {
-  const bandList = otBandList(cfg.tasks || []);
-  const bands = bandList.map((b) => ({ ...b.task, id: b.key }));   // id = khoá khung giờ
+  useDataTick();
   const init = () => ({
-    rates: Object.fromEntries(bandList.map((b) => [b.key, String(otRateOf(cfg, b.task))])),
+    bands: (cfg.otBands || []).map((b) => ({ id: b.id, from: b.from, to: b.to, rate: b.rate != null ? String(b.rate) : "" })),
     sun: cfg.otSunRate != null ? String(cfg.otSunRate) : "",
     hol: cfg.otHolRate != null ? String(cfg.otHolRate) : "",
   });
   const [v, setV] = useState(init);
-  useEffect(() => { setV(init()); }, [cfg.tasks, cfg.otRates, cfg.otSunRate, cfg.otHolRate]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [assign, setAssign] = useState({});
+  useEffect(() => { setV(init()); }, [cfg.otBands, cfg.otSunRate, cfg.otHolRate]); // eslint-disable-line react-hooks/exhaustive-deps
   const num = (x) => { const n = Number(String(x).replace(",", ".")); return x === "" || !(n > 0) ? null : Math.min(10, n); };
+
+  /* giờ đã chấm theo khung (trong phần bảng công đang tải) + dòng tăng ca của hạng mục [OT] đã bị xoá trước v6.3 */
+  const legacy = cfg.otLegacy || {};
+  const known = new Set([...(cfg.tasks || []).map((t) => t.id), ...LEAVE_TASKS.map((t) => t.id), ...(cfg.otBands || []).map((b) => b.id), ...Object.keys(legacy)]);
+  const used = new Map(), orphans = new Map();
+  for (const bucket of Object.values(DB?.ts || {})) {
+    for (const r of Array.isArray(bucket?.rows) ? bucket.rows : []) {
+      const h = Object.values(r.days || {}).reduce((a, x) => a + (Number(x) || 0), 0);
+      if (!h) continue;
+      const bid = legacy[r.taskId] || r.taskId;
+      if ((cfg.otBands || []).some((b) => b.id === bid)) used.set(bid, (used.get(bid) || 0) + h);
+      else if (r.otFor && !known.has(r.taskId)) orphans.set(r.taskId, (orphans.get(r.taskId) || 0) + h);
+    }
+  }
+
+  const setBand = (k, patch) => setV((x) => ({ ...x, bands: x.bands.map((b, i) => (i === k ? { ...b, ...patch } : b)) }));
+  const addBand = () => setV((x) => ({ ...x, bands: [...x.bands, { id: "", from: "", to: "", rate: "2" }] }));
+  const delBand = (k) => setV((x) => ({ ...x, bands: x.bands.filter((_, i) => i !== k) }));
+  const spanOf = (b) => { const f = otParseTime(b.from), t = otParseTime(b.to); return f && t ? otSpan({ name: `[OT] ${f} - ${t}` }) : null; };
+
   const save = async () => {
-    for (const t of bands) if (num(v.rates[t.id]) == null) return flash(`Nhập hệ số cho khung ${otText(t)} (số lớn hơn 0).`, "err");
+    if (!v.bands.length) return flash("Cần ít nhất một khung giờ tăng ca.", "err");
+    const out = [], keys = new Set();
+    for (const b of v.bands) {
+      const from = otParseTime(b.from), to = otParseTime(b.to);
+      if (!from || !to) return flash(`Giờ của khung "${b.from || "?"} – ${b.to || "?"}" chưa đúng dạng 17:30.`, "err");
+      if (from === to) return flash(`Khung ${from} – ${to}: giờ bắt đầu và kết thúc trùng nhau.`, "err");
+      const key = otBandKey({ name: `[OT] ${from} - ${to}` });
+      if (keys.has(key)) return flash(`Khung ${from} – ${to} bị trùng.`, "err");
+      keys.add(key);
+      if (num(b.rate) == null) return flash(`Nhập hệ số cho khung ${from} – ${to} (số lớn hơn 0).`, "err");
+      let id = b.id || otBandIdFor(from, to);
+      if (!b.id && (out.some((x) => x.id === id) || (cfg.otBands || []).some((x) => x.id === id) || Object.keys(legacy).includes(id))) id = uid("OTB_");
+      out.push({ id, from, to, rate: num(b.rate) });
+    }
     for (const [k, l] of [["sun", "Chủ nhật"], ["hol", "ngày lễ"]]) if (v[k] !== "" && num(v[k]) == null) return flash(`Hệ số ${l} phải là số lớn hơn 0, hoặc để trống.`, "err");
-    await saveCfg({ ...cfg, otRates: Object.fromEntries(bands.map((t) => [t.id, num(v.rates[t.id])])), otSunRate: num(v.sun), otHolRate: num(v.hol) });
-    flash("Đã lưu hệ số tăng ca. Dashboard và Excel tính lại giờ quy đổi theo hệ số mới.");
+    const gone = (cfg.otBands || []).filter((b) => !out.some((x) => x.id === b.id) && used.get(b.id));
+    if (gone.length) return flash(`Khung ${gone[0].from} – ${gone[0].to} đã có giờ chấm, không xoá được.`, "err");
+    const ok = await saveCfg({ ...cfg, otBands: out, otSunRate: num(v.sun), otHolRate: num(v.hol) });
+    if (ok !== false) flash("Đã lưu tăng ca. Dashboard, Tiến độ dự án và Excel tính lại theo khung giờ / hệ số mới.");
   };
-  const field = "font-mono " + inputCls;
+  const doAssign = async (old) => {
+    const bid = assign[old] || cfg.otBands?.[0]?.id;
+    if (!bid) return;
+    const ok = await saveCfg({ ...cfg, otLegacy: { ...legacy, [old]: bid } });
+    if (ok !== false) flash("Đã gán giờ tăng ca cũ vào khung giờ.");
+  };
+  const field = "font-mono text-center " + inputCls;
   return (
-    <Panel title="Hệ số chi phí tăng ca">
-      {bands.length === 0 ? (
-        <div className="text-sm text-slate-500">Chưa có hạng mục tăng ca. Tạo ở tab Tác vụ với tên bắt đầu bằng [OT], ví dụ "[OT] 17:30 - 21:00".</div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <div className="mb-1 text-xs text-slate-500">Khung giờ</div>
-            {bands.map((t) => (
-              <div key={t.id} className="flex items-center justify-between gap-3 border-b border-slate-800 py-1.5">
-                <span className="text-sm text-teal-300">{otText(t)}<span className="ml-2 text-xs text-slate-600">tối đa {fmtH(otMaxHours(t))} giờ</span></span>
-                <div className="w-24 shrink-0"><input inputMode="decimal" value={v.rates[t.id] ?? ""} onChange={(e) => setV((x) => ({ ...x, rates: { ...x.rates, [t.id]: e.target.value } }))}
-                  aria-label={`Hệ số ${otText(t)}`} className={field} /></div>
-              </div>
-            ))}
+    <Panel title="Tăng ca — khung giờ & hệ số" sub="Áp dụng cho mọi nhân sự, mọi vai trò. Không cần tạo hạng mục [OT] ở tab Tác vụ.">
+      {OT_MIG_NOTE && <div className="mb-3 rounded-lg border border-sky-900 bg-sky-950/40 px-3 py-2 text-sm text-sky-200">{OT_MIG_NOTE}</div>}
+      <div className="grid gap-5 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <div className="min-w-0">
+          <div className="mb-1 grid grid-cols-[2.25rem_minmax(0,1fr)_4rem_2.75rem] sm:grid-cols-[2.25rem_minmax(0,1fr)_5rem_3.5rem_2.75rem] items-center gap-2 text-xs text-slate-500">
+            <span /><span>Khung giờ (bắt đầu – kết thúc)</span><span className="text-center">Hệ số</span><span className="hidden text-right sm:block">Tối đa</span><span />
           </div>
-          <div>
-            <div className="mb-1 text-xs text-slate-500">Ngày đặc biệt — một hệ số cho cả ngày</div>
-            {[["sun", "Chủ nhật"], ["hol", "Ngày lễ (theo danh sách ngày lễ bên dưới)"]].map(([k, l]) => (
-              <div key={k} className="flex items-center justify-between gap-3 border-b border-slate-800 py-1.5">
-                <span className="text-sm text-slate-300">{l}</span>
-                <div className="w-24 shrink-0"><input inputMode="decimal" placeholder="—" value={v[k]} onChange={(e) => setV((x) => ({ ...x, [k]: e.target.value }))} aria-label={`Hệ số ${l}`} className={field} /></div>
+          {v.bands.map((b, k) => {
+            const sp = spanOf(b), h = b.id ? used.get(b.id) || 0 : 0;
+            return (
+              <div key={k} className="grid grid-cols-[2.25rem_minmax(0,1fr)_4rem_2.75rem] sm:grid-cols-[2.25rem_minmax(0,1fr)_5rem_3.5rem_2.75rem] items-center gap-2 border-b border-slate-800 py-1.5">
+                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-teal-950 font-mono text-[11px] font-semibold text-teal-300">OT{k + 1}</span>
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <input value={b.from} onChange={(e) => setBand(k, { from: e.target.value })} placeholder="17:30" aria-label={`Bắt đầu khung ${k + 1}`} className={`${field} min-w-0 px-1`} />
+                  <span className="text-slate-600">–</span>
+                  <input value={b.to} onChange={(e) => setBand(k, { to: e.target.value })} placeholder="21:00" aria-label={`Kết thúc khung ${k + 1}`} className={`${field} min-w-0 px-1`} />
+                </div>
+                <input inputMode="decimal" value={b.rate} onChange={(e) => setBand(k, { rate: e.target.value })} aria-label={`Hệ số khung ${k + 1}`} className={`${field} px-1`} />
+                <span className="hidden text-right font-mono text-xs text-slate-500 sm:block">{sp ? `${fmtH(sp.hours)} h` : "—"}</span>
+                <button onClick={() => (h ? null : delBand(k))} disabled={h > 0} title={h ? `Đã có ${fmtH(h)} h chấm vào khung này — không xoá được` : "Xoá khung giờ"}
+                  className={`${iconBtn} h-11 w-11 hover:border-rose-800 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-30`}><Trash2 size={15} /></button>
               </div>
-            ))}
-            <div className="mt-2 text-xs text-slate-500">Để trống thì ngày đó tính theo hệ số khung giờ.</div>
-          </div>
+            );
+          })}
+          <button onClick={addBand} className={`mt-2 ${btnGhost} border-dashed`}><Plus size={14} /> Thêm khung giờ</button>
+          <div className="mt-2 text-xs leading-relaxed text-slate-500">Khung qua nửa đêm (21:00 – 0:00, 0:00 – 8:00) tự tính đúng số giờ. Đổi giờ của khung không làm mất giờ đã chấm — giờ cũ đi theo khung. Khung đang có giờ chấm thì không xoá được.</div>
+        </div>
+        <div className="min-w-0">
+          <div className="mb-1 text-xs text-slate-500">Ngày đặc biệt — một hệ số cho cả ngày</div>
+          {[["sun", "Chủ nhật"], ["hol", "Ngày lễ (theo danh sách ngày lễ bên dưới)"]].map(([k, l]) => (
+            <div key={k} className="flex items-center justify-between gap-3 border-b border-slate-800 py-1.5">
+              <span className="text-sm text-slate-300">{l}</span>
+              <div className="w-24 shrink-0"><input inputMode="decimal" placeholder="—" value={v[k]} onChange={(e) => setV((x) => ({ ...x, [k]: e.target.value }))} aria-label={`Hệ số ${l}`} className={field} /></div>
+            </div>
+          ))}
+          <div className="mt-2 text-xs text-slate-500">Để trống thì ngày đó tính theo hệ số khung giờ.</div>
+        </div>
+      </div>
+      {orphans.size > 0 && (
+        <div className="mt-4 rounded-lg border border-amber-900/70 bg-amber-950/20 p-3">
+          <div className="text-sm text-amber-300">Có giờ tăng ca chấm vào hạng mục [OT] đã bị xoá — chọn khung giờ để gán lại</div>
+          {[...orphans.entries()].map(([old, h]) => (
+            <div key={old} className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="min-w-[9rem] text-sm text-slate-300">{fmtH(h)} h <span className="font-mono text-xs text-slate-600">({old})</span></span>
+              <select value={assign[old] || cfg.otBands?.[0]?.id || ""} onChange={(e) => setAssign((x) => ({ ...x, [old]: e.target.value }))}
+                className={`${CTRL} w-44 rounded-md border border-slate-700 bg-slate-900 px-2 text-sm text-teal-300`}>
+                {(cfg.otBands || []).map((b) => <option key={b.id} value={b.id}>{b.from} – {b.to}</option>)}
+              </select>
+              <button onClick={() => doAssign(old)} className={btnGhost}><Check size={14} /> Gán</button>
+            </div>
+          ))}
         </div>
       )}
-      {bands.length > 0 && (
-        <div className="mt-3 flex items-center gap-3 border-t border-slate-800 pt-3">
-          <span className="text-xs text-slate-500">Giờ quy đổi = giờ tăng ca × hệ số. Đổi giờ của khung: sửa tên hạng mục [OT] ở tab Tác vụ.</span>
-          <button onClick={save} className={`ml-auto shrink-0 ${btnPrimary}`}><Save size={14} /> Lưu hệ số</button>
-        </div>
-      )}
+      <div className="mt-3 flex items-center gap-3 border-t border-slate-800 pt-3">
+        <span className="text-xs text-slate-500">Giờ quy đổi = giờ tăng ca × hệ số. Dashboard, Tiến độ dự án và Excel tính lại ngay sau khi lưu.</span>
+        <button onClick={save} className={`ml-auto shrink-0 ${btnPrimary}`}><Save size={14} /> Lưu tăng ca</button>
+      </div>
     </Panel>
   );
 }
@@ -7746,7 +7878,7 @@ function SettingsTab({ cfg, saveCfg, flash }) {
         <p className="mt-3 text-xs leading-relaxed text-slate-500">
           <b className="text-slate-400">Giờ chuẩn</b> quyết định target và cảnh báo thiếu giờ. Đặt 0 cho một loại ngày nghĩa là ngày nghỉ — không báo thiếu, mọi giờ làm việc thường chấm vào tính hết thành Giờ cố gắng (không phải OT).
           <br /><b className="text-slate-400">Cố gắng T7 từ</b> là mốc bắt đầu tính Giờ cố gắng riêng cho thứ 7: giờ chuẩn T7 vẫn là {h.sat || 0}h nhưng chỉ phần vượt {h.satOt ?? 8}h mới thành Giờ cố gắng. Ngày thường: phần giờ làm việc vượt giờ chuẩn là Giờ cố gắng.
-          <br /><b className="text-slate-400">OT</b> chỉ tính khi nhân sự chấm vào hạng mục Tăng ca (tên bắt đầu bằng [OT]), và mỗi dòng tăng ca phải chọn "Tăng ca cho tác vụ". Giờ cố gắng ghi nhận nỗ lực, không tính vào chi phí dự án.
+          <br /><b className="text-slate-400">OT</b> chỉ tính khi nhân sự chấm vào khung giờ Tăng ca (cài ở mục Tăng ca), và mỗi dòng tăng ca phải chọn "Tăng ca cho tác vụ". Giờ cố gắng ghi nhận nỗ lực, không tính vào chi phí dự án.
           <br />Toàn bộ nhân viên lấy các thông số này từ đây — sửa ở đây là áp cho tất cả.
         </p>
       </Panel>

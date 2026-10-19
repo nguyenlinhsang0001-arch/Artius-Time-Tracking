@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v6.2 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v6.3 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.2`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.3`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,19 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v6.3 — Tăng ca thành cài đặt chung
+
+**Không cần chạy lại `schema.sql`** (database không đổi) — chỉ upload code.
+
+- **Thiết lập → Tăng ca:** các khung giờ (bắt đầu – kết thúc) + hệ số, cộng hệ số Chủ nhật / ngày lễ. Áp cho **mọi nhân sự, mọi vai trò**.
+  Mặc định 17:30 – 21:00 ×1.5 · 21:00 – 0:00 ×2 · 0:00 – 8:00 ×2. Thêm / sửa khung thoải mái; đổi giờ của khung không mất giờ đã chấm.
+  Khung đang có giờ chấm thì không xoá được.
+- **Tab Tác vụ không còn dòng [OT].** Tạo / đổi tên tác vụ bắt đầu bằng "[OT]" bị chặn kèm hướng dẫn — xoá tác vụ không còn làm mất tăng ca.
+- **Tự chuyển đổi:** lần đầu tài khoản quản lý mở v6.3, các hạng mục [OT] theo vai trò được gộp thành khung chung theo giờ
+  (giữ hệ số đã đặt), rồi gỡ khỏi tab Tác vụ. Giờ OT đã chấm giữ nguyên (app đọc mã cũ như khung tương ứng).
+- **Giờ OT của hạng mục [OT] đã xoá trước đây:** Thiết lập → Tăng ca hiện khung vàng "chọn khung giờ để gán lại" → chọn khung → Gán.
+- **Màn chấm công nhân viên giữ nguyên:** dòng tăng ca vẫn là "Tăng ca cho tác vụ" + "Khung giờ", không hiện hệ số.
 
 ## Mới ở v6.2 — Bảng chấm công dễ nhìn hơn
 
