@@ -16,6 +16,8 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v6.2 — Bảng chấm công: bỏ tiêu đề "Công việc dự án"; nhóm "Công việc chung" / "Vắng mặt" của dòng Khác
+     hiện thành nhãn màu bo tròn (xanh ngọc / xanh nhạt) + chú thích + đường kẻ mảnh, tách rõ khỏi tác vụ bên dưới.
    Mới ở v6.1 — Hộp sửa nhanh ô ngày luôn nằm trọn trong màn hình (lật lên trên ô khi sát đáy, cuộn bên trong nếu quá dài).
      Bỏ tab "Chi tiết nhân viên" ở Bảng công — sửa cả tuần bằng ngăn kéo (✎ hoặc bấm tên).
    Mới ở v6.0 — Tổng quan bảng công: sửa giờ ngay tại chỗ, không chuyển tab.
@@ -181,7 +183,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v6.1";
+const APP_VERSION = "v6.2";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1953,8 +1955,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   const sectionsOf = (g, open = false) => {
     const khac = g.projectId === NO_PROJECT;
     const s2 = khac
-      ? [{ label: "Công việc chung", items: [] }, { label: "Vắng mặt", items: [] }]
-      : [{ label: "Công việc dự án", items: [] }, { label: "Tăng ca", ot: true, items: [] }];
+      ? [{ label: "Công việc chung", chip: "#2dd4bf", hint: "không thuộc dự án", items: [] }, { label: "Vắng mặt", chip: "#38bdf8", hint: "nghỉ phép, nghỉ không lương, làm bù", items: [] }]
+      : [{ label: "Công việc dự án", noHead: true, items: [] }, { label: "Tăng ca", ot: true, items: [] }];   // v6.2: bỏ chữ "Công việc dự án"
     for (const it of g.items) {
       const t = taskById.get(it.r.taskId);
       s2[khac ? (isLeaveTask(it.r.taskId) ? 1 : 0) : (isOtTask(t) ? 1 : 0)].items.push(it);
@@ -2854,7 +2856,17 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                             </div>
                           </td></tr>
                         )}
-                        {open && !(sec.ot && sec.items.length === 0) && (
+                        {/* v6.2: nhóm Công việc chung / Vắng mặt = nhãn màu bo tròn + đường kẻ mảnh, tách khỏi tác vụ bên dưới */}
+                        {open && sec.chip && (
+                          <tr><td colSpan={9} className="px-3 pb-1 pt-3.5">
+                            <div className="flex items-center gap-2.5" style={{ paddingLeft: GUT + 8 }}>
+                              <span className="whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ background: `${sec.chip}2e`, color: sec.chip }}>{sec.label}</span>
+                              <span className="whitespace-nowrap text-[11.5px] text-slate-500">{sec.hint}</span>
+                              <i className="h-px flex-1 bg-slate-700" />
+                            </div>
+                          </td></tr>
+                        )}
+                        {open && !sec.chip && !sec.noHead && !(sec.ot && sec.items.length === 0) && (
                           <tr><td colSpan={9} className="px-3 pb-0.5 pt-2.5">
                             <div className={`flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider ${sec.ot ? "text-teal-400" : "text-slate-500"}`} style={{ paddingLeft: GUT + 8 }}>
                               {sec.ot && <Zap size={11} />}{sec.label}
@@ -3056,7 +3068,13 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
 
                   {secs.map((sec) => (
                     <div key={sec.label}>
-                      {open && !(sec.ot && sec.items.length === 0) && <div className={`mt-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider ${sec.ot ? "text-teal-400" : "text-slate-500"}`}>{sec.ot && <Zap size={11} />}{sec.label}</div>}
+                      {open && sec.chip && (
+                        <div className="mt-3.5 flex items-center gap-2">
+                          <span className="whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ background: `${sec.chip}2e`, color: sec.chip }}>{sec.label}</span>
+                          <i className="h-px flex-1 bg-slate-700" />
+                        </div>
+                      )}
+                      {open && !sec.chip && !sec.noHead && !(sec.ot && sec.items.length === 0) && <div className={`mt-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider ${sec.ot ? "text-teal-400" : "text-slate-500"}`}>{sec.ot && <Zap size={11} />}{sec.label}</div>}
                       {sec.items.map(({ r, i }) => {
                         const rt = days.reduce((s, d) => s + (r.days[d] || 0), 0);
                         const ot = isOtTask(taskById.get(r.taskId));

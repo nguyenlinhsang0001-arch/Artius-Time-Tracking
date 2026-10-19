@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v6.1 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v6.2 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.1`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.2`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,15 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v6.2 — Bảng chấm công dễ nhìn hơn
+
+Không đổi database — **bỏ qua bước 1**, chỉ upload folder lên GitHub.
+
+- Khối dự án: bỏ dòng tiêu đề "Công việc dự án" — tác vụ nằm ngay dưới ô chọn dự án / giai đoạn.
+- Khối "Khác": hai nhóm **Công việc chung** (nhãn xanh ngọc) và **Vắng mặt** (nhãn xanh nhạt) hiện thành nhãn màu bo tròn,
+  kèm chú thích ngắn và đường kẻ mảnh, cách tác vụ bên dưới một khoảng — dễ phân biệt khi chấm công.
+- Áp dụng cho cả màn nhân viên chấm công và ngăn kéo sửa giờ của quản lý (cùng một bảng); màn điện thoại cũng đổi theo.
 
 ## Mới ở v6.1 — Sửa lỗi vị trí hộp sửa nhanh, bỏ tab Chi tiết nhân viên
 
