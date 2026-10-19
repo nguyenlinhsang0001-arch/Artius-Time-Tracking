@@ -16,6 +16,9 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v6.5 — Sửa lỗi sau kiểm tra số liệu: Dashboard "Tăng ca theo tác vụ" trống từ v6.3 (database chỉ nhận hạng mục [OT],
+     nay nhận cả khung tăng ca chung — chạy lại schema.sql); Dashboard Nhân sự tính giờ chuẩn hôm nay chỉ cho người đã gửi
+     (khớp Bảng công); Bảng công tháng: "Đã nộp đủ" chỉ xét các tuần đã qua.
    Mới ở v6.4 — Bảng công (quản lý): ô Nghỉ phép đổi màu cam đất (tách khỏi xanh "đủ giờ").
      Thanh Tổng / chuẩn chia khúc: chuẩn (xanh dương) · cố gắng (tím) · OT (xanh ngọc) · phần thiếu (sọc vàng + "thiếu x h").
      Hôm nay chỉ tính vào giờ chuẩn khi đã gửi (trước đây ai cũng bị "thiếu 8 h" cả ngày); hôm nay chưa tính là bỏ trống.
@@ -193,7 +196,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v6.4";
+const APP_VERSION = "v6.5";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -3678,7 +3681,8 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
 
   /* KPI của kỳ đang xem */
   const sums = new Map(emps.map((e) => [e.id, sumOf(e.id, days)]));
-  const due = weeks.filter((m) => m <= today);
+  // v6.5: "Đã nộp đủ" xét các tuần đã qua (hết Chủ nhật) — tuần đang chạy chưa tới hạn nộp (cùng quy tắc chuông Nhắc tháng)
+  const due = mode === "week" ? weeks.filter((m) => m <= today) : weeks.filter((m) => fmt(addDays(parseD(m), 6)) < today);
   const okN = emps.filter((e) => due.every((m) => weekDone(e.id, m))).length;
   const totT = [...sums.values()].reduce((a, s) => a + s.t, 0), totStd = [...sums.values()].reduce((a, s) => a + s.std, 0), totOt = [...sums.values()].reduce((a, s) => a + s.ot, 0);
   const lowN = [...sums.values()].filter((s) => s.std > 0 && s.base < (s.std * lim.under) / 100).length;
@@ -4835,6 +4839,19 @@ function Dashboard({ cfg, saveCfg, flash }) {
     for (let d = from; d <= to; d = fmt(addDays(parseD(d), 1))) t += minHoursFor(d, hoursCfg, holidaySet) || 0;
     return t;
   }, [from, to, hoursCfg, holidaySet]);
+  /* v6.5 — giờ chuẩn của HÔM NAY chỉ tính cho người đã gửi giờ hôm nay (cùng quy tắc với Bảng công v6.4) */
+  const todayK = fmt(new Date());
+  const stdToday = from <= todayK && todayK <= to ? minHoursFor(todayK, hoursCfg, holidaySet) || 0 : 0;
+  const sentToday = useMemo(() => {
+    const out = new Set();
+    for (const e of cfg.employees || []) {
+      const b = dbTs(e.id, ymOf(todayK));
+      if (b?.sent?.[todayK] && (b.rows || []).some((r) => Number(r.days?.[todayK]) > 0)) out.add(e.id);
+    }
+    return out;
+  }, [cfg.employees, todayK, dataTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stdBase = stdPeriod - stdToday;
+  const stdForEmp = (eid) => (stdToday && !sentToday.has(eid) ? stdBase : stdPeriod);
   const clearFilters = () => { setFDept("all"); setQ(""); };
   const hasFilter = fDept !== "all" || q.trim() !== "";
   // v5.6: chọn nhanh kỳ — Tuần này (T2 → hôm nay), 7 ngày qua, Tháng này (ngày 1 → hôm nay)
@@ -5032,9 +5049,9 @@ function Dashboard({ cfg, saveCfg, flash }) {
       "Giờ cố gắng": +(agg.effortByEmp.get(k) || 0).toFixed(1),
       "Giờ thường": +(v - (agg.otByEmp.get(k) || 0) - (agg.effortByEmp.get(k) || 0)).toFixed(1),
       // v5.3: tải so với giờ chuẩn của kỳ, cùng ngưỡng với khung Phân bổ
-      "% tải": stdPeriod ? Math.round((v / stdPeriod) * 100) : "",
-      "Trạng thái": (() => { const L = allocLimits(cfg), s0 = v - (agg.otByEmp.get(k) || 0) - (agg.effortByEmp.get(k) || 0);
-        return !stdPeriod ? "" : v > (stdPeriod * L.over) / 100 ? "Quá tải" : s0 < (stdPeriod * L.under) / 100 ? "Thiếu giờ" : "Bình thường"; })(),
+      "% tải": stdForEmp(k) ? Math.round((v / stdForEmp(k)) * 100) : "",
+      "Trạng thái": (() => { const L = allocLimits(cfg), s0 = v - (agg.otByEmp.get(k) || 0) - (agg.effortByEmp.get(k) || 0), sp = stdForEmp(k);
+        return !sp ? "" : v > (sp * L.over) / 100 ? "Quá tải" : s0 < (sp * L.under) / 100 ? "Thiếu giờ" : "Bình thường"; })(),
     }))), "Theo nhân sự");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sortDesc(agg.byTask, (k, v) => ({ "Hạng mục": taskLabel(k), "Tổng giờ": v }))), "Theo hạng mục");
     const projIds = [...agg.byProj.keys()];
@@ -5104,7 +5121,7 @@ function Dashboard({ cfg, saveCfg, flash }) {
 
       {dTab === "ppl" && (
         <Panel title="Nhân sự theo kỳ" flush
-          sub={<>{QUICK.find(([k]) => k === quickOn)?.[1] || "Kỳ tuỳ chọn"} · {dLabel(from)} – {dLabel(to)} · giờ chuẩn của kỳ <span className="font-mono text-amber-400">{fmtH(stdPeriod)} h</span></>}
+          sub={<>{QUICK.find(([k]) => k === quickOn)?.[1] || "Kỳ tuỳ chọn"} · {dLabel(from)} – {dLabel(to)} · giờ chuẩn của kỳ <span className="font-mono text-amber-400">{fmtH(stdBase)} h</span>{stdToday > 0 && <span className="text-slate-500"> (hôm nay tính khi đã gửi)</span>}</>}
           right={loading ? <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} /> : null}>
           {/* thanh công cụ của tab: kỳ, bộ phận, tìm người, tải lại, Excel — chỉ tác động lên tab Nhân sự */}
           <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
@@ -5134,7 +5151,7 @@ function Dashboard({ cfg, saveCfg, flash }) {
             </div>
           </div>
           {!agg ? <p className="px-4 py-6 text-sm text-slate-500">Đang tải…</p> : (
-            <StaffAllocation matrix={agg.matrix} otByEmp={agg.otByEmp} effortByEmp={agg.effortByEmp} std={stdPeriod} cfg={cfg}
+            <StaffAllocation matrix={agg.matrix} otByEmp={agg.otByEmp} effortByEmp={agg.effortByEmp} std={stdBase} stdOf={stdForEmp} cfg={cfg}
               staff={cfg.employees.filter((e) => matchEmp(e.id))}
               empName={empName} projMapById={projMapById} detail={agg.detail}
               projDetail={data.detail} taskLabel={taskLabel} />
@@ -5793,7 +5810,7 @@ const ALLOC_ST = {
   lo: ["Thiếu giờ", "border-amber-900 bg-amber-950/70 text-amber-300"],
   ok: ["Bình thường", "border-teal-900 bg-teal-950 text-teal-300"],
 };
-function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empName, projMapById, detail = [], projDetail = [], taskLabel }) {
+function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, stdOf, cfg, empName, projMapById, detail = [], projDetail = [], taskLabel }) {
   const [view, setView] = useState("people");   // "people" | "matrix"
   const [tip, setTip] = useState(null);         // v5.5: { eid, k, x, y } — thẻ khi rê chuột vào dự án trong phần chi tiết
   /* v5.5 — tác vụ theo người × dự án (theo kỳ và bộ lọc), và tổng giờ từng dự án trong kỳ (mọi nhân sự, không theo bộ lọc bộ phận / tên) */
@@ -5838,9 +5855,10 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
     const t = [...mm.values()].reduce((a, v) => a + v, 0);
     const o = otByEmp.get(eid) || 0, c = effortByEmp.get(eid) || 0;
     const s = Math.max(0, t - o - c);
-    const st = std > 0 && t > (std * lim.over) / 100 ? "hi" : std > 0 && s < (std * lim.under) / 100 ? "lo" : "ok";
+    const sd = stdOf ? stdOf(eid) : std;   // v6.5: giờ chuẩn riêng từng người (hôm nay chỉ tính khi đã gửi)
+    const st = sd > 0 && t > (sd * lim.over) / 100 ? "hi" : sd > 0 && s < (sd * lim.under) / 100 ? "lo" : "ok";
     const e = empById.get(eid);
-    return { eid, mm, t, s, o, c, st, dept: e?.dept || "Khác", role: e ? roleTitle(e.role) : "" };
+    return { eid, mm, t, s, o, c, st, sd, dept: e?.dept || "Khác", role: e ? roleTitle(e.role) : "" };
   });
   // v5.6: người chưa chấm giờ nào trong kỳ tách riêng (gom một dòng cuối), không tính vào Quá tải / Thiếu giờ / Bình thường
   const people = everyone.filter((x) => x.t > 0);
@@ -5854,12 +5872,12 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
   const code = (k) => { if (k === NO_PROJECT) return "Khác"; const p = projMapById.get(k); return p ? (p.code || p.name) : "(đã xoá)"; };
   const name = (k) => { if (k === NO_PROJECT) return "Việc chung, vắng mặt"; return projMapById.get(k)?.name || "(dự án đã xoá)"; };
   const nProj = (x) => cols.filter((k) => k !== NO_PROJECT && x.mm.get(k)).length;
-  const pct = (x) => (std ? Math.round((x.t / std) * 100) : null);
+  const pct = (x) => (x.sd ? Math.round((x.t / x.sd) * 100) : null);
 
   const cnt = (k) => people.filter((x) => k === "all" || x.st === k).length;
   const list = people.filter((x) => fSt === "all" || x.st === fSt)
     .sort(sort === "load" ? (a, b) => b.t - a.t : sort === "extra" ? (a, b) => (b.o + b.c) - (a.o + a.c) || b.t - a.t : (a, b) => empName(a.eid).localeCompare(empName(b.eid), "vi"));
-  const used = people.reduce((a, x) => a + x.t, 0), cap = everyone.length * std;
+  const used = people.reduce((a, x) => a + x.t, 0), cap = everyone.reduce((a, x) => a + x.sd, 0);
   const otSum = people.reduce((a, x) => a + x.o, 0), cgSum = people.reduce((a, x) => a + x.c, 0);
   const toggle = (eid) => setOpen((s) => { const n = new Set(s); n.has(eid) ? n.delete(eid) : n.add(eid); return n; });
 
@@ -5869,7 +5887,7 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
       <div className={`mt-0.5 font-mono text-lg font-semibold ${cls}`}>{v}{sub && <span className="ml-1.5 text-xs font-normal text-slate-500">{sub}</span>}</div>
     </div>
   );
-  const maxT = Math.max(...people.map((x) => x.t), std * 1.25, 1);
+  const maxT = Math.max(...people.map((x) => x.t), ...people.map((x) => x.sd * 1.25), std * 1.25, 1);
 
   // nhóm theo bộ phận, giữ thứ tự sắp xếp trong từng nhóm; nhóm xếp theo thứ tự xuất hiện của người đầu tiên
   const groups = [];
@@ -5948,14 +5966,14 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, cfg, empNam
                           ))}
                         </div>
                         {/* v5.7: ngoặc vàng chỉ khoảng thiếu giờ chuẩn (từ cuối phần Giờ chuẩn tới vạch giờ chuẩn của kỳ) — OT / cố gắng không bù vào */}
-                        {std > 0 && std - x.s > 0.05 && (
-                          <span className="pointer-events-none absolute top-3 h-[5px] rounded-t-[3px] border-[1.5px] border-b-0 border-amber-400" style={{ left: `${(x.s / maxT) * 100}%`, width: `${((std - x.s) / maxT) * 100}%` }}>
+                        {x.sd > 0 && x.sd - x.s > 0.05 && (
+                          <span className="pointer-events-none absolute top-3 h-[5px] rounded-t-[3px] border-[1.5px] border-b-0 border-amber-400" style={{ left: `${(x.s / maxT) * 100}%`, width: `${((x.sd - x.s) / maxT) * 100}%` }}>
                             <span className="absolute -top-[5px] left-1/2 h-1 w-[1.5px] -translate-x-1/2 bg-amber-400" />
-                            <span className="absolute bottom-[9px] left-1/2 -translate-x-1/2 whitespace-nowrap font-sans text-[11px] font-medium leading-none text-amber-400">thiếu {fmtH(std - x.s)} h</span>
+                            <span className="absolute bottom-[9px] left-1/2 -translate-x-1/2 whitespace-nowrap font-sans text-[11px] font-medium leading-none text-amber-400">thiếu {fmtH(x.sd - x.s)} h</span>
                           </span>
                         )}
                         {/* v5.7: vạch giờ chuẩn của kỳ — trắng mờ, mảnh 1px */}
-                        {std > 0 && <span className="pointer-events-none absolute -bottom-1.5 top-3 w-px -translate-x-1/2 bg-slate-100/55 shadow-[0_0_0_1.5px_#0f172a]" style={{ left: `${(std / maxT) * 100}%` }} />}
+                        {x.sd > 0 && <span className="pointer-events-none absolute -bottom-1.5 top-3 w-px -translate-x-1/2 bg-slate-100/55 shadow-[0_0_0_1.5px_#0f172a]" style={{ left: `${(x.sd / maxT) * 100}%` }} />}
                       </div>
                       <div className="text-right font-mono md:order-none">
                         <div className={`text-sm font-semibold ${x.st === "hi" ? "text-rose-400" : "text-slate-100"}`}>{fmtH(x.t)} h</div>

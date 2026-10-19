@@ -465,6 +465,7 @@ create policy "artius_push_log_admin_read" on public.artius_push_log
 --     Trả một khối JSON (không trả từng dòng) để không vướng giới hạn 1000 dòng của API. Chỉ tài khoản quản lý nhận được số liệu.
 --     v4.9: thêm "o": {"<mã hạng mục tăng ca>|<tăng ca cho tác vụ>|<n|s|h>": giờ} — giờ tăng ca theo khung giờ × tác vụ,
 --     n = ngày thường, s = Chủ nhật, h = ngày lễ (theo danh sách ngày lễ trong thiết lập). Dòng tăng ca cũ chưa có tác vụ: phần giữa rỗng.
+--     v6.5: tăng ca nhận cả mã khung giờ chung (otBands) và mã [OT] cũ (otLegacy) — trước đó "o" rỗng sau khi chuyển sang v6.3.
 --     v5.6: thêm "et": {"<empId>": {"<taskId>|<otFor>": giờ}} — giờ của từng người theo từng tác vụ (otFor chỉ có ở dòng tăng ca).
 create or replace function public.artius_phase_detail()
 returns jsonb
@@ -498,7 +499,12 @@ language sql stable security definer set search_path = public as $$
   cf as (select coalesce((select c.value::jsonb from public.artius_config c where c.id = 'main'), '{}'::jsonb) as j),
   otid as (select tt ->> 'id' as id
            from cf, jsonb_array_elements(case when jsonb_typeof(cf.j -> 'tasks') = 'array' then cf.j -> 'tasks' else '[]'::jsonb end) as tt
-           where coalesce(tt ->> 'name', '') ~* '^\s*\[\s*ot\s*\]'),
+           where coalesce(tt ->> 'name', '') ~* '^\s*\[\s*ot\s*\]'
+           -- v6.5: khung tăng ca chung (v6.3+) và mã hạng mục [OT] cũ đã chuyển sang khung
+           union
+           select ob ->> 'id' from cf, jsonb_array_elements(case when jsonb_typeof(cf.j -> 'otBands') = 'array' then cf.j -> 'otBands' else '[]'::jsonb end) as ob
+           union
+           select lk from cf, jsonb_object_keys(case when jsonb_typeof(cf.j -> 'otLegacy') = 'object' then cf.j -> 'otLegacy' else '{}'::jsonb end) as lk),
   hol as (select coalesce(hd ->> 'date', '') as dt, coalesce((hd ->> 'yearly')::boolean, false) as yearly
           from cf, jsonb_array_elements(case when jsonb_typeof(cf.j -> 'holidays') = 'array' then cf.j -> 'holidays' else '[]'::jsonb end) as hd),
   ot as (select k, jsonb_object_agg(ok, h) as o
