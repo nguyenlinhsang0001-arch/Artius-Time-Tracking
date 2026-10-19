@@ -15,6 +15,7 @@
      test         (đã đăng nhập)         -> gửi thử một thông báo tới các trình duyệt của chính mình
      cron         (header x-cron-secret) -> chạy đợt nhắc nếu tới lịch; gọi 15 phút/lần từ Supabase
      nudge        (quản lý)              -> v5.9: nhắc nộp ngay một số nhân sự { empIds, from, to } (nút chuông ở Bảng công)
+                                            v6.4: thêm weeks: [thứ Hai…] — nhắc gộp nhiều tuần (chuông bảng Tháng), ghi nhật ký từng tuần
    ============================================================ */
 import { createClient } from "@supabase/supabase-js";
 import webpush from "web-push";
@@ -130,7 +131,11 @@ const actions = {
     const byEmp = new Map();
     for (const s of subs || []) { if (!byEmp.has(s.emp_id)) byEmp.set(s.emp_id, []); byEmp.get(s.emp_id).push(s); }
     const dm = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
-    const payload = { title: "ARTIUS — Nhắc nộp bảng công", body: `Quản lý nhắc bạn hoàn thành và gửi bảng công tuần ${dm(from)} – ${dm(to)}.`, url: "/" };
+    // v6.4: weeks = các thứ Hai của nhiều tuần thiếu (chuông ở bảng Tháng) → một thông báo, ghi nhật ký từng tuần
+    const weeks = [...new Set((Array.isArray(body.weeks) ? body.weeks : []).map(String).filter((w) => /^\d{4}-\d{2}-\d{2}$/.test(w)))].sort().slice(0, 8);
+    const payload = { title: "ARTIUS — Nhắc nộp bảng công",
+      body: weeks.length > 1 ? `Quản lý nhắc bạn hoàn thành và gửi bảng công ${weeks.length} tuần: ${weeks.map(dm).join(", ")}.`
+        : `Quản lý nhắc bạn hoàn thành và gửi bảng công tuần ${dm(weeks[0] || from)} – ${dm(weeks[0] ? new Date(Date.parse(weeks[0]) + 6 * 864e5).toISOString().slice(0, 10) : to)}.`, url: "/" };
     const stamp = new Date().toISOString();
     const out = { sent: [], noDevice: [] };
     for (const id of ids) {
@@ -138,7 +143,8 @@ const actions = {
       const n = list.length ? await sendTo(sb, list, payload) : 0;
       if (n > 0) {
         out.sent.push(id);
-        await sb.from("artius_push_log").upsert({ kind: "manual", period: `${from}@${stamp}`, emp_id: id, missing: 0, devices: n }, { onConflict: "kind,period,emp_id" });
+        const rows = (weeks.length ? weeks : [from]).map((w) => ({ kind: "manual", period: `${w}@${stamp}`, emp_id: id, missing: 0, devices: n }));
+        await sb.from("artius_push_log").upsert(rows, { onConflict: "kind,period,emp_id" });
       } else out.noDevice.push(id);
     }
     return out;

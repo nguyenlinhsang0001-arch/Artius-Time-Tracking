@@ -73,11 +73,19 @@ export const sendTestPush = () => api("test");
 
 /* v5.9 — Quản lý bấm chuông ở Bảng công: gửi thông báo nhắc nộp tuần [from, to] tới các nhân sự empIds.
    Trả về { sent: [empId], noDevice: [empId] } (noDevice = người chưa bật thông báo trên máy nào). */
-export const sendNudge = (empIds, from, to) => api("nudge", { empIds, from, to });
+export const sendNudge = (empIds, from, to, weeks) => api("nudge", { empIds, from, to, ...(weeks?.length ? { weeks } : {}) });
 
 /* v5.9 — Những lần quản lý đã nhắc trong tuần bắt đầu từ thứ Hai `monday` (nhật ký kind 'manual'). */
 export async function fetchNudgeLog(monday) {
   const { data, error } = await supabase.from("artius_push_log").select("emp_id,sent_at,period").eq("kind", "manual").like("period", `${monday}@%`).order("sent_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+/* v6.4 — Nhật ký nhắc của nhiều tuần liền nhau (thứ Hai firstMonday … lastMonday), cho chuông ở bảng Tháng. */
+export async function fetchNudgeLogRange(firstMonday, lastMonday) {
+  const { data, error } = await supabase.from("artius_push_log").select("emp_id,sent_at,period").eq("kind", "manual")
+    .gte("period", firstMonday).lte("period", `${lastMonday}@\uffff`).order("sent_at", { ascending: true });
   if (error) throw new Error(error.message);
   return data || [];
 }

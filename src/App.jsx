@@ -11,11 +11,16 @@ import {
 } from "lucide-react";
 import { fetchConfig, saveConfig, fetchTs, fetchTsChanges, fetchTsStamps, saveTs, deleteAllTs, fetchUsage, fetchPhaseDetail } from "./data.js";
 import { mergeConfig } from "./merge.js";
-import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus, sendNudge, fetchNudgeLog } from "./push.js";
+import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus, sendNudge, fetchNudgeLog, fetchNudgeLogRange } from "./push.js";
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v6.4 — Bảng công (quản lý): ô Nghỉ phép đổi màu cam đất (tách khỏi xanh "đủ giờ").
+     Thanh Tổng / chuẩn chia khúc: chuẩn (xanh dương) · cố gắng (tím) · OT (xanh ngọc) · phần thiếu (sọc vàng + "thiếu x h").
+     Hôm nay chỉ tính vào giờ chuẩn khi đã gửi (trước đây ai cũng bị "thiếu 8 h" cả ngày); hôm nay chưa tính là bỏ trống.
+     Bảng Tháng có cột Nhắc: chuông kèm số tuần chưa nộp (các tuần đã qua) — bấm một lần gửi một thông báo gộp mọi tuần thiếu;
+     "Nhắc tất cả" ở tiêu đề cột. /api/push nudge nhận thêm weeks[] và ghi nhật ký từng tuần.
    Mới ở v6.3 — Tăng ca là CÀI ĐẶT CHUNG (Thiết lập → Tăng ca): khung giờ (bắt đầu – kết thúc) + hệ số, áp cho mọi vai trò.
      Không còn hạng mục [OT] ở tab Tác vụ (tạo tên "[OT]…" bị chặn) — xoá / sửa tác vụ không làm mất tăng ca.
      Quản lý mở bản mới lần đầu: tự chuyển các hạng mục [OT] cũ sang khung chung khớp theo giờ (giữ hệ số), dữ liệu không đổi.
@@ -188,7 +193,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v6.3";
+const APP_VERSION = "v6.4";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -3487,7 +3492,7 @@ const DAY_ST = {
   part: { background: "#fbbf2414", color: "#fbbf24", boxShadow: "inset 0 0 0 1px #fbbf2455" },
   draft: { background: "repeating-linear-gradient(135deg,#fbbf2412 0 6px,transparent 6px 12px)", color: "#fbbf24", boxShadow: "inset 0 0 0 1px #fbbf2466" },
   none: { background: "#fb71850f", color: "#fb7185", boxShadow: "inset 0 0 0 1px #fb718540" },
-  leave: { background: "#38bdf81f", color: "#38bdf8" },
+  leave: { background: "#fb923c1f", color: "#fb923c", boxShadow: "inset 0 0 0 1px #fb923c40" },   // v6.4: cam đất, tách khỏi xanh "đủ giờ"
   hol: { background: "repeating-linear-gradient(45deg,#cbd5e112 0 4px,transparent 4px 8px)", color: "#cbd5e1", boxShadow: "inset 0 0 0 1px #cbd5e140" },
   off: { color: "#334155" },
   fut: { color: "#334155", boxShadow: "inset 0 0 0 1px #1e293b80" },
@@ -3498,7 +3503,7 @@ const DAY_ST_SM = {
   part: { background: "#fbbf2420", boxShadow: "inset 0 0 0 1px #fbbf2466" },
   draft: { background: "repeating-linear-gradient(135deg,#fbbf2426 0 3px,transparent 3px 6px)", boxShadow: "inset 0 0 0 1px #fbbf2466" },
   none: { boxShadow: "inset 0 0 0 1px #fb718566" },
-  leave: { background: "#38bdf833" },
+  leave: { background: "#fb923c40", boxShadow: "inset 0 0 0 1px #fb923c66" },
   hol: { background: "repeating-linear-gradient(45deg,#cbd5e133 0 3px,transparent 3px 6px)" },
   off: { background: "#1e293b33" },
   fut: { boxShadow: "inset 0 0 0 1px #1e293b80" },
@@ -3562,6 +3567,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
   const [tip, setTip] = useState(null);                         // { eid, d, x, y } — thẻ chi tiết một ngày
   const [nudged, setNudged] = useState(() => new Map());        // empId -> giờ đã nhắc (tuần đang xem)
   const [nudging, setNudging] = useState(false);
+  const [mNudged, setMNudged] = useState(() => new Map());      // v6.4: empId -> Map(thứ Hai tuần -> giờ đã nhắc), các tuần của tháng đang xem
   const [unlockFor, setUnlockFor] = useState(null);             // empId đang chờ xác nhận mở khoá tuần
   const [drawer, setDrawer] = useState(null);                   // v6.0 (A): empId đang mở ngăn kéo sửa cả tuần
   const [drawerDirty, setDrawerDirty] = useState(false);
@@ -3616,27 +3622,34 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
     return m;
   }, [cfg.employees, weeks.join(","), dataTick, loadTick, taskById, projById]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const stdOf = (d) => (d > today ? 0 : minHoursFor(d, hoursCfg, hs) || 0);
+  /* v6.4: hôm nay chỉ tính vào giờ chuẩn khi đã có giờ gửi — trước đây tính luôn nên ai cũng "thiếu 8 h" cả ngày */
+  const stdOf = (d, eid) => {
+    if (d > today) return 0;
+    if (d === today && eid) { const c = cellOf.get(`${eid}|${d}`); if (!c || c.reg + c.leave + c.ot <= 0) return 0; }
+    return minHoursFor(d, hoursCfg, hs) || 0;
+  };
   const dayInfo = (eid, d) => {
     const c = cellOf.get(`${eid}|${d}`) || { reg: 0, ot: 0, leave: 0, draft: 0, items: [] };
     const std = minHoursFor(d, hoursCfg, hs) || 0, done = c.reg + c.leave;
     let st;
     if (hs.has(d)) st = "hol";
     else if (d > today) st = "fut";
+    else if (d === today && done + c.ot + c.draft === 0) st = "fut";   // v6.4: hôm nay chưa chấm — chưa coi là bỏ trống
     else if (!std) st = done + c.ot > 0 ? (c.draft ? "draft" : "full") : c.draft ? "draft" : "off";
     else if (c.leave > 0 && c.reg === 0 && !c.draft) st = "leave";
     else if (done >= std) st = "full";
     else if (c.draft > 0) st = "draft";
     else st = done > 0 ? "part" : "none";
-    return { ...c, std, done, st };
+    const eff = effortHoursFor(d, c.reg, hoursCfg, hs);   // v6.4: giờ cố gắng (giờ làm việc thường vượt ngưỡng ngày, đã gửi)
+    return { ...c, std, done, st, eff };
   };
   const sumOf = (eid, list) => {
-    let reg = 0, ot = 0, std = 0, miss = [], draft = 0;
+    let reg = 0, ot = 0, std = 0, miss = [], draft = 0, eff = 0;
     for (const d of list) {
-      const x = dayInfo(eid, d); reg += x.done; ot += x.ot; draft += x.draft; std += stdOf(d);
-      if (d <= today && stdOf(d) > 0 && x.done === 0 && x.draft === 0) miss.push(d);
+      const x = dayInfo(eid, d); reg += x.done; ot += x.ot; draft += x.draft; eff += x.eff; std += stdOf(d, eid);
+      if (d < today && stdOf(d) > 0 && x.done === 0 && x.draft === 0) miss.push(d);   // v6.4: hôm nay chưa tính là bỏ trống
     }
-    return { reg, ot, t: reg + ot, std, miss, draft };
+    return { reg, ot, t: reg + ot, std, miss, draft, eff, base: reg - eff };
   };
   const weekState = (eid, mon) => {
     if (mon > today) return "fut";
@@ -3648,11 +3661,11 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
   /* lý do cần nhắc trong tuần đang xem (rỗng = không cần nhắc) */
   const reasons = (eid) => {
     const wd = weekDays(monday), s = sumOf(eid, wd), out = [];
-    const due = wd.filter((d) => d <= today && stdOf(d) > 0);
+    const due = wd.filter((d) => d < today && stdOf(d) > 0);
     if (due.length && s.miss.length === due.length) out.push("Chưa chấm cả tuần");
     else if (s.miss.length) out.push(`Bỏ trống ${s.miss.map((d) => `${DOW_OF(d)} ${dLabel(d)}`).join(", ")}`);
     if (s.draft > 0) out.push(`Còn ${fmtH(s.draft)} h nháp — chưa bấm gửi`);
-    if (!out.length && s.std > 0 && s.reg < (s.std * lim.under) / 100) out.push(`Thiếu ${fmtH(s.std - s.reg)} h giờ chuẩn`);
+    if (!out.length && s.std > 0 && s.base < (s.std * lim.under) / 100) out.push(`Thiếu ${fmtH(s.std - s.base)} h giờ chuẩn`);
     return out;
   };
 
@@ -3668,7 +3681,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
   const due = weeks.filter((m) => m <= today);
   const okN = emps.filter((e) => due.every((m) => weekDone(e.id, m))).length;
   const totT = [...sums.values()].reduce((a, s) => a + s.t, 0), totStd = [...sums.values()].reduce((a, s) => a + s.std, 0), totOt = [...sums.values()].reduce((a, s) => a + s.ot, 0);
-  const lowN = [...sums.values()].filter((s) => s.std > 0 && s.reg < (s.std * lim.under) / 100).length;
+  const lowN = [...sums.values()].filter((s) => s.std > 0 && s.base < (s.std * lim.under) / 100).length;
 
   /* nhắc đã gửi trong tuần đang xem (đọc nhật ký nhắc — quản lý đọc được) */
   useEffect(() => {
@@ -3676,6 +3689,48 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
     fetchNudgeLog(monday).then((rows) => { if (alive) setNudged(new Map(rows.map((r) => [r.emp_id, r.sent_at]))); }).catch(() => {});
     return () => { alive = false; };
   }, [monday]);
+  /* v6.4 — chuông ở bảng Tháng: các tuần đã qua (hết Chủ nhật) chưa nộp đủ; bấm một lần nhắc gộp mọi tuần đó */
+  const monthKey = mode === "month" ? weeks.join(",") : "";
+  useEffect(() => {
+    if (!monthKey) return;
+    let alive = true;
+    const ws = monthKey.split(",");
+    fetchNudgeLogRange(ws[0], ws[ws.length - 1]).then((rows) => {
+      if (!alive) return;
+      const m = new Map();
+      for (const r of rows) { const wk = String(r.period || "").slice(0, 10); if (!m.has(r.emp_id)) m.set(r.emp_id, new Map()); m.get(r.emp_id).set(wk, r.sent_at); }
+      setMNudged(m);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [monthKey]);
+  const missWeeks = (eid) => weeks.filter((m) => fmt(addDays(parseD(m), 6)) < today && !weekDone(eid, m));
+  const monthBell = (eid) => {
+    const mw = missWeeks(eid), log = mNudged.get(eid) || new Map();
+    const todo = mw.filter((m) => !log.has(m));
+    const last = mw.map((m) => log.get(m)).filter(Boolean).sort().pop();
+    return { mw, todo, last };
+  };
+  const mToNudge = mode === "month" ? emps.filter((e) => monthBell(e.id).todo.length > 0).map((e) => e.id) : [];
+  const nudgeMonth = async (ids) => {
+    if (!ids.length || nudging) return;
+    setNudging(true);
+    const groupsBy = new Map();   // cùng danh sách tuần thiếu → một lệnh gửi
+    for (const id of ids) { const mw = missWeeks(id); if (!mw.length) continue; const k = mw.join(","); if (!groupsBy.has(k)) groupsBy.set(k, []); groupsBy.get(k).push(id); }
+    const sent = [], noDev = [];
+    try {
+      for (const [k, gids] of groupsBy) {
+        const ws = k.split(",");
+        const r = await sendNudge(gids, ws[0], fmt(addDays(parseD(ws[ws.length - 1]), 6)), ws);
+        sent.push(...(r.sent || [])); noDev.push(...(r.noDevice || []));
+        const at = new Date().toISOString();
+        setMNudged((m) => { const n = new Map(m); for (const id of r.sent || []) { const x = new Map(n.get(id) || []); for (const w of ws) x.set(w, at); n.set(id, x); } return n; });
+      }
+      const nm = (id) => cfg.employees.find((e) => e.id === id)?.name || id;
+      if (noDev.length) flash(`${sent.length ? `Đã nhắc ${sent.length} người. ` : ""}Chưa bật thông báo trên máy nào: ${noDev.map(nm).join(", ")}.`, sent.length ? "ok" : "err");
+      else flash(ids.length === 1 ? `Đã nhắc ${nm(ids[0])} nộp ${missWeeks(ids[0]).length} tuần.` : `Đã nhắc ${sent.length} người.`);
+    } catch (e) { flash(`Chưa gửi được nhắc nhở — ${e.message}`, "err"); }
+    setNudging(false);
+  };
   const needIds = mode === "week" ? emps.filter((e) => reasons(e.id).length > 0).map((e) => e.id) : [];
   const toNudge = needIds.filter((id) => !nudged.has(id));
   const nudge = async (ids) => {
@@ -3729,15 +3784,21 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
   const perLabel = mode === "week" ? `Tuần ${dLabel(monday)} – ${dLabel(fmt(addDays(parseD(monday), 6)))}` : ymLabel(ym);
   const switchMode = (m) => { if (m === "month") setYm(ymOf(monday)); else setMonday(fmt(mondayOf(ym === ymOf(today) ? new Date() : parseD(`${ym}-01`)))); setMode(m); };
 
+  /* v6.4 — thanh Tổng / chuẩn chia khúc: Chuẩn (xanh dương: làm việc + vắng mặt) · phần còn thiếu (sọc vàng)
+     · Cố gắng (tím) · OT (xanh ngọc). Không đổi cả thanh sang vàng nữa; chữ "thiếu x h" khi dưới giờ chuẩn. */
   const totCell = (s) => {
-    const pc = s.std ? Math.min(100, (s.reg / s.std) * 100) : s.reg ? 100 : 0, oc = s.std ? Math.min(100 - pc, (s.ot / s.std) * 100) : 0;
-    const ok = !s.std || s.reg >= (s.std * lim.under) / 100;
+    const base = Math.max(0, s.base), miss = Math.max(0, s.std - base);
+    const W = Math.max(s.std, base + s.eff + s.ot) || 1, w = (h) => `${(h / W) * 100}%`;
+    const low = s.std > 0 && base < (s.std * lim.under) / 100;
     return (
-      <div className="min-w-[120px]">
-        <div className="font-mono text-sm"><span className="font-semibold text-slate-100">{fmtH(s.t)}</span><span className="text-slate-500"> / {fmtH(s.std)} h</span></div>
-        <div className="mt-1 flex h-[5px] gap-px overflow-hidden rounded-full bg-slate-800">
-          <i className="block h-full" style={{ width: `${pc}%`, background: ok ? "#60a5fa" : "#fbbf24" }} />
-          {oc > 0 && <i className="block h-full bg-teal-400" style={{ width: `${oc}%` }} />}
+      <div className="min-w-[150px]" title={`Chuẩn ${fmtH(Math.min(base, s.std))} h · cố gắng ${fmtH(s.eff)} h · OT ${fmtH(s.ot)} h${miss ? ` · thiếu ${fmtH(miss)} h` : ""}`}>
+        <div className="whitespace-nowrap font-mono text-sm"><span className="font-semibold text-slate-100">{fmtH(s.t)}</span><span className="text-slate-500"> / {fmtH(s.std)} h</span>
+          {miss > 0 && <span className={`ml-1.5 text-[11px] ${low ? "text-amber-400" : "text-slate-500"}`}>thiếu {fmtH(miss)}</span>}</div>
+        <div className="mt-1 flex h-[6px] gap-px overflow-hidden rounded-full bg-slate-800">
+          {base > 0 && <i className="block h-full bg-blue-400" style={{ width: w(Math.min(base, s.std) || base) }} />}
+          {miss > 0 && <i className="block h-full" style={{ width: w(miss), boxShadow: "inset 0 0 0 1px #fbbf24aa", background: "repeating-linear-gradient(135deg,#fbbf2433 0 3px,transparent 3px 6px)" }} />}
+          {s.eff > 0 && <i className="block h-full bg-violet-400" style={{ width: w(s.eff) }} />}
+          {s.ot > 0 && <i className="block h-full bg-teal-400" style={{ width: w(s.ot) }} />}
         </div>
       </div>
     );
@@ -3796,6 +3857,11 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
         <span key={k} className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded-[3px]" style={DAY_ST_SM[k]} />{l}</span>
       ))}
       <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full bg-teal-400" />Tăng ca (ô tuần ghi <span className="font-mono text-teal-400">+h</span>)</span>
+      <span className="flex items-center gap-1.5 text-slate-500">Thanh tổng:
+        <i className="ml-1 inline-block h-2 w-3 rounded-sm bg-blue-400" />chuẩn
+        <i className="ml-1 inline-block h-2 w-3 rounded-sm bg-violet-400" />cố gắng
+        <i className="ml-1 inline-block h-2 w-3 rounded-sm bg-teal-400" />OT
+        <i className="ml-1 inline-block h-2 w-3 rounded-sm" style={{ boxShadow: "inset 0 0 0 1px #fbbf24aa", background: "repeating-linear-gradient(135deg,#fbbf2455 0 2px,transparent 2px 4px)" }} />thiếu</span>
       <span className="text-slate-600">Rê chuột vào ô để xem giờ theo dự án · bấm ô để sửa nhanh · bấm tên hoặc ✎ để sửa cả tuần</span>
     </div>
   );
@@ -3901,10 +3967,18 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
           </th>
           <th className="border-b border-slate-800 px-3 py-2 text-left font-normal">Tổng / chuẩn</th>
           <th className="whitespace-nowrap border-b border-slate-800 px-3 py-2 font-normal">Nộp từng tuần</th>
+          <th className="w-24 whitespace-nowrap border-b border-slate-800 px-2 py-2 font-normal">
+            Nhắc{mToNudge.length > 0 && (
+              <button onClick={() => nudgeMonth(mToNudge)} disabled={nudging} title={`Nhắc tất cả ${mToNudge.length} người còn tuần chưa nộp`}
+                className="ml-1.5 inline-flex h-8 items-center gap-1 rounded-md border border-slate-700 px-2 align-middle font-mono text-xs normal-case text-amber-400 hover:bg-slate-800 disabled:opacity-40">
+                <Bell size={12} />{mToNudge.length}
+              </button>
+            )}
+          </th>
         </tr>
       </thead>
       <tbody>
-        {groups.map((g) => [DeptRow({ g, span: 4 }), ...g.items.map((e) => (
+        {groups.map((g) => [DeptRow({ g, span: 5 }), ...g.items.map((e) => (
           <tr key={e.id}>
             {NameCell({ e })}
             <td className="border-b border-slate-800/70 px-2 py-1.5">
@@ -3931,6 +4005,21 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
                   );
                 })}
               </span>
+            </td>
+            <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
+              {(() => {
+                const b = monthBell(e.id), wl = b.mw.map(dLabel).join(", ");
+                if (!b.mw.length) return null;
+                if (!b.todo.length) return (
+                  <span title={`Đã nhắc${b.last ? ` lúc ${new Date(b.last).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}` : ""} — tuần ${wl}`}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-teal-900 text-teal-300"><Check size={15} /></span>);
+                return (
+                  <button onClick={() => nudgeMonth([e.id])} disabled={nudging} title={`Nhắc nộp ${b.mw.length} tuần: ${wl} — gửi một thông báo`}
+                    className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-amber-400 hover:bg-slate-800 disabled:opacity-40">
+                    <Bell size={15} />
+                    <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-700 px-1 font-mono text-[10px] font-semibold text-white">{b.mw.length}</span>
+                  </button>);
+              })()}
             </td>
           </tr>
         ))])}

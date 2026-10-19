@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v6.3 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v6.4 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.3`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.4`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,17 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v6.4 — Bảng công dễ đọc hơn, nhắc cả tháng
+
+**Không cần chạy lại `schema.sql`** — chỉ upload code (có sửa `api/push.js`).
+
+- **Nghỉ phép màu cam đất** ở Bảng công (Tuần + Tháng), không còn lẫn với ô xanh "đủ giờ chuẩn".
+- **Thanh Tổng / chuẩn chia khúc:** xanh dương = giờ chuẩn (làm việc + vắng mặt) · tím = giờ cố gắng · xanh ngọc = OT ·
+  sọc vàng = phần còn thiếu, kèm chữ "thiếu x h" (vàng khi dưới ngưỡng Thiếu giờ ở Thiết lập).
+- **Sửa lỗi "ai cũng vàng":** giờ chuẩn của hôm nay chỉ tính khi người đó đã gửi giờ hôm nay; hôm nay chưa chấm không bị coi là bỏ trống.
+- **Bảng Tháng có cột Nhắc:** chuông kèm số tuần chưa nộp (chỉ các tuần đã qua). Bấm một lần → gửi **một** thông báo liệt kê mọi tuần thiếu.
+  Đã nhắc → dấu ✓ (rê chuột xem giờ nhắc). Nút "Nhắc tất cả" ở tiêu đề cột. Nhật ký ghi theo từng tuần.
 
 ## Mới ở v6.3 — Tăng ca thành cài đặt chung
 
