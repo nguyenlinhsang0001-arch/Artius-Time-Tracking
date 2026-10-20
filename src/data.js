@@ -131,6 +131,19 @@ export async function fetchPhaseDetail() {
   return data && typeof data === "object" ? data : {};
 }
 
+/* v6.6 — Xoá hẳn giờ công đã chấm vào các tác vụ ids (kể cả dòng tăng ca cho các tác vụ đó). Chỉ quản lý. */
+export async function purgeTasks(ids) {
+  const { data, error } = await supabase.rpc("artius_purge_tasks", { ids });
+  if (error) throw fail("xoá giờ của tác vụ đã xoá", error);
+  return data || { hours: 0, buckets: 0 };
+}
+/* v6.6 — Giờ còn nằm ở tác vụ không còn trong thiết lập: { "<taskId>": giờ } */
+export async function fetchOrphanTasks() {
+  const { data, error } = await supabase.rpc("artius_orphan_tasks");
+  if (error) throw fail("đọc tác vụ đã xoá", error);
+  return data && typeof data === "object" ? data : {};
+}
+
 /* Ghi các bảng công trong map { "<empId>:<ym>": bucket }. Chỉ đụng tới đúng các dòng đó. */
 export async function saveTs(map) {
   const now = new Date().toISOString();

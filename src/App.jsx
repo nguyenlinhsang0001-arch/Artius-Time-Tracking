@@ -9,13 +9,18 @@ import {
   CheckCircle2, Loader2, ListChecks, Lock, RotateCcw, Pencil, Check, X, CalendarDays,
   Copy, Unlock, Search, Flag, Zap, Eraser, ClipboardList, MoreHorizontal, Grid3x3, User, Eye, EyeOff, Bell, Send, Printer, QrCode, Share, GripVertical,
 } from "lucide-react";
-import { fetchConfig, saveConfig, fetchTs, fetchTsChanges, fetchTsStamps, saveTs, deleteAllTs, fetchUsage, fetchPhaseDetail } from "./data.js";
+import { fetchConfig, saveConfig, fetchTs, fetchTsChanges, fetchTsStamps, saveTs, deleteAllTs, fetchUsage, fetchPhaseDetail, purgeTasks, fetchOrphanTasks } from "./data.js";
 import { mergeConfig } from "./merge.js";
 import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus, sendNudge, fetchNudgeLog, fetchNudgeLogRange } from "./push.js";
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v6.6 — Dashboard → Nhân sự: thêm lọc nhanh "Tuần trước" (T2 → CN). Ô tìm nhân sự / dự án gõ không dấu vẫn ra
+     (Dashboard, Bảng công, Tiến độ dự án).
+     Xoá tác vụ = xoá luôn giờ đã chấm vào tác vụ đó (kể cả dòng tăng ca "cho tác vụ" đó), không còn "(tác vụ đã xoá)".
+     Hộp xác nhận báo số giờ sẽ mất. Xoá vai trò cũng xoá giờ của các tác vụ bị xoá theo. Tab Tác vụ hiện khung vàng khi còn giờ
+     của tác vụ đã xoá trước đây → "Xoá hẳn". Database: artius_purge_tasks, artius_orphan_tasks (chạy lại schema.sql).
    Mới ở v6.5 — Sửa lỗi sau kiểm tra số liệu: Dashboard "Tăng ca theo tác vụ" trống từ v6.3 (database chỉ nhận hạng mục [OT],
      nay nhận cả khung tăng ca chung — chạy lại schema.sql); Dashboard Nhân sự tính giờ chuẩn hôm nay chỉ cho người đã gửi
      (khớp Bảng công); Bảng công tháng: "Đã nộp đủ" chỉ xét các tuần đã qua.
@@ -196,7 +201,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v6.5";
+const APP_VERSION = "v6.6";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -3342,8 +3347,8 @@ function HoursMatrix({ cfg, ym, flash, onPickEmp }) {
 
   const emps = cfg.employees.filter((e) => {
     if (fDept !== "all" && e.dept !== fDept) return false;
-    const kw = q.trim().toLowerCase();
-    return !kw || `${e.name} ${e.code || ""} ${e.dept} ${e.role || ""}`.toLowerCase().includes(kw);
+    const kw = norm(q.trim());   // v6.6: gõ không dấu vẫn tìm ra
+    return !kw || norm(`${e.name} ${e.code || ""} ${e.dept} ${e.role || ""} ${roleTitle(e.role)}`).includes(kw);
   });
 
   const view = useMemo(() => {
@@ -3674,8 +3679,8 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
 
   const emps = cfg.employees.filter((e) => {
     if (fDept !== "all" && (e.dept || "") !== fDept) return false;
-    const kw = q.trim().toLowerCase();
-    return !kw || `${e.name} ${e.code || ""} ${e.dept || ""} ${e.role || ""}`.toLowerCase().includes(kw);
+    const kw = norm(q.trim());   // v6.6: gõ không dấu vẫn tìm ra
+    return !kw || norm(`${e.name} ${e.code || ""} ${e.dept || ""} ${e.role || ""} ${roleTitle(e.role)}`).includes(kw);
   });
   const groups = [...DEPTS, ""].map((d) => ({ dept: d || "Khác", items: emps.filter((e) => (DEPTS.includes(e.dept) ? e.dept : "") === d) })).filter((g) => g.items.length);
 
@@ -4858,6 +4863,7 @@ function Dashboard({ cfg, saveCfg, flash }) {
   const today = fmt(now);
   const QUICK = [
     ["week", "Tuần này", fmt(mondayOf(now)), today],
+    ["lweek", "Tuần trước", fmt(addDays(mondayOf(now), -7)), fmt(addDays(mondayOf(now), -1))],   // v6.6: T2 → CN tuần trước
     ["7d", "7 ngày qua", fmt(addDays(now, -6)), today],
     ["month", "Tháng này", fmt(firstOfMonth(now)), today],
   ];
@@ -4933,8 +4939,8 @@ function Dashboard({ cfg, saveCfg, flash }) {
   const matchEmp = useCallback((eid) => {
     const e = empMap.get(eid);
     if (fDept !== "all" && (e?.dept || "") !== fDept) return false;
-    const kw = q.trim().toLowerCase();
-    if (kw && !`${e?.name || ""} ${e?.code || ""}`.toLowerCase().includes(kw)) return false;
+    const kw = norm(q.trim());   // v6.6: gõ không dấu vẫn tìm ra ("nguyen linh sang" → Nguyễn Linh Sang)
+    if (kw && !norm(`${e?.name || ""} ${e?.code || ""}`).includes(kw)) return false;
     return true;
   }, [empMap, fDept, q]);
 
@@ -5604,8 +5610,8 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
       return { p, cells, bt, ut, worst, worstPh, nOver, noOpen, st };
     });
   const pcnt = (k) => allRows.filter((r) => k === "all" || r.st === k).length;
-  const kw = pq.trim().toLowerCase();
-  const rows = allRows.filter((r) => (pf === "all" || r.st === pf) && (!kw || `${r.p.code || ""} ${r.p.name}`.toLowerCase().includes(kw)));
+  const kw = norm(pq.trim());
+  const rows = allRows.filter((r) => (pf === "all" || r.st === pf) && (!kw || norm(`${r.p.code || ""} ${r.p.name} ${r.p.client || ""}`).includes(kw)));
   const byUrgent = (a, b) => (b.p.urgent ? 1 : 0) - (a.p.urgent ? 1 : 0);
   const active = rows.filter((r) => r.ut > 0).sort((a, b) => byUrgent(a, b) || (b.worst ?? -1) - (a.worst ?? -1) || b.ut - a.ut);
   // v4.8: dự án Urgent chưa có giờ vẫn hiện ở đầu bảng (không bị gom vào dòng "chưa có giờ")
@@ -6865,6 +6871,26 @@ function Employees({ cfg, saveCfg, flash }) {
 
 
 /* ============================ HẠNG MỤC ============================ */
+/* v6.6 — giờ đã chấm (trong phần bảng công đang tải) vào các tác vụ ids, tính cả dòng tăng ca cho các tác vụ đó */
+const hoursOfTasks = (ids) => {
+  const set = new Set(ids); let h = 0;
+  for (const b of Object.values(DB?.ts || {})) for (const r of Array.isArray(b?.rows) ? b.rows : [])
+    if (set.has(r.taskId) || (r.otFor && set.has(r.otFor))) for (const v of Object.values(r.days || {})) h += Number(v) || 0;
+  return h;
+};
+/* Xoá hẳn giờ của các tác vụ ids trên server rồi kéo bản mới về. Trả về số giờ đã xoá, hoặc null nếu lỗi. */
+const purgeTaskHours = async (ids, flash) => {
+  if (!ids.length) return 0;
+  try {
+    const r = await purgeTasks(ids);
+    await pullTs();
+    return Number(r?.hours) || 0;
+  } catch (e) {
+    flash(`Đã xoá tác vụ nhưng chưa xoá được giờ đã chấm — ${e.message}. Chạy lại schema.sql (v6.6) rồi dùng nút "Xoá hẳn" ở tab Tác vụ.`, "err");
+    return null;
+  }
+};
+
 function Tasks({ cfg, saveCfg, flash }) {
   const [sub, setSub] = useState("task");               // tab con: task | org | leave
   const [sel, setSel] = useState("");                   // ô tác vụ đang chọn: "r:<mã vai trò>" hoặc "shared"
@@ -6877,6 +6903,9 @@ function Tasks({ cfg, saveCfg, flash }) {
   const [dragTask, setDragTask] = useState(null);        // v4.4: id tác vụ đang kéo để đổi thứ tự (chỉ máy tính)
   const [dropAt, setDropAt] = useState(null);            // { id, after } — chỗ sẽ thả: trước/sau tác vụ id
   const [pendingDel, setPendingDel] = useState(null);
+  const [orphans, setOrphans] = useState(null);   // v6.6: { taskId: giờ } của tác vụ đã xoá trước đây
+  const [purgeAsk, setPurgeAsk] = useState(false);
+  useEffect(() => { let alive = true; fetchOrphanTasks().then((o) => { if (alive) setOrphans(o); }).catch(() => {}); return () => { alive = false; }; }, [cfg.tasks]);
   const [roleCode, setRoleCode] = useState("");
   const [roleName, setRoleName] = useState("");
   const [roleDept, setRoleDept] = useState(DEPTS[0]);
@@ -6949,8 +6978,10 @@ function Tasks({ cfg, saveCfg, flash }) {
   const confirmDel = async () => {
     const t = pendingDel; setPendingDel(null);
     if (!t) return;
-    await saveCfg({ ...cfg, tasks: cfg.tasks.filter((x) => x.id !== t.id) });
-    flash("Đã xoá tác vụ.");
+    const ok = await saveCfg({ ...cfg, tasks: cfg.tasks.filter((x) => x.id !== t.id) });
+    if (ok === false) return;
+    const h = await purgeTaskHours([t.id], flash);   // v6.6: tác vụ đã xoá không còn xuất hiện ở đâu nữa
+    if (h !== null) flash(h > 0 ? `Đã xoá tác vụ và ${fmtH(h)} h đã chấm vào tác vụ này.` : "Đã xoá tác vụ.");
   };
 
   /* v4.4 — Đổi thứ tự tác vụ bằng kéo thả. Chỉ sắp lại các tác vụ của ô đang xem; trong mảng cfg.tasks chúng được đặt lại
@@ -6990,7 +7021,8 @@ function Tasks({ cfg, saveCfg, flash }) {
   const confirmDelRole = async () => {
     const r = pendingRoleDel; setPendingRoleDel(null);
     if (!r) return;
-    await saveCfg({
+    const goneIds = cfg.tasks.filter((t) => taskRoles(t).length === 1 && taskRoles(t)[0] === r.id).map((t) => t.id);
+    const ok = await saveCfg({
       ...cfg,
       roles: roles.filter((x) => x.id !== r.id),
       tasks: cfg.tasks.flatMap((t) => {
@@ -7000,7 +7032,9 @@ function Tasks({ cfg, saveCfg, flash }) {
       }),
       employees: cfg.employees.map((e) => (e.role === r.id ? { ...e, role: "" } : e)),
     });
-    flash("Đã xoá vai trò.");
+    if (ok === false) return;
+    const h = await purgeTaskHours(goneIds, flash);   // v6.6
+    if (h !== null) flash(h > 0 ? `Đã xoá vai trò, ${goneIds.length} tác vụ và ${fmtH(h)} h đã chấm vào các tác vụ đó.` : "Đã xoá vai trò.");
   };
   const addDept = async () => {
     const name = deptName.trim();
@@ -7424,12 +7458,36 @@ function Tasks({ cfg, saveCfg, flash }) {
         ))}
       </div>
 
+      {sub === "task" && orphans && Object.keys(orphans).length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-900/70 bg-amber-950/20 px-4 py-3">
+          <AlertTriangle size={16} className="shrink-0 text-amber-400" />
+          <span className="min-w-0 flex-1 text-sm text-amber-200">
+            Còn {fmtH(Object.values(orphans).reduce((a, h) => a + Number(h || 0), 0))} h chấm vào {Object.keys(orphans).length} tác vụ đã xoá trước đây
+            — đang hiện là "(tác vụ đã xoá)" và vẫn cộng vào tổng giờ dự án.
+          </span>
+          <button onClick={() => setPurgeAsk(true)} className={btnDanger}><Trash2 size={14} /> Xoá hẳn</button>
+        </div>
+      )}
+
       {sub === "task" ? taskTab : sub === "org" ? orgTab : leaveTab}
+
+      <ConfirmDialog
+        open={purgeAsk}
+        title="Xoá hẳn giờ của các tác vụ đã xoá?"
+        desc={`Xoá ${fmtH(Object.values(orphans || {}).reduce((a, h) => a + Number(h || 0), 0))} h đã chấm vào ${Object.keys(orphans || {}).length} tác vụ không còn tồn tại, trên toàn bộ bảng công. Tổng giờ dự án và giờ của nhân sự liên quan giảm tương ứng. Không khôi phục được.`}
+        confirmLabel="Xoá hẳn"
+        onConfirm={async () => {
+          setPurgeAsk(false);
+          const h = await purgeTaskHours(Object.keys(orphans || {}), flash);
+          if (h !== null) { flash(`Đã xoá ${fmtH(h)} h của các tác vụ đã xoá.`); setOrphans({}); }
+        }}
+        onCancel={() => setPurgeAsk(false)}
+      />
 
       <ConfirmDialog
         open={!!pendingRoleDel}
         title={`Xoá vai trò ${pendingRoleDel ? roleLabel(pendingRoleDel.id) : ""}?`}
-        desc={`${delRoleTaskCount} tác vụ của vai trò này sẽ bị xoá; ${delRoleEmpCount} nhân sự đang giữ vai trò này sẽ thành không phân vai trò (chỉ thấy tác vụ dùng chung). Giờ công đã chấm vẫn giữ, tác vụ bị xoá hiển thị là (tác vụ đã xoá).`}
+        desc={`${delRoleTaskCount} tác vụ của vai trò này sẽ bị xoá cùng giờ công đã chấm vào chúng (không khôi phục được); ${delRoleEmpCount} nhân sự đang giữ vai trò này sẽ thành không phân vai trò (chỉ thấy tác vụ dùng chung).`}
         confirmLabel="Xoá vai trò và tác vụ"
         onConfirm={confirmDelRole}
         onCancel={() => setPendingRoleDel(null)}
@@ -7447,8 +7505,9 @@ function Tasks({ cfg, saveCfg, flash }) {
       <ConfirmDialog
         open={!!pendingDel}
         title={`Xoá tác vụ ${pendingDel?.name || ""}?`}
-        desc="Nhân sự sẽ không chọn được tác vụ này nữa. Giờ công đã chấm vẫn giữ nguyên, báo cáo sẽ hiển thị là (tác vụ đã xoá)."
-        confirmLabel="Xoá tác vụ"
+        desc={(() => { const h = pendingDel ? hoursOfTasks([pendingDel.id]) : 0;
+          return `Tác vụ biến mất khỏi mọi màn hình và báo cáo.${h > 0 ? ` Xoá luôn ${fmtH(h)} h đã chấm vào tác vụ này (kể cả tăng ca cho tác vụ này) — tổng giờ dự án giảm tương ứng.` : " Chưa có giờ nào chấm vào tác vụ này."} Không khôi phục được.`; })()}
+        confirmLabel="Xoá tác vụ và giờ đã chấm"
         onConfirm={confirmDel}
         onCancel={() => setPendingDel(null)}
       />

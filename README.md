@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v6.5 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v6.6 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.5`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.6`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,19 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v6.6 — Tác vụ đã xoá không còn xuất hiện
+
+**BẮT BUỘC chạy lại `supabase/schema.sql`** (thêm hàm `artius_purge_tasks`, `artius_orphan_tasks`), rồi upload code.
+
+- **Xoá tác vụ = xoá luôn giờ công đã chấm vào tác vụ đó**, kể cả dòng tăng ca "cho tác vụ" đó. Không còn "(tác vụ đã xoá)" ở bất kỳ đâu.
+  Hộp xác nhận ghi rõ số giờ sẽ mất. **Không khôi phục được** — nên xuất Excel / sao lưu trước khi xoá tác vụ đã có giờ.
+- Ngày nào không còn giờ sau khi xoá thì bỏ luôn dấu "đã gửi" của ngày đó.
+- **Xoá vai trò** cũng xoá giờ của các tác vụ bị xoá theo vai trò.
+- **Giờ của tác vụ đã xoá từ trước:** tab Tác vụ hiện khung vàng "Còn x h chấm vào n tác vụ đã xoá" → **Xoá hẳn** (có xác nhận).
+- **Dashboard → Nhân sự:** thêm lọc nhanh **Tuần trước** (thứ Hai → Chủ nhật tuần trước).
+- **Tìm không dấu:** ô tìm nhân sự (Dashboard, Bảng công) và tìm dự án (Tiến độ dự án) gõ "nguyen linh sang" vẫn ra "Nguyễn Linh Sang".
+- Vắng mặt (loại nghỉ) không thuộc phạm vi này — xoá loại nghỉ vẫn giữ giờ đã chấm.
 
 ## Mới ở v6.5 — Sửa lỗi sau đợt kiểm tra số liệu
 

@@ -523,5 +523,68 @@ $$;
 revoke all on function public.artius_phase_detail() from public, anon;
 grant execute on function public.artius_phase_detail() to authenticated, service_role;
 
+-- 15. v6.6 — Tác vụ đã xoá thì xoá luôn giờ công đã chấm vào nó (kể cả dòng tăng ca "cho tác vụ" đó). Chỉ quản lý gọi được.
+--     artius_purge_tasks(ids): gỡ mọi dòng có taskId hoặc otFor nằm trong ids, bỏ dấu "đã gửi" của ngày không còn giờ.
+--     Trả về {"hours": tổng giờ đã xoá, "buckets": số bảng công tháng bị sửa}. KHÔNG khôi phục được.
+--     artius_orphan_tasks(): giờ còn chấm vào tác vụ không còn trong thiết lập (đã xoá trước v6.6) — {"<taskId>": giờ}.
+create or replace function public.artius_purge_tasks(ids text[])
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  b record; v jsonb; rws jsonb; kept jsonb; snt jsonb; d text; tot numeric; removed numeric := 0; nb int := 0;
+begin
+  if not public.artius_is_admin() then
+    raise exception 'Chỉ tài khoản quản lý được xoá giờ công.' using errcode = '42501';
+  end if;
+  ids := array(select x from unnest(coalesce(ids, '{}')) x where coalesce(x, '') <> '');
+  if cardinality(ids) = 0 then return jsonb_build_object('hours', 0, 'buckets', 0); end if;
+  for b in select t.emp_id, t.ym, t.value from public.artius_ts t
+            where exists (select 1 from unnest(ids) i where strpos(t.value, i) > 0) for update loop
+    v := b.value::jsonb;
+    rws := case when jsonb_typeof(v -> 'rows') = 'array' then v -> 'rows' else '[]'::jsonb end;
+    select coalesce(jsonb_agg(r), '[]'::jsonb) into kept from jsonb_array_elements(rws) r
+     where not (coalesce(r ->> 'taskId', '') = any(ids) or coalesce(r ->> 'otFor', '') = any(ids));
+    if jsonb_array_length(kept) = jsonb_array_length(rws) then continue; end if;
+    select removed + coalesce(sum((dd.value #>> '{}')::numeric), 0) into removed
+      from jsonb_array_elements(rws) r,
+           jsonb_each(case when jsonb_typeof(r -> 'days') = 'object' then r -> 'days' else '{}'::jsonb end) dd
+     where (coalesce(r ->> 'taskId', '') = any(ids) or coalesce(r ->> 'otFor', '') = any(ids)) and jsonb_typeof(dd.value) = 'number';
+    snt := case when jsonb_typeof(v -> 'sent') = 'object' then v -> 'sent' else '{}'::jsonb end;
+    for d in select jsonb_object_keys(snt) loop
+      select coalesce(sum((r -> 'days' ->> d)::numeric), 0) into tot from jsonb_array_elements(kept) r where jsonb_typeof(r -> 'days' -> d) = 'number';
+      if tot <= 0 then snt := snt - d; end if;
+    end loop;
+    v := jsonb_set(v, '{rows}', kept);
+    v := jsonb_set(v, '{sent}', snt);
+    update public.artius_ts t set value = v::text where t.emp_id = b.emp_id and t.ym = b.ym;
+    nb := nb + 1;
+  end loop;
+  return jsonb_build_object('hours', removed, 'buckets', nb);
+end $$;
+revoke all on function public.artius_purge_tasks(text[]) from public, anon;
+grant execute on function public.artius_purge_tasks(text[]) to authenticated, service_role;
+
+create or replace function public.artius_orphan_tasks()
+returns jsonb language sql stable security definer set search_path = public as $$
+  with cf as (select coalesce((select c.value::jsonb from public.artius_config c where c.id = 'main'), '{}'::jsonb) as j),
+  known as (
+    select tt ->> 'id' as id from cf, jsonb_array_elements(case when jsonb_typeof(cf.j -> 'tasks') = 'array' then cf.j -> 'tasks' else '[]'::jsonb end) tt
+    union select ob ->> 'id' from cf, jsonb_array_elements(case when jsonb_typeof(cf.j -> 'otBands') = 'array' then cf.j -> 'otBands' else '[]'::jsonb end) ob
+    union select lk from cf, jsonb_object_keys(case when jsonb_typeof(cf.j -> 'otLegacy') = 'object' then cf.j -> 'otLegacy' else '{}'::jsonb end) lk),
+  x as (
+    select coalesce(rw ->> 'taskId', '') as tid, coalesce(rw ->> 'otFor', '') as otf, (d.value #>> '{}')::numeric as h
+    from public.artius_ts t
+         cross join lateral jsonb_array_elements(case when jsonb_typeof(t.value::jsonb -> 'rows') = 'array' then t.value::jsonb -> 'rows' else '[]'::jsonb end) rw
+         cross join lateral jsonb_each(case when jsonb_typeof(rw -> 'days') = 'object' then rw -> 'days' else '{}'::jsonb end) d
+    where public.artius_is_admin() and jsonb_typeof(d.value) = 'number' and (d.value #>> '{}')::numeric > 0),
+  o as (
+    select case when tid <> '' and tid not like 'LV\_%' and tid not in (select id from known where id is not null) then tid else otf end as id, h
+    from x
+    where (tid <> '' and tid not like 'LV\_%' and tid not in (select id from known where id is not null))
+       or (otf <> '' and otf not in (select id from known where id is not null)))
+  select coalesce(jsonb_object_agg(id, h), '{}'::jsonb) from (select id, sum(h) as h from o group by id) s;
+$$;
+revoke all on function public.artius_orphan_tasks() from public, anon;
+grant execute on function public.artius_orphan_tasks() to authenticated, service_role;
+
 -- 11. Bắt PostgREST nạp lại danh sách bảng / hàm ngay (để hàm artius_usage dùng được liền, không báo 404)
 notify pgrst, 'reload schema';
