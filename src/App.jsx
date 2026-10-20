@@ -3492,7 +3492,7 @@ function HoursMatrix({ cfg, ym, flash, onPickEmp }) {
 const DAY_ST = {
   full: { background: "#60a5fa26", color: "#dbeafe" },
   part: { background: "#fbbf2414", color: "#fbbf24", boxShadow: "inset 0 0 0 1px #fbbf2455" },
-  draft: { color: "#64748b", fontWeight: 500, boxShadow: "inset 0 0 0 1px #1e293b80" },   // v6.7: nháp chỉ hiện số mờ, không tô màu cảnh báo
+  draft: { color: "#64748b", fontWeight: 500, border: "1.5px dashed #94a3b880" },   // v6.9: viền nét đứt như bảng Tháng   // v6.7: nháp chỉ hiện số mờ, không tô màu cảnh báo
   none: { background: "#fb71850f", color: "#fb7185", boxShadow: "inset 0 0 0 1px #fb718540" },
   leave: { background: "#fb923c1f", color: "#fb923c", boxShadow: "inset 0 0 0 1px #fb923c40" },   // v6.4: cam đất, tách khỏi xanh "đủ giờ"
   hol: { background: "repeating-linear-gradient(45deg,#cbd5e112 0 4px,transparent 4px 8px)", color: "#cbd5e1", boxShadow: "inset 0 0 0 1px #cbd5e140" },
@@ -6223,8 +6223,9 @@ function Projects({ cfg, saveCfg, flash }) {
     return (
       <div>
         <button onClick={() => teamToggle(p.id)} title="Nhân sự tham gia" aria-label="Nhân sự tham gia"
-          className={`mt-0.5 flex h-6 w-8 items-center justify-center rounded-md hover:bg-slate-700 ${on ? "text-teal-300" : "text-slate-500"}`}>
+          className={`mt-0.5 flex h-6 items-center gap-1 rounded-md px-1.5 hover:bg-slate-700 ${on ? "text-teal-300" : "text-slate-500"}`}>
           <ChevronDown size={15} className={`transition-transform ${on ? "rotate-180" : ""}`} />
+          <span className="font-mono text-[11px] text-slate-600">{team.length}</span>
         </button>
         {on && (
           <div className="mt-1 text-[12.5px]">
