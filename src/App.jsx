@@ -16,7 +16,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
-   Mới ở v6.9 — Nhân sự: "Dự án đang tham gia" sửa ngay trên danh sách (✕ gỡ · + Dự án · Chép từ…), hoặc trong khung sửa nhân sự. Màn chấm công của nhân sự chỉ hiện các dự án được giao;
+   Mới ở v6.9 — Nhân sự: "Dự án đang tham gia" sửa ngay trên danh sách (✕ gỡ · + Dự án) hoặc trong khung sửa nhân sự. Tab Dự án: ⌄ dưới tên dự án mở danh sách Tên · Vai trò, + Nhân sự / ✕ để giao, gỡ. Màn chấm công của nhân sự chỉ hiện các dự án được giao;
      chưa giao dự án nào = chỉ chấm Việc chung / vắng mặt. Cột "Dự án đang tham gia" ở danh sách = dự án được giao.
    Mới ở v6.8 — Dashboard cá nhân → Chi tiết tuần: ngày lễ khoanh vòng đỏ kèm tên ngày lễ.
      Màn chấm công nhân viên gọn hơn: bỏ ghi chú "Chọn dự án (hoặc Khác)…", bỏ chú thích cạnh nhãn Công việc chung /
@@ -6202,6 +6202,75 @@ function Projects({ cfg, saveCfg, flash }) {
   const [draft, setDraft] = useState({});
   const dataTick = useDataTick();
   const isWide = !useIsMobile();
+  /* v6.9 — nhân sự tham gia dự án: mũi tên ⌄ dưới tên dự án mở danh sách "Tên · Vai trò"; + Nhân sự / ✕ để giao, gỡ
+     (cùng dữ liệu với cột "Dự án đang tham gia" ở tab Nhân sự: employee.projects) */
+  const [teamOpen, setTeamOpen] = useState(() => new Set());
+  const [tp, setTp] = useState(null);   // { pid, q, x, y, top }
+  useEffect(() => {
+    if (!tp) return;
+    const close = () => setTp(null);
+    const esc = (ev) => { if (ev.key === "Escape") setTp(null); };
+    document.addEventListener("click", close); document.addEventListener("keydown", esc); window.addEventListener("resize", close);
+    return () => { document.removeEventListener("click", close); document.removeEventListener("keydown", esc); window.removeEventListener("resize", close); };
+  }, [!!tp]); // eslint-disable-line react-hooks/exhaustive-deps
+  const inProj = (e, pid) => Array.isArray(e.projects) && e.projects.includes(pid);
+  const toggleMember = (eid, pid) => saveCfg({ ...cfg, employees: cfg.employees.map((e) => (e.id !== eid ? e
+    : { ...e, projects: inProj(e, pid) ? e.projects.filter((x) => x !== pid) : [...(Array.isArray(e.projects) ? e.projects : []), pid] })) });
+  const teamToggle = (pid) => setTeamOpen((s) => { const n = new Set(s); n.has(pid) ? n.delete(pid) : n.add(pid); return n; });
+  const teamBlock = (p) => {
+    const on = teamOpen.has(p.id);
+    const team = cfg.employees.filter((e) => inProj(e, p.id));
+    return (
+      <div>
+        <button onClick={() => teamToggle(p.id)} title="Nhân sự tham gia" aria-label="Nhân sự tham gia"
+          className={`mt-0.5 flex h-6 w-8 items-center justify-center rounded-md hover:bg-slate-700 ${on ? "text-teal-300" : "text-slate-500"}`}>
+          <ChevronDown size={15} className={`transition-transform ${on ? "rotate-180" : ""}`} />
+        </button>
+        {on && (
+          <div className="mt-1 text-[12.5px]">
+            {team.map((e) => (
+              <div key={e.id} className="group flex min-h-[28px] items-center gap-1.5">
+                <span className="whitespace-nowrap text-slate-200">{e.name}</span>
+                {roleTitle(e.role) && <span className="whitespace-nowrap text-slate-500">· {roleTitle(e.role)}</span>}
+                <button onClick={() => toggleMember(e.id, p.id)} title="Gỡ khỏi dự án" aria-label={`Gỡ ${e.name}`}
+                  className="flex h-6 w-6 items-center justify-center rounded text-slate-500 opacity-0 hover:bg-rose-950 hover:text-rose-300 group-hover:opacity-100 max-md:opacity-100"><X size={12} /></button>
+              </div>
+            ))}
+            <button onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); setTp({ pid: p.id, q: "", x: Math.max(8, Math.min(window.innerWidth - 328, r.left)), y: r.bottom + 6, top: r.top }); }}
+              className="mt-1 h-8 rounded-md border border-dashed border-slate-700 px-2.5 text-xs text-slate-400 hover:border-teal-600 hover:text-teal-300">+ Nhân sự</button>
+          </div>
+        )}
+      </div>
+    );
+  };
+  const teamPop = tp && (() => {
+    const kw = norm(tp.q.trim());
+    const list = cfg.employees.filter((e) => !kw || norm(`${e.name} ${e.code || ""} ${roleTitle(e.role)}`).includes(kw));
+    const depts = [...new Set(list.map((e) => e.dept || "Khác"))];
+    const below = tp.y + 400 < window.innerHeight;
+    return (
+      <div onClick={(ev) => ev.stopPropagation()} className="fixed z-50 w-[320px] rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl"
+        style={below ? { left: tp.x, top: tp.y } : { left: tp.x, bottom: window.innerHeight - tp.top + 6 }}>
+        <div className="p-1"><input autoFocus value={tp.q} onChange={(ev) => setTp({ ...tp, q: ev.target.value })} placeholder="Tìm nhân sự (gõ không dấu được)" className={inputCls} /></div>
+        <div className="max-h-72 overflow-y-auto">
+          {list.length === 0 && <div className="px-3 py-3 text-sm text-slate-500">Không có nhân sự khớp.</div>}
+          {depts.map((d) => (
+            <div key={d}>
+              <div className="px-2.5 pb-0.5 pt-2 text-[10.5px] uppercase tracking-wider text-slate-500">{d}</div>
+              {list.filter((e) => (e.dept || "Khác") === d).map((e) => { const on = inProj(e, tp.pid);
+                return (
+                  <button key={e.id} onClick={() => toggleMember(e.id, tp.pid)} className="flex min-h-[42px] w-full items-center gap-2.5 rounded-md px-2.5 text-left hover:bg-slate-800">
+                    <span className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border ${on ? "border-teal-600 bg-teal-600 text-white" : "border-slate-600"}`}>{on && <Check size={12} />}</span>
+                    <span className="min-w-0"><span className="block text-sm text-slate-200">{e.name}</span>{roleTitle(e.role) && <span className="block text-[11px] text-slate-500">{roleTitle(e.role)}</span>}</span>
+                  </button>
+                ); })}
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end p-1"><button onClick={() => setTp(null)} className={`${btnPrimary} h-9`}>Xong</button></div>
+      </div>
+    );
+  })();
 
   /* Giờ đã dùng của từng dự án theo phase: tính trên TOÀN BỘ thời gian, chỉ giờ của ngày đã gửi, không tính vắng mặt.
      v2.1: lấy từ database (useUsage); chỉ khi chưa hỏi được mới tạm cộng từ phần đang có trong bộ nhớ. */
@@ -6292,6 +6361,7 @@ function Projects({ cfg, saveCfg, flash }) {
 
   return (
     <Panel title="Dự án — sửa thông tin & bật/tắt chấm công">
+      {teamPop}
       {/* bọc trong div để class width không bị w-full của inputCls ghi đè */}
       <div className="mb-5 grid gap-2 md:flex md:flex-wrap md:items-end">
         <div className="md:w-28">
@@ -6333,9 +6403,9 @@ function Projects({ cfg, saveCfg, flash }) {
                 {cfg.projects.map((p) => {
                   const editing = editId === p.id;
                   return (
-                    <tr key={p.id} className="border-b border-slate-800 hover:bg-slate-800">
+                    <tr key={p.id} className={`border-b border-slate-800 hover:bg-slate-800 ${teamOpen.has(p.id) ? "align-top" : ""}`}>
                       <td className="px-3 py-2">{editing ? <input value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} className={`font-mono ${inputCls}`} /> : <span className="font-mono text-base font-bold text-white">{p.code || "—"}</span>}</td>
-                      <td className="px-3 py-2">{editing ? <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && commit()} className={inputCls} /> : <span className="text-slate-100">{p.name}</span>}</td>
+                      <td className="px-3 py-2">{editing ? <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && commit()} className={inputCls} /> : <><span className="text-slate-100">{p.name}</span>{teamBlock(p)}</>}</td>
                       <td className="px-3 py-2">{editing ? <input value={draft.client} onChange={(e) => setDraft({ ...draft, client: e.target.value })} onKeyDown={(e) => e.key === "Enter" && commit()} className={inputCls} /> : <span className="text-slate-400">{p.client || "—"}</span>}</td>
                       {PHASES.map((ph) => (
                         <td key={ph.id} className="px-2 py-2" data-phase={ph.id}>
@@ -6389,6 +6459,7 @@ function Projects({ cfg, saveCfg, flash }) {
                           {p.code && <div className="font-mono text-sm font-bold text-white">{p.code}</div>}
                           <div className="text-sm font-medium text-slate-100">{p.name}</div>
                           <div className="text-xs text-slate-500">{p.client || "—"}</div>
+                          {teamBlock(p)}
                         </div>
                         <div className="flex shrink-0 gap-1.5">
                           <button onClick={() => startEdit(p)} className={iconBtn}><Pencil size={14} /></button>
@@ -6693,7 +6764,7 @@ function Employees({ cfg, saveCfg, flash }) {
     const a = accByEmp.get(e.id);
     const dim = a?.disabled ? "text-slate-500" : "";
     const roleEl = e.role ? <span className="rounded border border-slate-700 px-1.5 py-0.5 font-mono text-[10px] text-teal-300">{roleLabel(e.role) || e.role}</span> : null;
-    // v6.9 (mẫu C): chip dự án có ✕ để gỡ; "+ Dự án" mở danh sách tích chọn; "Chép từ…" lấy y nguyên dự án của người khác
+    // v6.9 (mẫu C): chip dự án có ✕ để gỡ; "+ Dự án" mở danh sách tích chọn
     const mine = empProjs(e);
     const projEl = (
       <>
@@ -6706,7 +6777,6 @@ function Employees({ cfg, saveCfg, flash }) {
             </span>
           ); })}
         <button onClick={(ev) => openPp(ev, "add", e.id)} className="h-8 rounded-md border border-dashed border-slate-700 px-2.5 text-xs text-slate-400 hover:border-teal-600 hover:text-teal-300">+ Dự án</button>
-        <button onClick={(ev) => openPp(ev, "copy", e.id)} className="h-8 rounded-md px-2 text-xs text-slate-500 hover:text-slate-200">Chép từ…</button>
       </>
     );
     const btns = (

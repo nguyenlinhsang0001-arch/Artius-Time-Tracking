@@ -31,10 +31,12 @@ Ghi chú:
 Không cần chạy SQL. File thay đổi so với v6.8: `src/App.jsx`, `README.md`, `index.html`, `package.json`.
 
 - **Nhân sự → cột "Dự án đang tham gia" sửa ngay trên danh sách:** ✕ trên chip để gỡ dự án · **+ Dự án** mở danh sách tích chọn
-  có ô tìm (gõ không dấu) · **Chép từ…** lấy y nguyên dự án của người khác (VD cùng nhóm). Lưu ngay sau mỗi lần bấm.
+  có ô tìm (gõ không dấu). Lưu ngay sau mỗi lần bấm.
   (Khung ✎ Sửa nhân sự cũng chọn được.)
 - **Màn chấm công của nhân sự chỉ hiện các dự án được giao.** Chưa giao dự án nào = chỉ chấm được Việc chung và vắng mặt.
   Dự án không được giao bị ẩn hẳn. Giờ cũ đã chấm vào dự án không còn được giao vẫn hiện để xem.
+- **Tab Dự án:** mũi tên **⌄** ngay dưới tên dự án → hiện danh sách **Tên · Vai trò** của người được giao. Khi mở rộng:
+  **+ Nhân sự** (tích chọn, tìm không dấu, gom theo bộ phận) để thêm, rê chuột vào một người → **✕** để gỡ. Đồng bộ với tab Nhân sự.
 - Quản lý sửa giờ công giúp nhân sự (Bảng công → ✎) vẫn thấy mọi dự án.
 - Cột **"Dự án đang tham gia"** ở danh sách Nhân sự giờ là các dự án được giao.
 - **Lưu ý khi cập nhật:** sau khi deploy, mọi nhân sự chưa được giao dự án sẽ chỉ chấm được Việc chung — giao dự án cho từng người trước khi báo nhân viên chấm công.
