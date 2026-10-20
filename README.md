@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v6.7 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v6.8 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.7`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.8`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,17 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v6.8 — Màn chấm công nhân viên gọn hơn
+
+Không cần chạy SQL. File thay đổi so với v6.7: `src/App.jsx`, `README.md`, `index.html`, `package.json`.
+
+- Bỏ ghi chú "Chọn dự án (hoặc Khác) — toàn bộ hạng mục sẽ hiện ra để nhập giờ."
+- Khối Khác: bỏ chú thích "không thuộc dự án" và "nghỉ phép, nghỉ không lương, làm bù" cạnh nhãn nhóm.
+- Bỏ nút "…" (thêm mô tả cho dòng).
+- Bỏ nút "Chép tuần trước".
+- Nút "Thêm dòng" đổi thành **"Thêm tác vụ"**.
+- **Dashboard cá nhân → Chi tiết tuần:** ngày lễ được khoanh vòng đỏ (giống bảng chấm công) kèm tên ngày lễ.
 
 ## Mới ở v6.7 — Bảng công bớt màu, tập trung vào giờ đã gửi
 

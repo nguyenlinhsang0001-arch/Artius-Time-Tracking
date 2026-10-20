@@ -16,6 +16,9 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v6.8 — Dashboard cá nhân → Chi tiết tuần: ngày lễ khoanh vòng đỏ kèm tên ngày lễ.
+     Màn chấm công nhân viên gọn hơn: bỏ ghi chú "Chọn dự án (hoặc Khác)…", bỏ chú thích cạnh nhãn Công việc chung /
+     Vắng mặt, bỏ nút "…" (mô tả dòng), bỏ "Chép tuần trước"; nút "Thêm dòng" đổi thành "Thêm tác vụ".
    Mới ở v6.7 — Bảng công giảm màu (phương án C): giờ nháp chỉ hiện số mờ, không tô cam; thanh tổng không vẽ nháp và không ghi
      "thiếu" khi phần thiếu đã có giờ nháp; cột Nộp tuần ẩn "Còn nháp" của tuần đang chạy (chấm tuần trong bảng Tháng: xám);
      KPI "Chưa nộp / còn nháp" màu trung tính; bỏ dòng ghi chú "Rê chuột vào ô…". Chuông nhắc giữ màu.
@@ -204,7 +207,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v6.7";
+const APP_VERSION = "v6.8";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -538,6 +541,8 @@ const HOLIDAY_RING_SVG = encodeURIComponent(
   '<path d="M31 5.5c4.2.6 8 2.6 11.5 6.5" stroke-width="2.1" opacity=".8"/></g></svg>'
 );
 
+// v6.8: bản kéo giãn theo khung (vòng elip quanh cả nhãn ngày, VD "T4 02/09")
+const HOLIDAY_RING_WIDE = HOLIDAY_RING_SVG.replace(encodeURIComponent('viewBox="0 0 48 48"'), encodeURIComponent('viewBox="0 0 48 48" preserveAspectRatio="none"'));
 const holidayRingBg = (size = 34) => ({
   backgroundImage: `url("data:image/svg+xml,${HOLIDAY_RING_SVG}")`,
   backgroundRepeat: "no-repeat",
@@ -2013,7 +2018,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
     gridInputs.current = {}; mobileInputs.current = [];
     writeDraft(next);
     if (!next.some((r) => groupKey(r) === gk)) flash("Khối này chưa có giờ nào nên đã bỏ khỏi bảng.", "err");
-    else flash(`Đã tạm lưu giờ ${g0 ? projFull(g0.projectId) : ""}. Thêm dòng cho dự án khác, xong hết thì bấm Gửi giờ công.`);
+    else flash(`Đã tạm lưu giờ ${g0 ? projFull(g0.projectId) : ""}. Thêm tác vụ cho dự án khác, xong hết thì bấm Gửi giờ công.`);
   };
   const editGroup = (gk) => {
     setRows(expandIn(rows, new Set([gk])));
@@ -2034,7 +2039,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   const sectionsOf = (g, open = false) => {
     const khac = g.projectId === NO_PROJECT;
     const s2 = khac
-      ? [{ label: "Công việc chung", chip: "#2dd4bf", hint: "không thuộc dự án", items: [] }, { label: "Vắng mặt", chip: "#38bdf8", hint: "nghỉ phép, nghỉ không lương, làm bù", items: [] }]
+      ? [{ label: "Công việc chung", chip: "#2dd4bf", items: [] }, { label: "Vắng mặt", chip: "#38bdf8", items: [] }]
       : [{ label: "Công việc dự án", noHead: true, items: [] }, { label: "Tăng ca", ot: true, items: [] }];   // v6.2: bỏ chữ "Công việc dự án"
     for (const it of g.items) {
       const t = taskById.get(it.r.taskId);
@@ -2859,7 +2864,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
               <tbody>
                 {rows.length === 0 && (
                   <tr><td colSpan={9} className="px-4 py-12 text-center text-sm text-slate-500">
-                    Tuần này chưa có dòng nào. Bấm <b className="text-slate-300">Thêm dòng</b> để bắt đầu, hoặc <b className="text-slate-300">Chép tuần trước</b> để lấy lại đúng các dự án bạn đang làm.
+                    Tuần này chưa có tác vụ nào. Bấm <b className="text-slate-300">Thêm tác vụ</b> để bắt đầu.
                   </td></tr>
                 )}
               </tbody>
@@ -2920,7 +2925,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
 
                     {blank && (
                       <tr><td colSpan={9} className="px-3 pb-3 pt-1">
-                        <div className="text-xs text-slate-500" style={{ paddingLeft: GUT + 8 }}>Chọn dự án (hoặc Khác) — toàn bộ hạng mục sẽ hiện ra để nhập giờ.</div>
+
                       </td></tr>
                     )}
 
@@ -2940,7 +2945,6 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                           <tr><td colSpan={9} className="px-3 pb-1 pt-3.5">
                             <div className="flex items-center gap-2.5" style={{ paddingLeft: GUT + 8 }}>
                               <span className="whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ background: `${sec.chip}2e`, color: sec.chip }}>{sec.label}</span>
-                              <span className="whitespace-nowrap text-[11.5px] text-slate-500">{sec.hint}</span>
                               <i className="h-px flex-1 bg-slate-700" />
                             </div>
                           </td></tr>
@@ -2975,13 +2979,6 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                                     {open && !ot && !isLeaveTask(r.taskId) && (
                                       <button disabled={locked || projClosed(r) || !rowReady(r)} onClick={() => fillStandard(i)} title="Điền giờ chuẩn cho cả tuần vào các ô còn trống"
                                         className={`${iconBtn} disabled:opacity-40`}><Zap size={14} /></button>
-                                    )}
-                                    {(open || r.note) && (
-                                      <button onClick={() => setNoteRow(i)} title={r.note || "Thêm mô tả"}
-                                        className={`${iconBtn} relative ${r.note ? "border-teal-800 text-teal-400" : ""}`}>
-                                        <MoreHorizontal size={14} />
-                                        {r.note && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-teal-400" />}
-                                      </button>
                                     )}
                                     {/* v5.0: dòng tăng ca xoá được cả dòng, kể cả khi chưa nhập giờ (dòng có giờ của ngày đã gửi thì không) */}
                                     {open && ot && (
@@ -3128,7 +3125,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
 
             {rows.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-700 px-4 py-10 text-center text-sm text-slate-500">
-                Tuần này chưa có dòng nào.<br />Bấm <b className="text-slate-300">Thêm dòng</b>, hoặc <b className="text-slate-300">Chép tuần trước</b> để lấy lại các dự án cũ.
+                Tuần này chưa có tác vụ nào.<br />Bấm <b className="text-slate-300">Thêm tác vụ</b> để bắt đầu.
               </div>
             ) : groups.map((g) => {
               const noProj = g.projectId === NO_PROJECT;
@@ -3143,7 +3140,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                   {/* Đầu thẻ: dự án + giai đoạn dùng chung cho mọi hạng mục bên trong */}
                   <select disabled={gLocked || (!blank && (!open || gHas))} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })} className={`disabled:opacity-60 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
                   {!noProj && !blank && <select disabled={gLocked || !open || phaseFixed(g)} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })} className={`mt-2 disabled:opacity-60 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>}
-                  {blank && <div className="mt-2 text-xs text-slate-500">Chọn dự án (hoặc Khác) — toàn bộ hạng mục sẽ hiện ra để nhập giờ.</div>}
+
 
                   {secs.map((sec) => (
                     <div key={sec.label}>
@@ -3182,13 +3179,6 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                                   className={`${CTRL} w-20 rounded-md border bg-slate-950 px-2 text-center font-mono text-lg focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[activeDay] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "border-teal-900 text-slate-100" : "border-slate-700 text-slate-100"}`} />
                               ) : (
                                 <span className={`w-12 text-right font-mono text-base ${r.days[activeDay] > 0 ? "text-slate-100" : "text-slate-700"}`}>{r.days[activeDay] > 0 ? r.days[activeDay] : "·"}</span>
-                              )}
-                              {(open || r.note) && (
-                                <button onClick={() => setNoteRow(i)} title={r.note || "Thêm mô tả"}
-                                  className={`${iconBtn} relative h-11 w-11 ${r.note ? "border-teal-800 text-teal-400" : ""}`}>
-                                  <MoreHorizontal size={16} />
-                                  {r.note && <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-teal-400" />}
-                                </button>
                               )}
                               {open && ot && (
                                 <button disabled={locked || rowLocked(r)} onClick={() => delRow(i)} title="Xoá dòng tăng ca này" aria-label="Xoá dòng tăng ca này"
@@ -3229,11 +3219,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
       )}
 
       <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
-        <button onClick={focusQuick} disabled={locked} className={`${btnGhost} disabled:opacity-40`}><Plus size={15} /> Thêm dòng</button>
-        <button onClick={copyPrevWeek} disabled={locked || copying} title="Lấy lại đúng các dự án và hạng mục đã chấm tuần trước, giờ công để trống"
-          className={`${btnGhost} disabled:opacity-40`}>
-          {copying ? <Loader2 className="animate-spin" size={15} /> : <Copy size={15} />} Chép tuần trước
-        </button>
+        <button onClick={focusQuick} disabled={locked} className={`${btnGhost} disabled:opacity-40`}><Plus size={15} /> Thêm tác vụ</button>
         {/* v1.9: nhân sự không còn nút Lưu nháp; quản lý vẫn lưu được khi sửa bảng công của người khác */}
         {admin && (
           <button onClick={() => save(null)} disabled={saving} className={`${btnGhost} disabled:opacity-40`}>
@@ -4776,7 +4762,13 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                       const n = (v, c) => <td className={`py-1.5 text-right ${v ? c : "text-slate-700"}`}>{v ? v.toFixed(1) : "·"}</td>;
                       return (
                         <tr key={x.k} className={x.st === "fut" ? "opacity-40" : ""}>
-                          <td className={`py-1.5 font-sans ${x.st === "miss" ? "text-amber-400" : "text-slate-300"}`}>{shortDays([x.k])}{x.st === "miss" && <span className="ml-1.5 text-[10px]">thiếu</span>}</td>
+                          <td className={`py-1.5 font-sans ${x.st === "miss" ? "text-amber-400" : "text-slate-300"}`}>
+                            {/* v6.8: ngày lễ khoanh vòng cọ đỏ (như bảng chấm công) kèm tên ngày lễ */}
+                            {holidaySet.has(x.k)
+                              ? <><span className="-mx-2.5 -my-1.5 inline-block px-2.5 py-1.5 text-slate-100" style={{ backgroundImage: `url("data:image/svg+xml,${HOLIDAY_RING_WIDE}")`, backgroundRepeat: "no-repeat", backgroundSize: "100% 100%" }}>{shortDays([x.k])}</span>
+                                  <span className="ml-2 text-[10px] text-rose-400">{holidaySet.get(x.k)}</span></>
+                              : shortDays([x.k])}
+                            {x.st === "miss" && <span className="ml-1.5 text-[10px]">thiếu</span>}</td>
                           <td className={`py-1.5 text-right font-semibold ${x.st === "miss" ? "text-amber-400" : x.tot ? "text-slate-100" : "text-slate-700"}`}>{x.tot ? x.tot.toFixed(1) : "—"}</td>
                           {/* v4.0: giờ chuẩn thiếu (dưới giờ chuẩn của ngày) tô cam như bảng chấm công */}
                           {x.st === "miss" ? <td className="py-1.5 text-right text-amber-400">{x.std ? x.std.toFixed(1) : "0.0"}</td> : n(x.std, "text-blue-400")}{n(x.ot, "text-teal-400")}{n(x.ef, "text-violet-400")}
