@@ -16,6 +16,9 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v7.1 — Dashboard cá nhân: ô Lịch tháng hiện tổng giờ (số to) và dòng chuẩn · +OT · +cố gắng theo màu; nút "Chấm công ngay"
+   mở thẳng tuần cũ nhất còn thiếu của tháng đang xem; thanh Từng tuần kiểu khung Phân bổ của quản lý (số trong khúc, vạch giờ chuẩn
+   của tuần tính đến hôm nay, ngoặc vàng "thiếu X h", cột tổng giờ).
    Mới ở v7.0 — Dashboard cá nhân: bỏ Xuất Excel, ô chọn kỳ + nút nhanh và khung Chi tiết tuần; xem theo tháng của Lịch tháng ("Tháng này" để quay về); khung Từng tuần cao vừa nội dung; thêm Lịch tháng (màu ô như bảng Tuần của quản lý), bấm một ngày → mở Chấm công đúng tuần đó.
    Mới ở v6.9 — Nhân sự: "Dự án đang tham gia" sửa ngay trên danh sách (✕ gỡ · + Dự án) hoặc trong khung sửa nhân sự. Tab Dự án: ⌄ dưới tên dự án mở danh sách Tên · Vai trò, + Nhân sự / ✕ để giao, gỡ. Màn chấm công của nhân sự chỉ hiện các dự án được giao;
      chưa giao dự án nào = chỉ chấm Việc chung / vắng mặt. Cột "Dự án đang tham gia" ở danh sách = dự án được giao.
@@ -210,7 +213,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v7.0";
+const APP_VERSION = "v7.1";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -4494,6 +4497,8 @@ function MonthCalendar({ cfg, empId, ym, setYm, loading, onOpenWeek }) {
   const info = (d) => {
     const c = cells.get(d) || { reg: 0, ot: 0, leave: 0, draft: 0 };
     const std = minHoursFor(d, hoursCfg, hs) || 0, done = c.reg + c.leave;
+    /* v7.1 — tách giờ cố gắng (giống Dashboard / màn chấm công): chuẩn = tổng − OT − cố gắng */
+    const ef = effortHoursFor(d, c.reg, hoursCfg, hs), tot = done + c.ot, sd = Math.max(0, done - ef);
     let st;
     if (hs.has(d)) st = "hol";
     else if (d > today) st = "fut";
@@ -4503,7 +4508,7 @@ function MonthCalendar({ cfg, empId, ym, setYm, loading, onOpenWeek }) {
     else if (done >= std) st = "full";
     else if (c.draft > 0) st = "draft";
     else st = done > 0 ? "part" : "none";
-    return { ...c, done, st };
+    return { ...c, done, ef, tot, sd, st };
   };
   const days = [];
   for (let d = mondayOf(first); d <= last || d.getDay() !== 1; d = addDays(d, 1)) days.push(d.getMonth() === first.getMonth() ? fmt(d) : null);
@@ -4531,16 +4536,23 @@ function MonthCalendar({ cfg, empId, ym, setYm, loading, onOpenWeek }) {
         {days.map((d, i) => {
           if (!d) return <div key={`e${i}`} />;
           const x = info(d);
-          const txt = x.st === "hol" ? "Lễ" : x.st === "leave" ? "P" : x.st === "none" ? "—" : x.st === "fut" || x.st === "off" ? (x.done ? fh(x.done) : "") : fh(x.st === "draft" ? x.done + x.draft : x.done);
-          const plus = x.st === "hol" ? x.done + x.ot : x.ot;
+          /* v7.1 — số to = TỔNG giờ (gồm OT); dòng nhỏ = chuẩn · +OT · +cố gắng, chỉ hiện khi có OT hoặc cố gắng */
+          const txt = x.st === "hol" ? "Lễ" : x.st === "leave" ? "P" : x.st === "none" ? "—" : x.st === "fut" || x.st === "off" ? (x.tot ? fh(x.tot) : "") : fh(x.st === "draft" ? x.tot + x.draft : x.tot);
+          const split = x.st !== "draft" && (x.ot > 0 || x.ef > 0);
           const can = d <= today && !!onOpenWeek;
           return (
             <button key={d} type="button" disabled={!can} onClick={() => onOpenWeek(fmt(mondayOf(parseD(d))))} style={DAY_ST[x.st]}
-              title={`${DOWS[(parseD(d).getDay() + 6) % 7]} ${dLabel(d)}${hs.has(d) ? ` · ${hs.get(d)}` : ""}${can ? " — bấm để mở Chấm công tuần này" : ""}`}
-              className={`relative flex h-12 flex-col items-center justify-center rounded-md md:h-[52px] ${can ? "cursor-pointer hover:brightness-125" : "cursor-default"} ${x.st === "hol" ? "text-[13px] font-medium" : "font-mono text-[13px] font-semibold"} ${d === today ? "outline outline-2 outline-offset-1 outline-teal-400" : ""}`}>
+              title={`${DOWS[(parseD(d).getDay() + 6) % 7]} ${dLabel(d)}${hs.has(d) ? ` · ${hs.get(d)}` : ""}${x.tot || x.draft ? ` · chuẩn ${fh(x.sd)} · OT ${fh(x.ot)} · cố gắng ${fh(x.ef)} · tổng ${fh(x.tot)} h${x.draft ? ` · nháp ${fh(x.draft)} h` : ""}` : ""}${can ? " — bấm để mở Chấm công tuần này" : ""}`}
+              className={`relative flex h-14 flex-col items-center justify-center rounded-md md:h-[60px] ${can ? "cursor-pointer hover:brightness-125" : "cursor-default"} ${x.st === "hol" ? "text-[13px] font-medium" : "font-mono text-[13px] font-semibold"} ${d === today ? "outline outline-2 outline-offset-1 outline-teal-400" : ""}`}>
               <span className="absolute left-1.5 top-0.5 font-sans text-[10px] font-normal text-slate-500">{parseD(d).getDate()}</span>
-              {txt}
-              {plus > 0 && <small className="font-mono text-[10px] font-medium leading-none text-teal-400">+{fh(plus)}</small>}
+              <span className="leading-none">{txt}</span>
+              {split && (
+                <small className="mt-0.5 flex items-baseline justify-center gap-[3px] font-mono text-[10px] font-medium leading-none">
+                  {x.sd > 0 && <span className="text-blue-400">{fh(x.sd)}</span>}
+                  {x.ot > 0 && <span className="text-teal-400">{x.sd > 0 ? "+" : ""}{fh(x.ot)}</span>}
+                  {x.ef > 0 && <span className="text-violet-400">+{fh(x.ef)}</span>}
+                </small>
+              )}
             </button>
           );
         })}
@@ -4549,7 +4561,8 @@ function MonthCalendar({ cfg, empId, ym, setYm, loading, onOpenWeek }) {
         {[["full", "Đủ giờ chuẩn"], ["part", "Thiếu giờ"], ["draft", "Nháp chưa gửi"], ["none", "Bỏ trống"], ["leave", "Nghỉ phép"], ["hol", "Ngày lễ"], ["fut", "CN / chưa tới"]].map(([k, l]) => (
           <span key={k} className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded-[3px]" style={DAY_ST_SM[k]} />{l}</span>
         ))}
-        <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full bg-teal-400" /><span>Tăng ca (<span className="font-mono text-teal-400">+h</span>)</span></span>
+        <span className="flex w-full items-center gap-2 pt-0.5"><span className="text-slate-500">Số to = tổng giờ ·</span>
+          <span className="font-mono text-blue-400">chuẩn</span><span className="font-mono text-teal-400">+OT</span><span className="font-mono text-violet-400">+cố gắng</span></span>
       </div>
     </div>
   );
@@ -4631,7 +4644,8 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
     const sum = (f) => weeks.reduce((a, w) => a + w[f], 0);
     // v3.9: giờ chuẩn danh nghĩa một tuần (mặc định 44h) — vẽ nét dọc định vị trên các thanh tuần
     const weekStd = ["weekday", "weekday", "weekday", "weekday", "weekday", "sat", "sun"].reduce((a, k) => a + (Number(hoursCfg[k]) || 0), 0);
-    const scale = Math.max(1, weekStd * 1.15, ...weeks.map((w) => Math.max(w.tot, w.target)));
+    // v7.1: thang theo tổng giờ / giờ chuẩn của từng tuần (bỏ vạch 44h cố định) — giống khung Phân bổ của quản lý
+    const scale = Math.max(1, ...weeks.map((w) => Math.max(w.tot, w.target))) * 1.04;
     const projTotal = [...byProj.values()].reduce((a, v) => a + v, 0);
     const projects = [...byProj.entries()].sort((a, b) => b[1] - a[1]).map(([id, h]) => ({ id, h, pct: projTotal ? (h / projTotal) * 100 : 0 }));
     return { weeks, scale, weekStd, projects, leaveHrs, std: sum("std"), ot: sum("ot"), ef: sum("ef"), tot: sum("tot"), target: sum("target") };
@@ -4640,6 +4654,8 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
   const cur = view?.weeks.find((w) => w.isCur) || null;
   const pastMiss = view ? view.weeks.filter((w) => !w.isCur && w.miss.length > 0) : [];
   const anyMiss = !!view && (pastMiss.length > 0 || (cur && cur.miss.length > 0));
+  // v7.1 — "Chấm công ngay" mở thẳng tuần CŨ NHẤT còn thiếu của tháng đang xem (hết tuần cũ thiếu mới tới tuần này)
+  const goWeek = view ? view.weeks.find((w) => w.miss.length > 0) || null : null;
   const shortDays = (list) => list.map((k) => `${DOW_SHORT[(parseD(k).getDay() + 6) % 7]} ${dLabel(k)}`).join(", ");
 
   return (
@@ -4674,61 +4690,62 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
               </div>
             )}
             {anyMiss && onGoTimesheet && (
-              <button onClick={() => onGoTimesheet()} className={`${btnPrimary} shrink-0`}><Clock size={15} /> Chấm công ngay</button>
+              <button onClick={() => onGoTimesheet(goWeek?.monday)} title={goWeek ? `Mở Chấm công tuần ${goWeek.label}` : undefined}
+                className={`${btnPrimary} shrink-0`}><Clock size={15} /> Chấm công ngay</button>
             )}
           </div>
 
           <div className="grid items-start gap-3 lg:grid-cols-2 md:gap-4">
             {/* Từng tuần — v7.0: khung cao vừa nội dung (items-start), không kéo giãn theo khung bên cạnh */}
             <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-900 p-4">
-              <div className="mb-1 grid grid-cols-[96px_minmax(0,1fr)_72px] items-end gap-3 md:grid-cols-[104px_minmax(0,1fr)_76px_140px]">
-                <span className="col-span-1 text-[11px] uppercase tracking-wider text-slate-500 md:whitespace-nowrap">Từng tuần</span>
-                {/* nhãn của nét dọc giờ chuẩn tuần */}
-                <div className="relative h-4">
-                  {view.weekStd > 0 && <span className="absolute -translate-x-1/2 whitespace-nowrap rounded bg-slate-800 px-1.5 text-[10px] font-medium text-slate-200"
-                    style={{ left: `${(view.weekStd / view.scale) * 100}%` }}>{view.weekStd}h chuẩn</span>}
-                </div>
-                <span className="text-right text-[10px] text-slate-500">chuẩn / target</span>
-                <span className="hidden md:block" />
+              {/* v7.1 — thanh tuần kiểu khung Phân bổ của quản lý: số giờ trong từng khúc, vạch giờ chuẩn của tuần (tính đến hôm nay),
+                  ngoặc vàng "thiếu X h" từ cuối phần Giờ chuẩn tới vạch (OT / cố gắng không bù vào), cột phải là tổng giờ */}
+              <div className="mb-1 text-[11px] uppercase tracking-wider text-slate-500">Từng tuần</div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-slate-800 pb-2 text-[11px] text-slate-400">
+                <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-blue-400" />Giờ chuẩn</span>
+                <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-teal-400" />OT</span>
+                <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-violet-400" />Giờ cố gắng</span>
+                <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-px bg-slate-100/60" />giờ chuẩn của tuần (tính đến hôm nay)</span>
+                <span className="text-amber-400">⌃ thiếu giờ chuẩn</span>
               </div>
               {view.weeks.length === 0 ? <p className="py-3 text-sm text-slate-500">Tháng này chưa tới.</p> : (
                 <div className="divide-y divide-slate-800">
                   {[...view.weeks].reverse().map((w) => {
                     const extra = w.ot + w.ef;
                     const pill = w.target === 0 && w.tot === 0 ? ["Nghỉ", "border-slate-700 text-slate-500"]
-                      : w.miss.length === 0 ? [`Đủ${extra > 0 ? ` · +${extra.toFixed(1)}` : ""}`, "border-teal-800 bg-teal-950 text-teal-300"]
+                      : w.miss.length === 0 ? [`Đủ${extra > 0 ? ` · +${fmtH(extra)}` : ""}`, "border-teal-800 bg-teal-950 text-teal-300"]
                       : w.isCur ? [`Đang chấm · thiếu ${w.miss.length} ngày`, "border-amber-800 bg-amber-950 text-amber-300"]
                       : w.tot === 0 ? ["Chưa chấm", "border-rose-900 bg-rose-950 text-rose-300"]
                       : [`Thiếu ${w.miss.length} ngày`, "border-rose-900 bg-rose-950 text-rose-300"];
-                    const pct = (v) => `${(v / view.scale) * 100}%`;
+                    const p = (v) => (v / view.scale) * 100;
+                    const gap = w.target - w.std;
                     return (
                       <div key={w.monday}
-                        className="-mx-2 grid w-[calc(100%+1rem)] grid-cols-[96px_minmax(0,1fr)_72px] items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm md:grid-cols-[104px_minmax(0,1fr)_76px_140px]"
-                        title={`Chuẩn ${w.std.toFixed(1)} · OT ${w.ot.toFixed(1)} · cố gắng ${w.ef.toFixed(1)} · tổng ${w.tot.toFixed(1)} giờ`}>
+                        className="-mx-2 grid w-[calc(100%+1rem)] grid-cols-[92px_minmax(0,1fr)_56px] items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm md:grid-cols-[100px_minmax(0,1fr)_60px_150px]"
+                        title={`Chuẩn ${fmtH(w.std)} · OT ${fmtH(w.ot)} · cố gắng ${fmtH(w.ef)} · tổng ${fmtH(w.tot)} giờ · giờ chuẩn của tuần ${fmtH(w.target)}`}>
                         <span className="font-mono text-xs text-slate-300">{w.label}</span>
-                        <div className="relative">
-                          <div className="flex h-2.5 overflow-hidden rounded-full bg-slate-800">
-                            <i className="block h-full bg-blue-400" style={{ width: pct(w.std) }} />
-                            <i className="block h-full bg-teal-400" style={{ width: pct(w.ot) }} />
-                            <i className="block h-full bg-violet-400" style={{ width: pct(w.ef) }} />
+                        <div className="relative pt-[18px]">
+                          <div className="flex h-[18px] overflow-hidden rounded-full bg-slate-800 font-mono text-[11px] font-semibold text-slate-950">
+                            {[[w.std, "bg-blue-400", "Giờ chuẩn"], [w.ot, "bg-teal-400", "OT"], [w.ef, "bg-violet-400", "Giờ cố gắng"]].filter(([v]) => v > 0).map(([v, cls, l], i) => (
+                              <i key={l} title={`${l}: ${fmtH(v)} h`} className={`flex h-full items-center justify-center overflow-hidden whitespace-nowrap not-italic ${cls} ${i ? "border-l-2 border-slate-900" : ""}`}
+                                style={{ width: `${p(v)}%` }}>{p(v) >= 5 ? fmtH(v) : ""}</i>
+                            ))}
                           </div>
-                          {/* v3.9: nét dọc định vị giờ chuẩn tuần (44h) */}
-                          {view.weekStd > 0 && <span className="pointer-events-none absolute -bottom-2.5 -top-2.5 w-0.5 -translate-x-1/2 bg-slate-200/80" style={{ left: pct(view.weekStd) }} />}
+                          {w.target > 0 && gap > 0.05 && (
+                            <span className="pointer-events-none absolute top-3 h-[5px] rounded-t-[3px] border-[1.5px] border-b-0 border-amber-400" style={{ left: `${p(w.std)}%`, width: `${p(gap)}%` }}>
+                              <span className="absolute -top-[5px] left-1/2 h-1 w-[1.5px] -translate-x-1/2 bg-amber-400" />
+                              <span className="absolute bottom-[9px] left-1/2 -translate-x-1/2 whitespace-nowrap font-sans text-[11px] font-medium leading-none text-amber-400">thiếu {fmtH(gap)} h</span>
+                            </span>
+                          )}
+                          {w.target > 0 && <span className="pointer-events-none absolute -bottom-1.5 top-3 w-px -translate-x-1/2 bg-slate-100/55 shadow-[0_0_0_1.5px_#0f172a]" style={{ left: `${p(w.target)}%` }} />}
                         </div>
-                        <span className={`text-right font-mono text-xs ${w.miss.length === 0 ? "text-blue-400" : w.isCur ? "text-amber-400" : "text-rose-400"}`}>{w.std.toFixed(1)} / {w.target.toFixed(0)}</span>
-                        <span className={`hidden justify-self-end whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] md:inline-block ${pill[1]}`}>{pill[0]}</span>
+                        <span className={`text-right font-mono text-sm font-semibold ${w.miss.length === 0 ? "text-slate-100" : w.isCur ? "text-amber-400" : "text-rose-400"}`}>{fmtH(w.tot)} h</span>
+                        <span className={`col-span-3 justify-self-start whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] md:col-span-1 md:justify-self-end ${pill[1]}`}>{pill[0]}</span>
                       </div>
                     );
                   })}
                 </div>
               )}
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-800 pt-2.5 text-[11px] text-slate-400">
-                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-blue-400" />Giờ chuẩn</span>
-                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-teal-400" />OT</span>
-                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-violet-400" />Giờ cố gắng</span>
-                <span className="flex items-center gap-1.5"><span className="h-3 w-0.5 bg-slate-200/80" />{view.weekStd}h chuẩn / tuần</span>
-                <span className="text-slate-600">"+11.5" là giờ phát sinh (OT + cố gắng)</span>
-              </div>
               {/* cả kỳ chuyển xuống đây; khung bên phải dành cho chi tiết tuần */}
               <div className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-slate-800 pt-2.5">
                 <span className="text-[11px] uppercase tracking-wider text-slate-500">Cả tháng</span>

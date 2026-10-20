@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v7.0 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v7.1 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.9`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v7.1`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,18 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v7.1 — Dashboard cá nhân: Lịch tháng tách giờ, Chấm công ngay đúng tuần, thanh tuần kiểu Quản lý
+
+Chỉ đổi giao diện, **không đổi database** — bỏ qua bước 1 (SQL). File thay đổi: `src/App.jsx`, `package.json`, `index.html`, `README.md`.
+
+- **Lịch tháng:** số to trong ô là **tổng giờ** (gồm OT). Ngày có OT hoặc giờ cố gắng hiện thêm dòng nhỏ theo màu:
+  <span>chuẩn</span> (xanh dương) · **+OT** (xanh ngọc) · **+cố gắng** (tím). Ngày chỉ có giờ chuẩn thì tổng = chuẩn, không có dòng nhỏ.
+  Rê chuột vào ô xem đủ chuẩn / OT / cố gắng / tổng. Ô cao hơn một chút.
+- **Chấm công ngay** mở thẳng **tuần cũ nhất còn thiếu** của tháng đang xem; hết tuần cũ thiếu mới tới tuần này.
+- **Từng tuần** giống khung Phân bổ của quản lý: số giờ nằm trong từng khúc, vạch giờ chuẩn của tuần (tính đến hôm nay),
+  ngoặc vàng "thiếu X h" (OT / cố gắng không bù vào), cột phải là tổng giờ, nhãn trạng thái giữ như cũ.
+  Bỏ vạch "44h chuẩn" cố định và cột "chuẩn / target".
 
 ## Mới ở v7.0 — Dashboard cá nhân gọn hơn, thêm Lịch tháng
 
