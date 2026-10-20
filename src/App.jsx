@@ -3503,7 +3503,7 @@ const DAY_ST = {
 const DAY_ST_SM = {
   full: { background: "#60a5fa38" },
   part: { background: "#fbbf2420", boxShadow: "inset 0 0 0 1px #fbbf2466" },
-  draft: { background: "#33415533", boxShadow: "inset 0 0 0 1px #33415599" },
+  draft: { border: "1.5px dashed #94a3b880" },   // v6.9: nháp = viền nét đứt xám nhạt, tách khỏi ô Chủ nhật
   none: { boxShadow: "inset 0 0 0 1px #fb718566" },
   leave: { background: "#fb923c40", boxShadow: "inset 0 0 0 1px #fb923c66" },
   hol: { background: "repeating-linear-gradient(45deg,#cbd5e133 0 3px,transparent 3px 6px)" },
@@ -6403,10 +6403,10 @@ function Projects({ cfg, saveCfg, flash }) {
                 {cfg.projects.map((p) => {
                   const editing = editId === p.id;
                   return (
-                    <tr key={p.id} className={`border-b border-slate-800 hover:bg-slate-800 ${teamOpen.has(p.id) ? "align-top" : ""}`}>
-                      <td className="px-3 py-2">{editing ? <input value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} className={`font-mono ${inputCls}`} /> : <span className="font-mono text-base font-bold text-white">{p.code || "—"}</span>}</td>
-                      <td className="px-3 py-2">{editing ? <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && commit()} className={inputCls} /> : <><span className="text-slate-100">{p.name}</span>{teamBlock(p)}</>}</td>
-                      <td className="px-3 py-2">{editing ? <input value={draft.client} onChange={(e) => setDraft({ ...draft, client: e.target.value })} onKeyDown={(e) => e.key === "Enter" && commit()} className={inputCls} /> : <span className="text-slate-400">{p.client || "—"}</span>}</td>
+                    <tr key={p.id} className="border-b border-slate-800 align-top hover:bg-slate-800">
+                      <td className="px-3 py-2">{editing ? <input value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} className={`font-mono ${inputCls}`} /> : <span className="font-mono text-base font-bold leading-6 text-white">{p.code || "—"}</span>}</td>
+                      <td className="px-3 py-2">{editing ? <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && commit()} className={inputCls} /> : <><div className="text-[15px] leading-6 text-slate-100">{p.name}</div>{teamBlock(p)}</>}</td>
+                      <td className="px-3 py-2">{editing ? <input value={draft.client} onChange={(e) => setDraft({ ...draft, client: e.target.value })} onKeyDown={(e) => e.key === "Enter" && commit()} className={inputCls} /> : <span className="leading-6 text-slate-400">{p.client || "—"}</span>}</td>
                       {PHASES.map((ph) => (
                         <td key={ph.id} className="px-2 py-2" data-phase={ph.id}>
                           {editing ? phInput(draft.budgets?.[ph.id], (v) => setDraft({ ...draft, budgets: { ...draft.budgets, [ph.id]: v } }), ph, false) : <PhaseCell p={p} ph={ph} />}

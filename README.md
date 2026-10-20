@@ -37,6 +37,7 @@ Không cần chạy SQL. File thay đổi so với v6.8: `src/App.jsx`, `README.
   Dự án không được giao bị ẩn hẳn. Giờ cũ đã chấm vào dự án không còn được giao vẫn hiện để xem.
 - **Tab Dự án:** mũi tên **⌄** ngay dưới tên dự án → hiện danh sách **Tên · Vai trò** của người được giao. Khi mở rộng:
   **+ Nhân sự** (tích chọn, tìm không dấu, gom theo bộ phận) để thêm, rê chuột vào một người → **✕** để gỡ. Đồng bộ với tab Nhân sự.
+- **Bảng công → Tháng:** ô nháp chưa gửi đổi thành viền nét đứt xám nhạt (không nền) để không lẫn với ô Chủ nhật. Tên dự án ở tab Dự án thẳng hàng với mã dự án.
 - Quản lý sửa giờ công giúp nhân sự (Bảng công → ✎) vẫn thấy mọi dự án.
 - Cột **"Dự án đang tham gia"** ở danh sách Nhân sự giờ là các dự án được giao.
 - **Lưu ý khi cập nhật:** sau khi deploy, mọi nhân sự chưa được giao dự án sẽ chỉ chấm được Việc chung — giao dự án cho từng người trước khi báo nhân viên chấm công.
