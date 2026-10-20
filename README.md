@@ -30,6 +30,7 @@ Ghi chú:
 
 - **Bỏ nút Xuất Excel** ở Dashboard của nhân viên (quản lý vẫn xuất Excel như cũ).
 - **Bỏ khung Chi tiết tuần** (bảng theo ngày và theo dự án · hạng mục).
+- **Bỏ ô chọn khoảng ngày và các nút "4 tuần gần nhất / Tháng này / Tháng trước".** Dashboard xem theo tháng đang mở trên Lịch tháng: bấm ‹ › để đổi tháng, Từng tuần và câu tóm tắt đổi theo. Khi đang ở tháng khác sẽ hiện nút "Tháng này" để quay về tháng hiện tại.
 - **Từng tuần** chỉ cao vừa đủ nội dung, không còn vùng trống bên dưới.
 - **Lịch tháng** (mới, bên phải Từng tuần; trên điện thoại nằm bên dưới): mỗi ô là một ngày, màu và chữ trong ô giống hệt bảng Tuần của quản lý — đủ giờ chuẩn, thiếu giờ, nháp chưa gửi (viền nét đứt), bỏ trống "—", nghỉ phép "P", ngày lễ "Lễ", CN / chưa tới, "+h" tăng ca. Hôm nay có viền xanh ngọc. Góc phải ghi số ngày chưa đủ giờ và số ngày còn nháp trong tháng; ‹ › để xem tháng khác. Bấm một ngày đã qua → mở màn Chấm công đúng tuần chứa ngày đó.
 - Không đổi database — chỉ cần deploy lại code.

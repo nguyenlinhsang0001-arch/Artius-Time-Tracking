@@ -16,7 +16,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
-   Mới ở v7.0 — Dashboard cá nhân: bỏ Xuất Excel và khung Chi tiết tuần; khung Từng tuần cao vừa nội dung; thêm Lịch tháng (màu ô như bảng Tuần của quản lý), bấm một ngày → mở Chấm công đúng tuần đó.
+   Mới ở v7.0 — Dashboard cá nhân: bỏ Xuất Excel, ô chọn kỳ + nút nhanh và khung Chi tiết tuần; xem theo tháng của Lịch tháng ("Tháng này" để quay về); khung Từng tuần cao vừa nội dung; thêm Lịch tháng (màu ô như bảng Tuần của quản lý), bấm một ngày → mở Chấm công đúng tuần đó.
    Mới ở v6.9 — Nhân sự: "Dự án đang tham gia" sửa ngay trên danh sách (✕ gỡ · + Dự án) hoặc trong khung sửa nhân sự. Tab Dự án: ⌄ dưới tên dự án mở danh sách Tên · Vai trò, + Nhân sự / ✕ để giao, gỡ. Màn chấm công của nhân sự chỉ hiện các dự án được giao;
      chưa giao dự án nào = chỉ chấm Việc chung / vắng mặt. Cột "Dự án đang tham gia" ở danh sách = dự án được giao.
    Mới ở v6.8 — Dashboard cá nhân → Chi tiết tuần: ngày lễ khoanh vòng đỏ kèm tên ngày lễ.
@@ -4469,18 +4469,16 @@ function EmployeeSettings({ cfg, empId }) {
 /* v7.0 — Lịch tháng ở Dashboard cá nhân: mỗi ô một ngày, cùng quy tắc trạng thái và cùng bộ màu DAY_ST với bảng
    Tuần của quản lý (đủ giờ · thiếu · nháp chưa gửi · bỏ trống · nghỉ phép "P" · ngày lễ "Lễ" · CN / chưa tới, +h tăng ca).
    Bấm một ngày đã qua → mở màn Chấm công đúng tuần chứa ngày đó. */
-function MonthCalendar({ cfg, empId, anchor, onOpenWeek }) {
+function MonthCalendar({ cfg, empId, ym, setYm, loading, onOpenWeek }) {
   const dataTick = useDataTick();
   const today = fmt(new Date());
   const hoursCfg = cfg.hours || DEFAULT_HOURS;
   const hs = useMemo(() => makeHolidayIndex(cfg.holidays), [cfg.holidays]);
-  const startYm = () => ymOf(anchor && anchor < today ? anchor : today);
-  const [ym, setYm] = useState(startYm);
-  useEffect(() => { setYm(startYm()); }, [anchor]); // eslint-disable-line react-hooks/exhaustive-deps
+  const curYm = ymOf(today);
   const [tick, setTick] = useState(0);
   useEffect(() => { let on = true; ensureMonths([ym]).then(() => on && setTick((t) => t + 1)); return () => { on = false; }; }, [ym, dataTick]);
   const first = parseD(`${ym}-01`), last = lastOfMonth(first);
-  const step = (n) => setYm(ymOf(new Date(first.getFullYear(), first.getMonth() + n, 1)));
+  const step = (n) => setYm(ymOf(fmt(new Date(first.getFullYear(), first.getMonth() + n, 1))));
   const cells = useMemo(() => {
     const m = new Map();
     const b = dbTs(empId, ym); const sent = b?.sent || {};
@@ -4520,6 +4518,9 @@ function MonthCalendar({ cfg, empId, anchor, onOpenWeek }) {
         <button type="button" onClick={() => step(-1)} aria-label="Tháng trước" className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200"><ChevronLeft size={15} /></button>
         <span className="min-w-[96px] text-center text-sm font-semibold text-slate-100">Tháng {first.getMonth() + 1}/{first.getFullYear()}</span>
         <button type="button" onClick={() => step(1)} aria-label="Tháng sau" className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200"><ChevronRight size={15} /></button>
+        {/* chỉ hiện khi đang xem tháng khác — bấm để quay về tháng hiện tại */}
+        {ym !== curYm && <button type="button" onClick={() => setYm(curYm)} className="h-8 rounded-md px-2 text-xs text-teal-400 hover:bg-slate-800 hover:text-teal-300">Tháng này</button>}
+        {loading && <Loader2 className="animate-spin text-slate-500" size={15} />}
         <span className="w-full text-xs text-slate-400 sm:ml-auto sm:w-auto">
           {miss ? <><b className="font-semibold text-rose-400">{miss} ngày</b> chưa đủ giờ</> : <span className="text-teal-300">Không sót ngày nào</span>}
           {drafts > 0 && <> · {drafts} ngày nháp chưa gửi</>}
@@ -4556,20 +4557,11 @@ function MonthCalendar({ cfg, empId, anchor, onOpenWeek }) {
 
 function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
   const emp = cfg.employees.find((e) => e.id === empId);
-  const now = new Date();
-  const [from, setFrom] = useState(fmt(addDays(mondayOf(now), -21))); // mặc định: 4 tuần gần nhất
-  const [to, setTo] = useState(fmt(now));
+  /* v7.0 — kỳ xem = tháng đang mở trên Lịch tháng (bỏ ô chọn khoảng ngày và các nút 4 tuần / Tháng này / Tháng trước) */
+  const [ym, setYm] = useState(() => ymOf(fmt(new Date())));
+  const from = `${ym}-01`, to = fmt(lastOfMonth(parseD(from)));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const isMobile = useIsMobile();
-
-  const setRange = (a, b) => { setFrom(a); setTo(b); };
-  const preset = (kind) => {
-    const t = new Date();
-    if (kind === "thisMonth") { setFrom(fmt(firstOfMonth(t))); setTo(fmt(lastOfMonth(t))); }
-    if (kind === "lastMonth") { const p = new Date(t.getFullYear(), t.getMonth() - 1, 1); setFrom(fmt(firstOfMonth(p))); setTo(fmt(lastOfMonth(p))); }
-    if (kind === "w4") { setFrom(fmt(addDays(mondayOf(t), -21))); setTo(fmt(t)); }
-  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -4652,24 +4644,13 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
 
   return (
     <div className="space-y-3 md:space-y-4">
-      {/* Kỳ báo cáo gọn một hàng — v7.0: nhân viên không cần Xuất Excel */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 p-2.5">
-        <div className="w-full sm:w-80"><DateRangeField label="" from={from} to={to} onChange={setRange} /></div>
-        {[["w4", "4 tuần gần nhất"], ["thisMonth", "Tháng này"], ["lastMonth", "Tháng trước"]].map(([k, l]) => (
-          <button key={k} onClick={() => preset(k)} className="rounded-md border border-slate-800 px-3 py-1.5 text-xs text-slate-400 hover:border-slate-600 hover:text-slate-200">{l}</button>
-        ))}
-        <div className="ml-auto flex items-center gap-2">
-          {loading && <Loader2 className="animate-spin text-slate-500" size={16} />}
-        </div>
-      </div>
-
       {view && (
         <>
           {/* Câu tóm tắt: nói thẳng còn thiếu gì */}
           <div className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-900 p-4 md:flex-row md:items-center md:gap-5">
             <div className="min-w-0 flex-1 text-base font-semibold leading-relaxed text-slate-100 md:text-lg" style={{ textWrap: "balance" }}>
               {!anyMiss ? (
-                <span className="text-teal-300">Bạn đã chấm đủ giờ {cur ? "đến hôm nay" : "trong kỳ này"}.</span>
+                <span className="text-teal-300">Bạn đã chấm đủ giờ {cur ? "đến hôm nay" : `trong tháng ${+ym.slice(5)}/${ym.slice(0, 4)}`}.</span>
               ) : (
                 <>
                   {cur && cur.miss.length > 0 && (cur.tot === 0
@@ -4710,7 +4691,7 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                 <span className="text-right text-[10px] text-slate-500">chuẩn / target</span>
                 <span className="hidden md:block" />
               </div>
-              {view.weeks.length === 0 ? <p className="py-3 text-sm text-slate-500">Chưa có tuần nào trong kỳ này.</p> : (
+              {view.weeks.length === 0 ? <p className="py-3 text-sm text-slate-500">Tháng này chưa tới.</p> : (
                 <div className="divide-y divide-slate-800">
                   {[...view.weeks].reverse().map((w) => {
                     const extra = w.ot + w.ef;
@@ -4750,7 +4731,7 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
               </div>
               {/* cả kỳ chuyển xuống đây; khung bên phải dành cho chi tiết tuần */}
               <div className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-slate-800 pt-2.5">
-                <span className="text-[11px] uppercase tracking-wider text-slate-500">Cả kỳ</span>
+                <span className="text-[11px] uppercase tracking-wider text-slate-500">Cả tháng</span>
                 <span className="font-mono text-[13px]">
                   <span className="text-blue-400">{view.std.toFixed(1)}</span> chuẩn <span className="text-slate-600">+</span>{" "}
                   <span className="text-teal-400">{view.ot.toFixed(1)}</span> OT <span className="text-slate-600">+</span>{" "}
@@ -4762,7 +4743,7 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
             </div>
 
             {/* v7.0 — Lịch tháng thay cho Chi tiết tuần: nhân viên tự soát ngày chấm sót, màu ô giống hệt bảng Tuần của quản lý */}
-            <MonthCalendar cfg={cfg} empId={empId} anchor={to} onOpenWeek={onGoTimesheet} />
+            <MonthCalendar cfg={cfg} empId={empId} ym={ym} setYm={setYm} loading={loading} onOpenWeek={onGoTimesheet} />
           </div>
         </>
       )}
