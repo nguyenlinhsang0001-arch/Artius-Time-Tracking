@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v7.1 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v7.2 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v7.1`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v7.2`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,23 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v7.2 — Tác vụ "Chờ việc"
+
+**Không đổi database** — bỏ qua bước 1 (SQL). File thay đổi: `src/App.jsx`, `package.json`, `index.html`, `README.md`.
+Sau khi deploy, **một quản lý mở app một lần** để app tự lưu tác vụ "Chờ việc" vào thiết lập chung.
+
+- **Chờ việc** là tác vụ gắn cứng, nằm đầu mục Dùng chung (dòng "Khác" ở màn chấm công), ai cũng thấy.
+  Ở tab Tác vụ có ổ khoá: không đổi tên, không xoá, không kéo đổi chỗ.
+- Giờ chờ việc **tính là giờ công** (ngày vẫn đủ giờ, không bị báo thiếu), **không thành giờ cố gắng**
+  (VD 8h dự án + 2h chờ việc: 2h đó không tính cố gắng), và **không tính vào tải**.
+- **Khúc xám riêng** ngay sau khúc giờ chuẩn: Từng tuần, Lịch tháng (`+chờ việc` xám ở dòng nhỏ), thanh Tổng / chuẩn ở Bảng công
+  (kèm chữ "chờ X"), khung Phân bổ.
+- **Phân bổ giờ công theo nhân sự:** tải = tổng − chờ việc; % trên nhãn là % tải. Nhãn mới **Chờ việc** (xám): giờ chuẩn không gồm
+  chờ việc < ngưỡng Thiếu giờ, nhưng cộng chờ việc vào thì đủ. Cộng vào vẫn chưa đủ → **Thiếu giờ**. Ngoặc vàng "thiếu" tính từ cuối khúc xám.
+  Thêm ô KPI **Chờ việc**, nút lọc **Chờ việc**, dòng "tải X h" dưới tổng giờ của người có chờ việc.
+- **Excel** (sheet Theo nhân sự): thêm cột **Giờ chờ việc**; "Giờ thường" và "% tải" không gồm chờ việc; Trạng thái có thêm "Chờ việc".
+- Vắng mặt giữ nguyên cách tính cũ.
 
 ## Mới ở v7.1 — Dashboard cá nhân: Lịch tháng tách giờ, Chấm công ngay đúng tuần, thanh tuần kiểu Quản lý
 

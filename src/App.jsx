@@ -16,6 +16,9 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v7.2 — Tác vụ "Chờ việc" (gắn cứng, mục Khác · dùng chung): tính là giờ công (không bị báo thiếu), không thành giờ cố gắng,
+   KHÔNG tính vào tải. Khúc xám riêng trên thanh Từng tuần / Lịch tháng / Bảng công / Phân bổ; khung Phân bổ có nhãn "Chờ việc",
+   ô KPI Chờ việc, % tải = (tổng − chờ việc) / giờ chuẩn kỳ; Excel thêm cột Giờ chờ việc.
    Mới ở v7.1 — Dashboard cá nhân: ô Lịch tháng hiện tổng giờ (số to) và dòng chuẩn · +OT · +cố gắng theo màu; nút "Chấm công ngay"
    mở thẳng tuần cũ nhất còn thiếu của tháng đang xem; thanh Từng tuần kiểu khung Phân bổ của quản lý (số trong khúc, vạch giờ chuẩn
    của tuần tính đến hôm nay, ngoặc vàng "thiếu X h", cột tổng giờ).
@@ -213,7 +216,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v7.1";
+const APP_VERSION = "v7.2";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1004,6 +1007,13 @@ const DEFAULT_LEAVE_TYPES = [
   { id: "biz", label: "Công tác ngoài", short: "CT", cls: "border-teal-800 bg-teal-950 text-teal-300" },
 ];
 const LEAVE_TASK_PREFIX = "LV_";
+/* v7.2 — tác vụ "Chờ việc": gắn cứng trong cfg.tasks (dùng chung, luôn đứng đầu), app tự thêm nếu chưa có, không sửa / xoá được.
+   Giờ chờ việc tính là giờ công của ngày (không bị báo thiếu) nhưng không thành giờ cố gắng và KHÔNG tính vào tải (khung Phân bổ). */
+const IDLE_TASK_ID = "IDLE_WAIT";
+const IDLE_TASK = { id: IDLE_TASK_ID, name: "Chờ việc", group: "Chung", depts: [], roles: [], desc: "Không có việc được giao — tính giờ công, không tính tải" };
+const isIdleTask = (id) => id === IDLE_TASK_ID;
+const withIdleTask = (c) => (c ? { ...c, tasks: [{ ...IDLE_TASK }, ...(c.tasks || []).filter((t) => t.id !== IDLE_TASK_ID)] } : c);
+let IDLE_PENDING = false;   // v7.2: cấu hình trên server chưa có tác vụ Chờ việc — quản lý mở app sẽ tự lưu
 const NO_PROJECT = "__none__";
 const NO_PHASE = "?";   // v3.0: dòng mới, giai đoạn chưa chọn (dự án "" = chưa chọn, hạng mục "" = chưa chọn)
 /* LEAVE_TYPES / LEAVE_TASKS là bản sống: App chép cfg.leaveTypes vào đây ở mỗi lần render (syncLeave),
@@ -1331,8 +1341,8 @@ function WeekPicker({ monday, onChange, empId, hoursCfg = DEFAULT_HOURS, holiday
           const parts = {};
           for (const r of bucket?.rows || []) for (const [d, hh] of Object.entries(r.days || {})) {
             if (!hh || leaveTypeOfTask(r.taskId)) continue;
-            const c = parts[d] || (parts[d] = { ot: 0, reg: 0 });
-            if (isOtId(r.taskId)) c.ot += hh; else c.reg += hh;
+            const c = parts[d] || (parts[d] = { ot: 0, reg: 0, idle: 0 });
+            if (isOtId(r.taskId)) c.ot += hh; else { c.reg += hh; if (isIdleTask(r.taskId)) c.idle += hh; }
           }
           next[ym] = parts;
         }
@@ -1362,7 +1372,7 @@ function WeekPicker({ monday, onChange, empId, hoursCfg = DEFAULT_HOURS, holiday
     if (lv && h === 0) return "leave";
     const pt = monthParts[ymOf(dateStr)]?.[dateStr];
     const ot = pt?.ot || 0;
-    const ef = effortHoursFor(dateStr, pt?.reg || 0, hoursCfg, holidaySet);
+    const ef = effortHoursFor(dateStr, (pt?.reg || 0) - (pt?.idle || 0), hoursCfg, holidaySet);   // v7.2: chờ việc không thành giờ cố gắng
     if (ot > OT_ALERT) return "otHigh";   // OT quá dày trong một ngày — cảnh báo đỏ
     // v4.0: thiếu giờ tính theo giờ chuẩn (tổng − OT − cố gắng), ưu tiên hơn dấu tăng ca
     const min = minHoursFor(dateStr, hoursCfg, holidaySet);
@@ -1457,6 +1467,8 @@ function AppMain() {
       syncLeave(c.leaveTypes);
       c.phases = Array.isArray(c.phases) && c.phases.length ? c.phases : DEFAULT_PHASES.map((x) => ({ ...x }));
       syncPhases(c.phases);
+      IDLE_PENDING = !c.tasks.some((t) => t.id === IDLE_TASK_ID);
+      c = withIdleTask(c);
       setCfg(c); setLoadFailed(false);
       return true;
     } catch {
@@ -1522,6 +1534,7 @@ function AppMain() {
   }, [who?.userId, who?.admin, !!cfg]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveCfg = useCallback(async (next) => {
+    next = withIdleTask(next);   // v7.2: Chờ việc luôn có mặt và đứng đầu
     setCfg(next);
     const merged = await commitConfig(next);
     if (!merged) {
@@ -1529,16 +1542,17 @@ function AppMain() {
       setTimeout(() => flash(`Không lưu được thiết lập — ${LAST_STORAGE_ERROR || "thử lại"}`, "err"), 50);
       return false;
     }
-    setCfg(merged);   // bản đã gộp: có thể kèm phần quản lý khác vừa sửa
+    setCfg(withIdleTask(merged));   // bản đã gộp: có thể kèm phần quản lý khác vừa sửa
     return true;
   }, [flash]);
 
   /* v6.3 — quản lý mở bản mới lần đầu: lưu cấu hình đã chuyển sang khung tăng ca chung */
   useEffect(() => {
-    if (!cfg || !who?.admin || OT_PENDING < 0) return;
-    const n = OT_PENDING; OT_PENDING = -1;
+    if (!cfg || !who?.admin || (OT_PENDING < 0 && !IDLE_PENDING)) return;
+    const n = OT_PENDING; OT_PENDING = -1; IDLE_PENDING = false;
     saveCfg(cfg).then((ok) => {
-      if (!ok) { OT_PENDING = n; return; }
+      if (!ok) { OT_PENDING = n; IDLE_PENDING = true; return; }
+      if (n < 0) return;   // v7.2: chỉ lưu thêm tác vụ Chờ việc
       OT_MIG_NOTE = n ? `Đã chuyển ${n} hạng mục [OT] theo vai trò sang ${cfg.otBands.length} khung tăng ca chung (khớp theo giờ). Giờ OT đã chấm giữ nguyên; các hạng mục [OT] cũ đã gỡ khỏi tab Tác vụ.` : "";
       if (n) flash("Tăng ca đã chuyển thành cài đặt chung — xem Thiết lập → Tăng ca.");
     });
@@ -2691,7 +2705,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   const isOverDaily = (d) => dayTotal(d) > (Number(hoursCfg.maxDaily) || 13.5); // vượt ngưỡng cảnh báo/ngày
   // v3.4: OT = chỉ giờ chấm vào hạng mục Tăng ca; Giờ cố gắng = giờ làm việc thường vượt ngưỡng ngày (không tính chi phí dự án)
   const otHrs = (d) => rows.reduce((s, r) => s + (isOtId(r.taskId) ? (r.days[d] || 0) : 0), 0);
-  const effortHrs = (d) => effortHoursFor(d, Math.max(0, workHours(d) - otHrs(d)), hoursCfg, holidaySet);
+  const idleHrs = (d) => rows.reduce((s, r) => s + (isIdleTask(r.taskId) ? (r.days[d] || 0) : 0), 0);   // v7.2
+  const effortHrs = (d) => effortHoursFor(d, Math.max(0, workHours(d) - otHrs(d) - idleHrs(d)), hoursCfg, holidaySet);
   const otTotal = days.reduce((s, d) => s + otHrs(d), 0);
   const effortTotal = days.reduce((s, d) => s + effortHrs(d), 0);
   // có ngày nào OT vượt ngưỡng không — dùng để đổi màu ô tổng và dòng OT trên đầu bảng
@@ -3618,9 +3633,9 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
       for (const r of b.rows) for (const [d, hv] of Object.entries(r.days || {})) {
         const h = Number(hv) || 0; if (h <= 0 || d < lo || d > hi) continue;
         const k = `${e.id}|${d}`;
-        const c = m.get(k) || { reg: 0, ot: 0, leave: 0, draft: 0, items: [] };
+        const c = m.get(k) || { reg: 0, ot: 0, leave: 0, draft: 0, idle: 0, items: [] };
         const ok = !!sent[d];
-        if (!ok) c.draft += h; else if (isOtId(r.taskId)) c.ot += h; else if (isLeaveTask(r.taskId)) c.leave += h; else c.reg += h;
+        if (!ok) c.draft += h; else if (isOtId(r.taskId)) c.ot += h; else if (isLeaveTask(r.taskId)) c.leave += h; else { c.reg += h; if (isIdleTask(r.taskId)) c.idle += h; }
         c.items.push({ ot: isOtId(r.taskId), sent: ok, h,
           label: isOtId(r.taskId) ? `Tăng ca · ${r.otFor ? tName(r.otFor) : "chưa rõ tác vụ"}` : isLeaveTask(r.taskId) ? tName(r.taskId) : `${pName(r.projectId)} · ${tName(r.taskId)}` });
         m.set(k, c);
@@ -3636,7 +3651,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
     return minHoursFor(d, hoursCfg, hs) || 0;
   };
   const dayInfo = (eid, d) => {
-    const c = cellOf.get(`${eid}|${d}`) || { reg: 0, ot: 0, leave: 0, draft: 0, items: [] };
+    const c = cellOf.get(`${eid}|${d}`) || { reg: 0, ot: 0, leave: 0, draft: 0, idle: 0, items: [] };
     const std = minHoursFor(d, hoursCfg, hs) || 0, done = c.reg + c.leave;
     let st;
     if (hs.has(d)) st = "hol";
@@ -3647,16 +3662,16 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
     else if (done >= std) st = "full";
     else if (c.draft > 0) st = "draft";
     else st = done > 0 ? "part" : "none";
-    const eff = effortHoursFor(d, c.reg, hoursCfg, hs);   // v6.4: giờ cố gắng (giờ làm việc thường vượt ngưỡng ngày, đã gửi)
+    const eff = effortHoursFor(d, c.reg - (c.idle || 0), hoursCfg, hs);   // v7.2: trừ chờ việc · v6.4: giờ cố gắng (giờ làm việc thường vượt ngưỡng ngày, đã gửi)
     return { ...c, std, done, st, eff };
   };
   const sumOf = (eid, list) => {
-    let reg = 0, ot = 0, std = 0, miss = [], draft = 0, eff = 0;
+    let reg = 0, ot = 0, std = 0, miss = [], draft = 0, eff = 0, idle = 0;
     for (const d of list) {
-      const x = dayInfo(eid, d); reg += x.done; ot += x.ot; draft += x.draft; eff += x.eff; std += stdOf(d, eid);
+      const x = dayInfo(eid, d); reg += x.done; ot += x.ot; draft += x.draft; eff += x.eff; idle += x.idle || 0; std += stdOf(d, eid);
       if (d < today && stdOf(d) > 0 && x.done === 0 && x.draft === 0) miss.push(d);   // v6.4: hôm nay chưa tính là bỏ trống
     }
-    return { reg, ot, t: reg + ot, std, miss, draft, eff, base: reg - eff };
+    return { reg, ot, t: reg + ot, std, miss, draft, eff, idle, base: reg - eff };
   };
   const weekState = (eid, mon) => {
     if (mon > today) return "fut";
@@ -3799,12 +3814,16 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
     const base = Math.max(0, s.base), miss = Math.max(0, s.std - base - (s.draft || 0));
     const W = Math.max(s.std, base + s.eff + s.ot) || 1, w = (h) => `${(h / W) * 100}%`;
     const low = s.std > 0 && base + (s.draft || 0) < (s.std * lim.under) / 100;
+    // v7.2: chờ việc là khúc xám nằm ngay sau khúc giờ chuẩn (vẫn tính là giờ công, không bị coi là thiếu)
+    const shown = Math.min(base, s.std) || base, idle = Math.min(s.idle || 0, shown), blue = shown - idle;
     return (
-      <div className="min-w-[150px]" title={`Chuẩn ${fmtH(Math.min(base, s.std))} h · cố gắng ${fmtH(s.eff)} h · OT ${fmtH(s.ot)} h${miss ? ` · thiếu ${fmtH(miss)} h` : ""}`}>
+      <div className="min-w-[150px]" title={`Chuẩn ${fmtH(blue)} h${idle ? ` · chờ việc ${fmtH(idle)} h` : ""} · cố gắng ${fmtH(s.eff)} h · OT ${fmtH(s.ot)} h${miss ? ` · thiếu ${fmtH(miss)} h` : ""}`}>
         <div className="whitespace-nowrap font-mono text-sm"><span className="font-semibold text-slate-100">{fmtH(s.t)}</span><span className="text-slate-500"> / {fmtH(s.std)} h</span>
+          {idle > 0 && <span className="ml-1.5 text-[11px] text-slate-400">chờ {fmtH(idle)}</span>}
           {miss > 0 && <span className={`ml-1.5 text-[11px] ${low ? "text-amber-400" : "text-slate-500"}`}>thiếu {fmtH(miss)}</span>}</div>
         <div className="mt-1 flex h-[6px] gap-px overflow-hidden rounded-full bg-slate-800">
-          {base > 0 && <i className="block h-full bg-blue-400" style={{ width: w(Math.min(base, s.std) || base) }} />}
+          {blue > 0 && <i className="block h-full bg-blue-400" style={{ width: w(blue) }} />}
+          {idle > 0 && <i className="block h-full bg-slate-400" style={{ width: w(idle) }} />}
           {miss > 0 && <i className="block h-full" style={{ width: w(miss), boxShadow: "inset 0 0 0 1px #fbbf24aa", background: "repeating-linear-gradient(135deg,#fbbf2433 0 3px,transparent 3px 6px)" }} />}
           {s.eff > 0 && <i className="block h-full bg-violet-400" style={{ width: w(s.eff) }} />}
           {s.ot > 0 && <i className="block h-full bg-teal-400" style={{ width: w(s.ot) }} />}
@@ -4487,18 +4506,18 @@ function MonthCalendar({ cfg, empId, ym, setYm, loading, onOpenWeek }) {
     const b = dbTs(empId, ym); const sent = b?.sent || {};
     for (const r of b?.rows || []) for (const [d, hv] of Object.entries(r.days || {})) {
       const h = Number(hv) || 0; if (h <= 0) continue;
-      const c = m.get(d) || { reg: 0, ot: 0, leave: 0, draft: 0 };
-      if (!sent[d]) c.draft += h; else if (isOtId(r.taskId)) c.ot += h; else if (isLeaveTask(r.taskId)) c.leave += h; else c.reg += h;
+      const c = m.get(d) || { reg: 0, ot: 0, leave: 0, draft: 0, idle: 0 };
+      if (!sent[d]) c.draft += h; else if (isOtId(r.taskId)) c.ot += h; else if (isLeaveTask(r.taskId)) c.leave += h; else { c.reg += h; if (isIdleTask(r.taskId)) c.idle += h; }
       m.set(d, c);
     }
     return m;
   }, [empId, ym, tick, dataTick]); // eslint-disable-line react-hooks/exhaustive-deps
   // cùng quy tắc với dayInfo() của bảng quản lý
   const info = (d) => {
-    const c = cells.get(d) || { reg: 0, ot: 0, leave: 0, draft: 0 };
+    const c = cells.get(d) || { reg: 0, ot: 0, leave: 0, draft: 0, idle: 0 };
     const std = minHoursFor(d, hoursCfg, hs) || 0, done = c.reg + c.leave;
     /* v7.1 — tách giờ cố gắng (giống Dashboard / màn chấm công): chuẩn = tổng − OT − cố gắng */
-    const ef = effortHoursFor(d, c.reg, hoursCfg, hs), tot = done + c.ot, sd = Math.max(0, done - ef);
+    const ef = effortHoursFor(d, c.reg - c.idle, hoursCfg, hs), tot = done + c.ot, sd = Math.max(0, done - ef - c.idle);   // v7.2: sd không gồm chờ việc
     let st;
     if (hs.has(d)) st = "hol";
     else if (d > today) st = "fut";
@@ -4538,18 +4557,19 @@ function MonthCalendar({ cfg, empId, ym, setYm, loading, onOpenWeek }) {
           const x = info(d);
           /* v7.1 — số to = TỔNG giờ (gồm OT); dòng nhỏ = chuẩn · +OT · +cố gắng, chỉ hiện khi có OT hoặc cố gắng */
           const txt = x.st === "hol" ? "Lễ" : x.st === "leave" ? "P" : x.st === "none" ? "—" : x.st === "fut" || x.st === "off" ? (x.tot ? fh(x.tot) : "") : fh(x.st === "draft" ? x.tot + x.draft : x.tot);
-          const split = x.st !== "draft" && (x.ot > 0 || x.ef > 0);
+          const split = x.st !== "draft" && (x.ot > 0 || x.ef > 0 || x.idle > 0);
           const can = d <= today && !!onOpenWeek;
           return (
             <button key={d} type="button" disabled={!can} onClick={() => onOpenWeek(fmt(mondayOf(parseD(d))))} style={DAY_ST[x.st]}
-              title={`${DOWS[(parseD(d).getDay() + 6) % 7]} ${dLabel(d)}${hs.has(d) ? ` · ${hs.get(d)}` : ""}${x.tot || x.draft ? ` · chuẩn ${fh(x.sd)} · OT ${fh(x.ot)} · cố gắng ${fh(x.ef)} · tổng ${fh(x.tot)} h${x.draft ? ` · nháp ${fh(x.draft)} h` : ""}` : ""}${can ? " — bấm để mở Chấm công tuần này" : ""}`}
+              title={`${DOWS[(parseD(d).getDay() + 6) % 7]} ${dLabel(d)}${hs.has(d) ? ` · ${hs.get(d)}` : ""}${x.tot || x.draft ? ` · chuẩn ${fh(x.sd)}${x.idle ? ` · chờ việc ${fh(x.idle)}` : ""} · OT ${fh(x.ot)} · cố gắng ${fh(x.ef)} · tổng ${fh(x.tot)} h${x.draft ? ` · nháp ${fh(x.draft)} h` : ""}` : ""}${can ? " — bấm để mở Chấm công tuần này" : ""}`}
               className={`relative flex h-14 flex-col items-center justify-center rounded-md md:h-[60px] ${can ? "cursor-pointer hover:brightness-125" : "cursor-default"} ${x.st === "hol" ? "text-[13px] font-medium" : "font-mono text-[13px] font-semibold"} ${d === today ? "outline outline-2 outline-offset-1 outline-teal-400" : ""}`}>
               <span className="absolute left-1.5 top-0.5 font-sans text-[10px] font-normal text-slate-500">{parseD(d).getDate()}</span>
               <span className="leading-none">{txt}</span>
               {split && (
                 <small className="mt-0.5 flex items-baseline justify-center gap-[3px] font-mono text-[10px] font-medium leading-none">
                   {x.sd > 0 && <span className="text-blue-400">{fh(x.sd)}</span>}
-                  {x.ot > 0 && <span className="text-teal-400">{x.sd > 0 ? "+" : ""}{fh(x.ot)}</span>}
+                  {x.idle > 0 && <span className="text-slate-400">{x.sd > 0 ? "+" : ""}{fh(x.idle)}</span>}
+                  {x.ot > 0 && <span className="text-teal-400">{x.sd + x.idle > 0 ? "+" : ""}{fh(x.ot)}</span>}
                   {x.ef > 0 && <span className="text-violet-400">+{fh(x.ef)}</span>}
                 </small>
               )}
@@ -4562,7 +4582,7 @@ function MonthCalendar({ cfg, empId, ym, setYm, loading, onOpenWeek }) {
           <span key={k} className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded-[3px]" style={DAY_ST_SM[k]} />{l}</span>
         ))}
         <span className="flex w-full items-center gap-2 pt-0.5"><span className="text-slate-500">Số to = tổng giờ ·</span>
-          <span className="font-mono text-blue-400">chuẩn</span><span className="font-mono text-teal-400">+OT</span><span className="font-mono text-violet-400">+cố gắng</span></span>
+          <span className="font-mono text-blue-400">chuẩn</span><span className="font-mono text-slate-400">+chờ việc</span><span className="font-mono text-teal-400">+OT</span><span className="font-mono text-violet-400">+cố gắng</span></span>
       </div>
     </div>
   );
@@ -4612,28 +4632,29 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
     const byProj = new Map();   // projectId -> giờ (không gồm vắng mặt)
     let leaveHrs = 0;
     for (const d of data.detail) {
-      const c = day.get(d.date) || { tot: 0, ot: 0, reg: 0 };
+      const c = day.get(d.date) || { tot: 0, ot: 0, reg: 0, idle: 0 };
       c.tot += d.hours;
-      if (isOtId(d.taskId)) c.ot += d.hours; else if (!isLeaveTask(d.taskId)) c.reg += d.hours;
+      if (isOtId(d.taskId)) c.ot += d.hours; else if (!isLeaveTask(d.taskId)) { c.reg += d.hours; if (isIdleTask(d.taskId)) c.idle += d.hours; }
       day.set(d.date, c);
       if (isLeaveTask(d.taskId)) leaveHrs += d.hours;
       else byProj.set(d.projectId, (byProj.get(d.projectId) || 0) + d.hours);
     }
     const info = (s) => {
-      const c = day.get(s) || { tot: 0, ot: 0, reg: 0 };
-      const ef = effortHoursFor(s, c.reg, hoursCfg, holidaySet);
-      return { tot: c.tot, ot: c.ot, ef, std: Math.max(0, c.tot - c.ot - ef), min: minHoursFor(s, hoursCfg, holidaySet) };
+      const c = day.get(s) || { tot: 0, ot: 0, reg: 0, idle: 0 };
+      const ef = effortHoursFor(s, c.reg - c.idle, hoursCfg, holidaySet);   // v7.2: chờ việc không thành giờ cố gắng
+      // std gồm cả chờ việc (để xét đủ / thiếu); idle tách riêng để vẽ khúc xám
+      return { tot: c.tot, ot: c.ot, ef, idle: c.idle, std: Math.max(0, c.tot - c.ot - ef), min: minHoursFor(s, hoursCfg, holidaySet) };
     };
     const weeks = [];
     for (let m = mondayOf(parseD(from)); fmt(m) <= to; m = addDays(m, 7)) {
       const ds = [];
       for (let i = 0; i < 7; i++) { const k = fmt(addDays(m, i)); if (k >= from && k <= to) ds.push(k); }
       if (ds.length === 0 || ds[0] > todayStr) continue;   // tuần chưa tới thì không liệt kê
-      const w = { monday: fmt(m), label: `${dLabel(ds[0])} – ${dLabel(ds[ds.length - 1])}`, std: 0, ot: 0, ef: 0, tot: 0, target: 0, miss: [],
+      const w = { monday: fmt(m), label: `${dLabel(ds[0])} – ${dLabel(ds[ds.length - 1])}`, std: 0, ot: 0, ef: 0, idle: 0, tot: 0, target: 0, miss: [],
         isCur: ds.includes(todayStr), days: [] };
       for (const k of ds) {
         const x = info(k);
-        w.std += x.std; w.ot += x.ot; w.ef += x.ef; w.tot += x.tot;
+        w.std += x.std; w.ot += x.ot; w.ef += x.ef; w.idle += x.idle; w.tot += x.tot;
         const due = k <= todayStr && x.min !== null;
         // v4.0: thiếu = giờ chuẩn (không tính OT, cố gắng) < giờ chuẩn của ngày
         if (due) { w.target += x.min; if (x.std < x.min) w.miss.push(k); }
@@ -4648,7 +4669,7 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
     const scale = Math.max(1, ...weeks.map((w) => Math.max(w.tot, w.target))) * 1.04;
     const projTotal = [...byProj.values()].reduce((a, v) => a + v, 0);
     const projects = [...byProj.entries()].sort((a, b) => b[1] - a[1]).map(([id, h]) => ({ id, h, pct: projTotal ? (h / projTotal) * 100 : 0 }));
-    return { weeks, scale, weekStd, projects, leaveHrs, std: sum("std"), ot: sum("ot"), ef: sum("ef"), tot: sum("tot"), target: sum("target") };
+    return { weeks, scale, weekStd, projects, leaveHrs, std: sum("std"), ot: sum("ot"), ef: sum("ef"), idle: sum("idle"), tot: sum("tot"), target: sum("target") };
   }, [data, from, to, todayStr, hoursCfg, holidaySet]);
 
   const cur = view?.weeks.find((w) => w.isCur) || null;
@@ -4703,6 +4724,7 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
               <div className="mb-1 text-[11px] uppercase tracking-wider text-slate-500">Từng tuần</div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-slate-800 pb-2 text-[11px] text-slate-400">
                 <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-blue-400" />Giờ chuẩn</span>
+                <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-slate-400" />Chờ việc</span>
                 <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-teal-400" />OT</span>
                 <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-violet-400" />Giờ cố gắng</span>
                 <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-px bg-slate-100/60" />giờ chuẩn của tuần (tính đến hôm nay)</span>
@@ -4722,11 +4744,11 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                     return (
                       <div key={w.monday}
                         className="-mx-2 grid w-[calc(100%+1rem)] grid-cols-[92px_minmax(0,1fr)_56px] items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm md:grid-cols-[100px_minmax(0,1fr)_60px_150px]"
-                        title={`Chuẩn ${fmtH(w.std)} · OT ${fmtH(w.ot)} · cố gắng ${fmtH(w.ef)} · tổng ${fmtH(w.tot)} giờ · giờ chuẩn của tuần ${fmtH(w.target)}`}>
+                        title={`Chuẩn ${fmtH(w.std - w.idle)}${w.idle ? ` · chờ việc ${fmtH(w.idle)}` : ""} · OT ${fmtH(w.ot)} · cố gắng ${fmtH(w.ef)} · tổng ${fmtH(w.tot)} giờ · giờ chuẩn của tuần ${fmtH(w.target)}`}>
                         <span className="font-mono text-xs text-slate-300">{w.label}</span>
                         <div className="relative pt-[18px]">
                           <div className="flex h-[18px] overflow-hidden rounded-full bg-slate-800 font-mono text-[11px] font-semibold text-slate-950">
-                            {[[w.std, "bg-blue-400", "Giờ chuẩn"], [w.ot, "bg-teal-400", "OT"], [w.ef, "bg-violet-400", "Giờ cố gắng"]].filter(([v]) => v > 0).map(([v, cls, l], i) => (
+                            {[[w.std - w.idle, "bg-blue-400", "Giờ chuẩn"], [w.idle, "bg-slate-400", "Chờ việc"], [w.ot, "bg-teal-400", "OT"], [w.ef, "bg-violet-400", "Giờ cố gắng"]].filter(([v]) => v > 0.05).map(([v, cls, l], i) => (
                               <i key={l} title={`${l}: ${fmtH(v)} h`} className={`flex h-full items-center justify-center overflow-hidden whitespace-nowrap not-italic ${cls} ${i ? "border-l-2 border-slate-900" : ""}`}
                                 style={{ width: `${p(v)}%` }}>{p(v) >= 5 ? fmtH(v) : ""}</i>
                             ))}
@@ -4750,7 +4772,8 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
               <div className="mt-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-slate-800 pt-2.5">
                 <span className="text-[11px] uppercase tracking-wider text-slate-500">Cả tháng</span>
                 <span className="font-mono text-[13px]">
-                  <span className="text-blue-400">{view.std.toFixed(1)}</span> chuẩn <span className="text-slate-600">+</span>{" "}
+                  <span className="text-blue-400">{(view.std - view.idle).toFixed(1)}</span> chuẩn <span className="text-slate-600">+</span>{" "}
+                  {view.idle > 0 && <><span className="text-slate-400">{view.idle.toFixed(1)}</span> chờ việc <span className="text-slate-600">+</span>{" "}</>}
                   <span className="text-teal-400">{view.ot.toFixed(1)}</span> OT <span className="text-slate-600">+</span>{" "}
                   <span className="text-violet-400">{view.ef.toFixed(1)}</span> cố gắng <span className="text-slate-600">=</span>{" "}
                   <b className="text-slate-50">{view.tot.toFixed(1)}</b> giờ
@@ -4911,17 +4934,19 @@ function Dashboard({ cfg, saveCfg, flash }) {
     const perEmpDay = new Map();
     for (const d of detail) {
       const k = `${d.empId}|${d.date}`;
-      const c = perEmpDay.get(k) || { ot: 0, reg: 0 };
-      if (isOtId(d.taskId)) c.ot += d.hours; else if (!isLeaveTask(d.taskId)) c.reg += d.hours;
+      const c = perEmpDay.get(k) || { ot: 0, reg: 0, idle: 0 };
+      if (isOtId(d.taskId)) c.ot += d.hours; else if (!isLeaveTask(d.taskId)) { c.reg += d.hours; if (isIdleTask(d.taskId)) c.idle += d.hours; }
       perEmpDay.set(k, c);
     }
     const otByEmp = new Map();
     const effortByEmp = new Map();
-    let otTotal = 0, effortTotal = 0;
+    const idleByEmp = new Map();   // v7.2: giờ chờ việc — tính giờ công, không tính tải
+    let otTotal = 0, effortTotal = 0, idleTotal = 0;
     for (const [k, c] of perEmpDay) {
       const [eid, date] = k.split("|");
       if (c.ot) { otByEmp.set(eid, (otByEmp.get(eid) || 0) + c.ot); otTotal += c.ot; }
-      const ef = effortHoursFor(date, c.reg, hoursCfg, holidaySet);
+      if (c.idle) { idleByEmp.set(eid, (idleByEmp.get(eid) || 0) + c.idle); idleTotal += c.idle; }
+      const ef = effortHoursFor(date, c.reg - c.idle, hoursCfg, holidaySet);
       if (ef) { effortByEmp.set(eid, (effortByEmp.get(eid) || 0) + ef); effortTotal += ef; }
     }
     const leaveTotal = detail.filter((d) => isLeaveTask(d.taskId)).reduce((x, d) => x + d.hours, 0);
@@ -4929,7 +4954,7 @@ function Dashboard({ cfg, saveCfg, flash }) {
     const byProj0 = by((d) => (isLeaveTask(d.taskId) ? NO_PROJECT : d.projectId));
     const byProj = new Map([...[...byProj0].filter(([k]) => k !== NO_PROJECT), ...[...byProj0].filter(([k]) => k === NO_PROJECT)]);
     const byPhase = by((d) => (d.projectId === NO_PROJECT || isLeaveTask(d.taskId) ? null : d.phaseId || DEFAULT_PHASE));
-    return { detail, leaveTotal, byProj, projCount: [...byProj.keys()].filter((k) => k !== NO_PROJECT).length, byEmp: by((d) => d.empId), byTask: by((d) => d.taskId), byPhase, matrix, otByEmp, otTotal, effortByEmp, effortTotal, total: detail.reduce((s, d) => s + d.hours, 0) };
+    return { detail, leaveTotal, byProj, projCount: [...byProj.keys()].filter((k) => k !== NO_PROJECT).length, byEmp: by((d) => d.empId), byTask: by((d) => d.taskId), byPhase, matrix, otByEmp, otTotal, effortByEmp, effortTotal, idleByEmp, idleTotal, total: detail.reduce((s, d) => s + d.hours, 0) };
   }, [data, matchEmp, fProj, fPhase, hoursCfg, holidaySet]);
 
   const exportExcel = async () => {
@@ -5004,11 +5029,11 @@ function Dashboard({ cfg, saveCfg, flash }) {
       "Nhân sự": empName(k), "Bộ phận": empDept(k), "Vai trò": empTitle(k), "Tổng giờ": v,
       "Giờ OT": +(agg.otByEmp.get(k) || 0).toFixed(1),
       "Giờ cố gắng": +(agg.effortByEmp.get(k) || 0).toFixed(1),
-      "Giờ thường": +(v - (agg.otByEmp.get(k) || 0) - (agg.effortByEmp.get(k) || 0)).toFixed(1),
-      // v5.3: tải so với giờ chuẩn của kỳ, cùng ngưỡng với khung Phân bổ
-      "% tải": stdForEmp(k) ? Math.round((v / stdForEmp(k)) * 100) : "",
-      "Trạng thái": (() => { const L = allocLimits(cfg), s0 = v - (agg.otByEmp.get(k) || 0) - (agg.effortByEmp.get(k) || 0), sp = stdForEmp(k);
-        return !sp ? "" : v > (sp * L.over) / 100 ? "Quá tải" : s0 < (sp * L.under) / 100 ? "Thiếu giờ" : "Bình thường"; })(),
+      "Giờ chờ việc": +(agg.idleByEmp.get(k) || 0).toFixed(1),   // v7.2
+      "Giờ thường": +(v - (agg.otByEmp.get(k) || 0) - (agg.effortByEmp.get(k) || 0) - (agg.idleByEmp.get(k) || 0)).toFixed(1),
+      // v5.3: tải so với giờ chuẩn của kỳ, cùng ngưỡng với khung Phân bổ · v7.2: tải không gồm chờ việc
+      "% tải": stdForEmp(k) ? Math.round(((v - (agg.idleByEmp.get(k) || 0)) / stdForEmp(k)) * 100) : "",
+      "Trạng thái": (() => { const sp = stdForEmp(k); return sp ? ALLOC_ST[allocState(v, agg.otByEmp.get(k) || 0, agg.effortByEmp.get(k) || 0, agg.idleByEmp.get(k) || 0, sp, allocLimits(cfg))][0] : ""; })(),
     }))), "Theo nhân sự");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sortDesc(agg.byTask, (k, v) => ({ "Hạng mục": taskLabel(k), "Tổng giờ": v }))), "Theo hạng mục");
     const projIds = [...agg.byProj.keys()];
@@ -5108,7 +5133,7 @@ function Dashboard({ cfg, saveCfg, flash }) {
             </div>
           </div>
           {!agg ? <p className="px-4 py-6 text-sm text-slate-500">Đang tải…</p> : (
-            <StaffAllocation matrix={agg.matrix} otByEmp={agg.otByEmp} effortByEmp={agg.effortByEmp} std={stdBase} stdOf={stdForEmp} cfg={cfg}
+            <StaffAllocation matrix={agg.matrix} otByEmp={agg.otByEmp} effortByEmp={agg.effortByEmp} idleByEmp={agg.idleByEmp} std={stdBase} stdOf={stdForEmp} cfg={cfg}
               staff={cfg.employees.filter((e) => matchEmp(e.id))}
               empName={empName} projMapById={projMapById} detail={agg.detail}
               projDetail={data.detail} taskLabel={taskLabel} />
@@ -5766,8 +5791,19 @@ const ALLOC_ST = {
   hi: ["Quá tải", "border-rose-900 bg-rose-950 text-rose-300"],
   lo: ["Thiếu giờ", "border-amber-900 bg-amber-950/70 text-amber-300"],
   ok: ["Bình thường", "border-teal-900 bg-teal-950 text-teal-300"],
+  idle: ["Chờ việc", "border-slate-600 bg-slate-800 text-slate-300"],   // v7.2
 };
-function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, stdOf, cfg, empName, projMapById, detail = [], projDetail = [], taskLabel }) {
+/* v7.2 — trạng thái tải: t = tổng giờ, o = OT, c = cố gắng, i = chờ việc, sd = giờ chuẩn kỳ.
+   Tải = t − i. Quá tải: tải > over%. Bình thường: giờ chuẩn (không gồm chờ việc) ≥ under%.
+   Chờ việc: chưa đủ under% nhưng cộng chờ việc vào thì đủ (thiếu việc, không phải chấm thiếu). Còn lại: Thiếu giờ. */
+const allocState = (t, o, c, i, sd, lim) => {
+  if (!(sd > 0)) return "ok";
+  const s = Math.max(0, t - o - c - i);
+  if (t - i > (sd * lim.over) / 100) return "hi";
+  if (s >= (sd * lim.under) / 100) return "ok";
+  return s + i >= (sd * lim.under) / 100 ? "idle" : "lo";
+};
+function StaffAllocation({ matrix, otByEmp, effortByEmp, idleByEmp = new Map(), staff, std, stdOf, cfg, empName, projMapById, detail = [], projDetail = [], taskLabel }) {
   const [view, setView] = useState("people");   // "people" | "matrix"
   const [tip, setTip] = useState(null);         // v5.5: { eid, k, x, y } — thẻ khi rê chuột vào dự án trong phần chi tiết
   /* v5.5 — tác vụ theo người × dự án (theo kỳ và bộ lọc), và tổng giờ từng dự án trong kỳ (mọi nhân sự, không theo bộ lọc bộ phận / tên) */
@@ -5778,7 +5814,7 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, stdOf, cfg,
       const o = m.get(k) || { tasks: new Map(), phases: new Set() };
       const ot = isOtId(d.taskId);
       const lbl = ot ? `Tăng ca · ${d.otFor ? taskLabel(d.otFor) : "chưa rõ tác vụ"}` : taskLabel(d.taskId);
-      const t = o.tasks.get(lbl) || { h: 0, ot }; t.h += d.hours; o.tasks.set(lbl, t);
+      const t = o.tasks.get(lbl) || { h: 0, ot, idle: isIdleTask(d.taskId) }; t.h += d.hours; o.tasks.set(lbl, t);
       if (d.projectId !== NO_PROJECT && !isLeaveTask(d.taskId)) o.phases.add(d.phaseId || DEFAULT_PHASE);
       m.set(k, o);
     }
@@ -5790,7 +5826,7 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, stdOf, cfg,
     for (const [k, o] of byEP) {
       const eid = k.split("|")[0];
       const mm = m.get(eid) || new Map();
-      for (const [lbl, t] of o.tasks) { const x = mm.get(lbl) || { name: lbl, h: 0, ot: t.ot }; x.h += t.h; mm.set(lbl, x); }
+      for (const [lbl, t] of o.tasks) { const x = mm.get(lbl) || { name: lbl, h: 0, ot: t.ot, idle: t.idle }; x.h += t.h; mm.set(lbl, x); }
       m.set(eid, mm);
     }
     return new Map([...m].map(([eid, mm]) => [eid, [...mm.values()].sort((a, b) => (a.ot - b.ot) || b.h - a.h)]));
@@ -5810,12 +5846,12 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, stdOf, cfg,
   const everyone = [...ids].map((eid) => {
     const mm = matrix.get(eid) || new Map();
     const t = [...mm.values()].reduce((a, v) => a + v, 0);
-    const o = otByEmp.get(eid) || 0, c = effortByEmp.get(eid) || 0;
-    const s = Math.max(0, t - o - c);
+    const o = otByEmp.get(eid) || 0, c = effortByEmp.get(eid) || 0, i = idleByEmp.get(eid) || 0;
+    const s = Math.max(0, t - o - c - i);   // v7.2: giờ chuẩn không gồm chờ việc
     const sd = stdOf ? stdOf(eid) : std;   // v6.5: giờ chuẩn riêng từng người (hôm nay chỉ tính khi đã gửi)
-    const st = sd > 0 && t > (sd * lim.over) / 100 ? "hi" : sd > 0 && s < (sd * lim.under) / 100 ? "lo" : "ok";
+    const st = allocState(t, o, c, i, sd, lim);
     const e = empById.get(eid);
-    return { eid, mm, t, s, o, c, st, sd, dept: e?.dept || "Khác", role: e ? roleTitle(e.role) : "" };
+    return { eid, mm, t, s, o, c, idle: i, load: t - i, st, sd, dept: e?.dept || "Khác", role: e ? roleTitle(e.role) : "" };
   });
   // v5.6: người chưa chấm giờ nào trong kỳ tách riêng (gom một dòng cuối), không tính vào Quá tải / Thiếu giờ / Bình thường
   const people = everyone.filter((x) => x.t > 0);
@@ -5829,13 +5865,13 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, stdOf, cfg,
   const code = (k) => { if (k === NO_PROJECT) return "Khác"; const p = projMapById.get(k); return p ? (p.code || p.name) : "(đã xoá)"; };
   const name = (k) => { if (k === NO_PROJECT) return "Việc chung, vắng mặt"; return projMapById.get(k)?.name || "(dự án đã xoá)"; };
   const nProj = (x) => cols.filter((k) => k !== NO_PROJECT && x.mm.get(k)).length;
-  const pct = (x) => (x.sd ? Math.round((x.t / x.sd) * 100) : null);
+  const pct = (x) => (x.sd ? Math.round((x.load / x.sd) * 100) : null);   // v7.2: % tải không gồm chờ việc
 
   const cnt = (k) => people.filter((x) => k === "all" || x.st === k).length;
   const list = people.filter((x) => fSt === "all" || x.st === fSt)
-    .sort(sort === "load" ? (a, b) => b.t - a.t : sort === "extra" ? (a, b) => (b.o + b.c) - (a.o + a.c) || b.t - a.t : (a, b) => empName(a.eid).localeCompare(empName(b.eid), "vi"));
+    .sort(sort === "load" ? (a, b) => b.load - a.load : sort === "extra" ? (a, b) => (b.o + b.c) - (a.o + a.c) || b.load - a.load : (a, b) => empName(a.eid).localeCompare(empName(b.eid), "vi"));
   const used = people.reduce((a, x) => a + x.t, 0), cap = everyone.reduce((a, x) => a + x.sd, 0);
-  const otSum = people.reduce((a, x) => a + x.o, 0), cgSum = people.reduce((a, x) => a + x.c, 0);
+  const otSum = people.reduce((a, x) => a + x.o, 0), cgSum = people.reduce((a, x) => a + x.c, 0), idleSum = people.reduce((a, x) => a + x.idle, 0);
   const toggle = (eid) => setOpen((s) => { const n = new Set(s); n.has(eid) ? n.delete(eid) : n.add(eid); return n; });
 
   const Kpi = ({ l, v, cls = "text-slate-50", sub }) => (
@@ -5853,10 +5889,11 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, stdOf, cfg,
   return (
     <div>
       {/* v5.6 — 6 KPI của tab Nhân sự */}
-      <div className="grid grid-cols-2 gap-px border-b border-slate-800 bg-slate-800 md:grid-cols-6">
+      <div className="grid grid-cols-2 gap-px border-b border-slate-800 bg-slate-800 md:grid-cols-4 xl:grid-cols-7">
         <Kpi l="Tổng giờ công" v={fmtH(used)} sub={`/ ${fmtH(cap)} h`} />
         <Kpi l="Trong đó OT" v={`${fmtH(otSum)} h`} cls="text-teal-400" />
         <Kpi l="Giờ cố gắng" v={`${fmtH(cgSum)} h`} cls="text-violet-400" />
+        <Kpi l="Chờ việc" v={`${fmtH(idleSum)} h`} cls="text-slate-300" sub={cnt("idle") ? `${cnt("idle")} người` : undefined} />
         <Kpi l={`Quá tải (>${lim.over}%)`} v={`${cnt("hi")} người`} cls={cnt("hi") ? "text-rose-400" : "text-slate-50"} />
         <Kpi l={`Thiếu giờ (<${lim.under}%)`} v={`${cnt("lo")} người`} cls={cnt("lo") ? "text-amber-400" : "text-slate-50"} />
         <Kpi l="Chưa chấm" v={`${zero.length} người`} cls={zero.length ? "text-amber-400" : "text-slate-50"} />
@@ -5864,7 +5901,7 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, stdOf, cfg,
 
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
         <div className="flex max-w-full overflow-x-auto rounded-md border border-slate-700">
-          {[["all", "Đã chấm"], ["hi", "Quá tải"], ["lo", "Thiếu giờ"], ["ok", "Bình thường"]].map(([k, l]) => (
+          {[["all", "Đã chấm"], ["hi", "Quá tải"], ["lo", "Thiếu giờ"], ["idle", "Chờ việc"], ["ok", "Bình thường"]].map(([k, l]) => (
             <button key={k} onClick={() => setFSt(k)}
               className={`${CTRL} whitespace-nowrap px-3 text-[13px] ${fSt === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>
               {l}<span className="ml-1.5 font-mono text-slate-500">{cnt(k)}</span>
@@ -5892,6 +5929,7 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, stdOf, cfg,
         <div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-slate-800 px-3 py-2 text-xs text-slate-400 md:px-4">
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-blue-400" />Giờ chuẩn</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-slate-400" />Chờ việc (không tính tải)</span>
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-teal-400" />OT</span>
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-violet-400" />Giờ cố gắng</span>
             <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-px bg-slate-100/55" />{fmtH(std)} h giờ chuẩn của kỳ</span>
@@ -5917,16 +5955,17 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, stdOf, cfg,
                       <div className="relative col-span-2 row-start-2 pt-[18px] md:col-span-1 md:row-start-auto">
                         {/* v5.7: số giờ nằm trong từng khúc (khúc hẹp thì ẩn số, rê chuột xem); khe tối 2px giữa các khúc */}
                         <div className="flex h-[18px] overflow-hidden rounded-full bg-slate-800 font-mono text-[11px] font-semibold text-slate-950">
-                          {[[x.s, "bg-blue-400", "Giờ chuẩn"], [x.o, "bg-teal-400", "OT"], [x.c, "bg-violet-400", "Giờ cố gắng"]].filter(([v]) => v > 0).map(([v, cls, l], i) => (
+                          {[[x.s, "bg-blue-400", "Giờ chuẩn"], [x.idle, "bg-slate-400", "Chờ việc"], [x.o, "bg-teal-400", "OT"], [x.c, "bg-violet-400", "Giờ cố gắng"]].filter(([v]) => v > 0).map(([v, cls, l], i) => (
                             <i key={l} title={`${l}: ${fmtH(v)} h`} className={`flex h-full items-center justify-center overflow-hidden whitespace-nowrap not-italic ${cls} ${i ? "border-l-2 border-slate-900" : ""}`}
                               style={{ width: `${(v / maxT) * 100}%` }}>{(v / maxT) * 100 >= 3.2 ? fmtH(v) : ""}</i>
                           ))}
                         </div>
                         {/* v5.7: ngoặc vàng chỉ khoảng thiếu giờ chuẩn (từ cuối phần Giờ chuẩn tới vạch giờ chuẩn của kỳ) — OT / cố gắng không bù vào */}
-                        {x.sd > 0 && x.sd - x.s > 0.05 && (
-                          <span className="pointer-events-none absolute top-3 h-[5px] rounded-t-[3px] border-[1.5px] border-b-0 border-amber-400" style={{ left: `${(x.s / maxT) * 100}%`, width: `${((x.sd - x.s) / maxT) * 100}%` }}>
+                        {/* v7.2: tính từ cuối khúc xám — chờ việc không bị coi là thiếu */}
+                        {x.sd > 0 && x.sd - x.s - x.idle > 0.05 && (
+                          <span className="pointer-events-none absolute top-3 h-[5px] rounded-t-[3px] border-[1.5px] border-b-0 border-amber-400" style={{ left: `${((x.s + x.idle) / maxT) * 100}%`, width: `${((x.sd - x.s - x.idle) / maxT) * 100}%` }}>
                             <span className="absolute -top-[5px] left-1/2 h-1 w-[1.5px] -translate-x-1/2 bg-amber-400" />
-                            <span className="absolute bottom-[9px] left-1/2 -translate-x-1/2 whitespace-nowrap font-sans text-[11px] font-medium leading-none text-amber-400">thiếu {fmtH(x.sd - x.s)} h</span>
+                            <span className="absolute bottom-[9px] left-1/2 -translate-x-1/2 whitespace-nowrap font-sans text-[11px] font-medium leading-none text-amber-400">thiếu {fmtH(x.sd - x.s - x.idle)} h</span>
                           </span>
                         )}
                         {/* v5.7: vạch giờ chuẩn của kỳ — trắng mờ, mảnh 1px */}
@@ -5934,6 +5973,7 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, stdOf, cfg,
                       </div>
                       <div className="text-right font-mono md:order-none">
                         <div className={`text-sm font-semibold ${x.st === "hi" ? "text-rose-400" : "text-slate-100"}`}>{fmtH(x.t)} h</div>
+                        {x.idle > 0 && <div className="text-[11px] text-slate-400">tải {fmtH(x.load)} h</div>}
                       </div>
                       <span className={`hidden justify-self-end whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] md:inline-block ${ALLOC_ST[x.st][1]}`}>{ALLOC_ST[x.st][0]}{p != null ? ` · ${p}%` : ""}</span>
                     </button>
@@ -5963,7 +6003,7 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, stdOf, cfg,
                               </div>
                               {(() => { const ts = byE.get(x.eid) || [], pc = pct100(ts.map((t) => t.h)); return ts.map((t, i) => (
                                 <div key={t.name} className="grid grid-cols-[minmax(0,1fr)_72px_52px] items-baseline gap-3 py-0.5">
-                                  <span className={`truncate ${t.ot ? "text-teal-400" : "text-slate-200"}`}>{t.name}</span>
+                                  <span className={`truncate ${t.ot ? "text-teal-400" : t.idle ? "text-slate-400" : "text-slate-200"}`}>{t.name}</span>
                                   <span className="text-right font-mono text-slate-100">{fmtH(t.h)} h</span>
                                   <span className="text-right font-mono text-slate-400">{pc[i]}%</span>
                                 </div>
@@ -6040,7 +6080,7 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, staff, std, stdOf, cfg,
                         ) : <td key={k} className="h-10 text-center text-slate-700">·</td>;
                       })}
                       <td className="px-3 text-right font-mono text-slate-100">{fmtH(x.t)}</td>
-                      <td className={`px-3 text-right font-mono ${x.st === "hi" ? "text-rose-400" : x.st === "lo" ? "text-amber-400" : "text-teal-400"}`}>{p != null ? `${p}%` : "—"}</td>
+                      <td className={`px-3 text-right font-mono ${x.st === "hi" ? "text-rose-400" : x.st === "lo" ? "text-amber-400" : x.st === "idle" ? "text-slate-300" : "text-teal-400"}`}>{p != null ? `${p}%` : "—"}</td>
                       <td className={`px-3 text-right font-mono ${n >= 3 ? "text-amber-400" : "text-slate-400"}`} title={n >= 3 ? "Ôm từ 3 dự án trở lên" : undefined}>{n}</td>
                     </tr>
                   );
@@ -7373,10 +7413,10 @@ function Tasks({ cfg, saveCfg, flash }) {
             <div className="mt-2 divide-y divide-slate-800">
               {curList.map((t) => (
                 <div key={t.id}
-                  draggable={editId !== t.id && curList.length > 1}
+                  draggable={!isIdleTask(t.id) && editId !== t.id && curList.length > 1}
                   onDragStart={(e) => { setDragTask(t.id); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", t.id); } catch { /* bỏ qua */ } }}
                   onDragOver={(e) => {
-                    if (!dragTask) return;
+                    if (!dragTask || isIdleTask(t.id)) return;   // v7.2: Chờ việc luôn đứng đầu
                     e.preventDefault();
                     const b = e.currentTarget.getBoundingClientRect();
                     const after = e.clientY > b.top + b.height / 2;
@@ -7407,7 +7447,7 @@ function Tasks({ cfg, saveCfg, flash }) {
                     </div>
                   ) : (
                     <div className="flex items-center justify-between gap-2">
-                      {curList.length > 1 && (
+                      {curList.length > 1 && !isIdleTask(t.id) && (
                         <span className="-ml-1 hidden shrink-0 cursor-grab text-slate-600 hover:text-slate-300 active:cursor-grabbing md:block" title="Kéo để đổi thứ tự">
                           <GripVertical size={15} />
                         </span>
@@ -7416,13 +7456,19 @@ function Tasks({ cfg, saveCfg, flash }) {
                         <div className="flex min-w-0 items-baseline gap-1.5">
                           {t.code && <span className="shrink-0 font-mono text-[10px] text-teal-500">{t.code}</span>}
                           <span className="min-w-0 text-slate-200">{t.name}</span>
+                          {isIdleTask(t.id) && <span className="shrink-0 rounded border border-slate-600 px-1.5 text-[10px] text-slate-400">không tính tải</span>}
                         </div>
                         {t.desc && <div className="mt-0.5 text-xs text-slate-500">{t.desc}</div>}
                       </div>
+                      {isIdleTask(t.id) ? (
+                        /* v7.2: tác vụ hệ thống — không sửa, không xoá */
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center text-slate-600" title="Tác vụ hệ thống — không sửa, không xoá"><Lock size={13} /></span>
+                      ) : (
                       <div className="flex shrink-0 gap-1.5">
                         <button onClick={() => startEdit(t)} className={iconBtn}><Pencil size={13} /></button>
                         <button onClick={() => setPendingDel(t)} className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={13} /></button>
                       </div>
+                      )}
                     </div>
                   )}
                 </div>
