@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v6.6 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v6.7 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.6`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.7`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,16 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v6.7 — Bảng công bớt màu, tập trung vào giờ đã gửi
+
+**Không cần chạy lại `schema.sql`** (nếu đã chạy bản v6.6) — chỉ upload code.
+
+- Ô **nháp chưa gửi** chỉ hiện số mờ, không nền sọc cam.
+- **Thanh Tổng / chuẩn** chỉ vẽ giờ đã gửi; không ghi "thiếu x" khi phần còn thiếu đã có giờ nháp. Sọc vàng "thiếu" chỉ còn khi kể cả nháp vẫn chưa đủ chuẩn.
+  KPI "Thiếu giờ chuẩn" cùng quy tắc.
+- Cột **Nộp tuần**: ẩn "Còn nháp" của tuần đang chạy (tuần đã qua chưa nộp vẫn báo). Bảng Tháng: chấm tuần đang chạy còn nháp màu xám.
+- KPI "Chưa nộp / còn nháp" màu trung tính. Bỏ dòng ghi chú "Rê chuột vào ô…". **Chuông nhắc giữ màu.**
 
 ## Mới ở v6.6 — Tác vụ đã xoá không còn xuất hiện
 

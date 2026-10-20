@@ -16,6 +16,9 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v6.7 — Bảng công giảm màu (phương án C): giờ nháp chỉ hiện số mờ, không tô cam; thanh tổng không vẽ nháp và không ghi
+     "thiếu" khi phần thiếu đã có giờ nháp; cột Nộp tuần ẩn "Còn nháp" của tuần đang chạy (chấm tuần trong bảng Tháng: xám);
+     KPI "Chưa nộp / còn nháp" màu trung tính; bỏ dòng ghi chú "Rê chuột vào ô…". Chuông nhắc giữ màu.
    Mới ở v6.6 — Dashboard → Nhân sự: thêm lọc nhanh "Tuần trước" (T2 → CN). Ô tìm nhân sự / dự án gõ không dấu vẫn ra
      (Dashboard, Bảng công, Tiến độ dự án).
      Xoá tác vụ = xoá luôn giờ đã chấm vào tác vụ đó (kể cả dòng tăng ca "cho tác vụ" đó), không còn "(tác vụ đã xoá)".
@@ -201,7 +204,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v6.6";
+const APP_VERSION = "v6.7";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -3498,7 +3501,7 @@ function HoursMatrix({ cfg, ym, flash, onPickEmp }) {
 const DAY_ST = {
   full: { background: "#60a5fa26", color: "#dbeafe" },
   part: { background: "#fbbf2414", color: "#fbbf24", boxShadow: "inset 0 0 0 1px #fbbf2455" },
-  draft: { background: "repeating-linear-gradient(135deg,#fbbf2412 0 6px,transparent 6px 12px)", color: "#fbbf24", boxShadow: "inset 0 0 0 1px #fbbf2466" },
+  draft: { color: "#64748b", fontWeight: 500, boxShadow: "inset 0 0 0 1px #1e293b80" },   // v6.7: nháp chỉ hiện số mờ, không tô màu cảnh báo
   none: { background: "#fb71850f", color: "#fb7185", boxShadow: "inset 0 0 0 1px #fb718540" },
   leave: { background: "#fb923c1f", color: "#fb923c", boxShadow: "inset 0 0 0 1px #fb923c40" },   // v6.4: cam đất, tách khỏi xanh "đủ giờ"
   hol: { background: "repeating-linear-gradient(45deg,#cbd5e112 0 4px,transparent 4px 8px)", color: "#cbd5e1", boxShadow: "inset 0 0 0 1px #cbd5e140" },
@@ -3509,7 +3512,7 @@ const DAY_ST = {
 const DAY_ST_SM = {
   full: { background: "#60a5fa38" },
   part: { background: "#fbbf2420", boxShadow: "inset 0 0 0 1px #fbbf2466" },
-  draft: { background: "repeating-linear-gradient(135deg,#fbbf2426 0 3px,transparent 3px 6px)", boxShadow: "inset 0 0 0 1px #fbbf2466" },
+  draft: { background: "#33415533", boxShadow: "inset 0 0 0 1px #33415599" },
   none: { boxShadow: "inset 0 0 0 1px #fb718566" },
   leave: { background: "#fb923c40", boxShadow: "inset 0 0 0 1px #fb923c66" },
   hol: { background: "repeating-linear-gradient(45deg,#cbd5e133 0 3px,transparent 3px 6px)" },
@@ -3690,7 +3693,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
   const due = mode === "week" ? weeks.filter((m) => m <= today) : weeks.filter((m) => fmt(addDays(parseD(m), 6)) < today);
   const okN = emps.filter((e) => due.every((m) => weekDone(e.id, m))).length;
   const totT = [...sums.values()].reduce((a, s) => a + s.t, 0), totStd = [...sums.values()].reduce((a, s) => a + s.std, 0), totOt = [...sums.values()].reduce((a, s) => a + s.ot, 0);
-  const lowN = [...sums.values()].filter((s) => s.std > 0 && s.base < (s.std * lim.under) / 100).length;
+  const lowN = [...sums.values()].filter((s) => s.std > 0 && s.base + s.draft < (s.std * lim.under) / 100).length;   // v6.7: nháp không tính là thiếu
 
   /* nhắc đã gửi trong tuần đang xem (đọc nhật ký nhắc — quản lý đọc được) */
   useEffect(() => {
@@ -3796,9 +3799,10 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
   /* v6.4 — thanh Tổng / chuẩn chia khúc: Chuẩn (xanh dương: làm việc + vắng mặt) · phần còn thiếu (sọc vàng)
      · Cố gắng (tím) · OT (xanh ngọc). Không đổi cả thanh sang vàng nữa; chữ "thiếu x h" khi dưới giờ chuẩn. */
   const totCell = (s) => {
-    const base = Math.max(0, s.base), miss = Math.max(0, s.std - base);
+    // v6.7: giờ nháp (chưa gửi) không vẽ vào thanh và không tính là "thiếu" — chỉ thiếu thật khi kể cả nháp vẫn chưa đủ chuẩn
+    const base = Math.max(0, s.base), miss = Math.max(0, s.std - base - (s.draft || 0));
     const W = Math.max(s.std, base + s.eff + s.ot) || 1, w = (h) => `${(h / W) * 100}%`;
-    const low = s.std > 0 && base < (s.std * lim.under) / 100;
+    const low = s.std > 0 && base + (s.draft || 0) < (s.std * lim.under) / 100;
     return (
       <div className="min-w-[150px]" title={`Chuẩn ${fmtH(Math.min(base, s.std))} h · cố gắng ${fmtH(s.eff)} h · OT ${fmtH(s.ot)} h${miss ? ` · thiếu ${fmtH(miss)} h` : ""}`}>
         <div className="whitespace-nowrap font-mono text-sm"><span className="font-semibold text-slate-100">{fmtH(s.t)}</span><span className="text-slate-500"> / {fmtH(s.std)} h</span>
@@ -3871,7 +3875,6 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
         <i className="ml-1 inline-block h-2 w-3 rounded-sm bg-violet-400" />cố gắng
         <i className="ml-1 inline-block h-2 w-3 rounded-sm bg-teal-400" />OT
         <i className="ml-1 inline-block h-2 w-3 rounded-sm" style={{ boxShadow: "inset 0 0 0 1px #fbbf24aa", background: "repeating-linear-gradient(135deg,#fbbf2455 0 2px,transparent 2px 4px)" }} />thiếu</span>
-      <span className="text-slate-600">Rê chuột vào ô để xem giờ theo dự án · bấm ô để sửa nhanh · bấm tên hoặc ✎ để sửa cả tuần</span>
     </div>
   );
   const NameCell = ({ e }) => (
@@ -3934,7 +3937,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
               })}
               <td className="border-b border-slate-800/70 px-3 py-1.5">{totCell(sums.get(e.id))}</td>
               <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
-                {ws === "fut" ? <span className="text-slate-600">—</span> : <span className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] ${WEEK_ST[ws][1]}`}>{WEEK_ST[ws][0]}</span>}
+                {ws === "fut" || (ws === "dr" && monday >= fmt(mondayOf(new Date()))) ? null : <span className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] ${WEEK_ST[ws][1]}`}>{WEEK_ST[ws][0]}</span>}
               </td>
               <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
                 <span className="inline-flex gap-1.5">
@@ -4010,7 +4013,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
                   const ws = weekState(e.id, m);
                   return (
                     <button key={m} onClick={() => { setMonday(m); setMode("week"); }} title={`Tuần ${dLabel(m)} — ${WEEK_ST[ws][0] === "—" ? "chưa tới" : WEEK_ST[ws][0]} · bấm để mở tuần`}
-                      className="h-3 w-3 rounded-full transition-transform hover:scale-125" style={{ background: WEEK_ST[ws][2] }} />
+                      className="h-3 w-3 rounded-full transition-transform hover:scale-125" style={{ background: ws === "dr" && m >= fmt(mondayOf(new Date())) ? "#475569" : WEEK_ST[ws][2] }} />
                   );
                 })}
               </span>
@@ -4096,7 +4099,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
 
       <div className="grid grid-cols-2 gap-px border-b border-slate-800 bg-slate-800 md:grid-cols-5">
         <Kpi l="Đã nộp đủ" v={okN} sub={`/ ${emps.length} người`} cls={okN < emps.length ? "text-amber-400" : "text-teal-300"} />
-        <Kpi l="Chưa nộp / còn nháp" v={emps.length - okN} sub="người" cls={emps.length - okN ? "text-rose-400" : "text-slate-50"} />
+        <Kpi l="Chưa nộp / còn nháp" v={emps.length - okN} sub="người" cls="text-slate-50" />
         <Kpi l="Tổng giờ đã gửi" v={fmtH(totT)} sub={`/ ${fmtH(totStd)} h chuẩn`} />
         <Kpi l="Trong đó tăng ca" v={fmtH(totOt)} sub="h" cls="text-teal-400" />
         <Kpi l={`Thiếu giờ chuẩn (<${lim.under}%)`} v={lowN} sub="người" cls={lowN ? "text-amber-400" : "text-slate-50"} />
