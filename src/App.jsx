@@ -2968,16 +2968,16 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                           const pb = last ? "pb-2.5" : "pb-0";
                           const ot = isOtTask(taskById.get(r.taskId));
                           return (
-                            <tr key={i}>
+                            <tr key={i} className="group/row">
                               <td className={`px-3 ${open ? "pt-1" : "pt-0.5"} ${pb}`}>
                                 <div className="flex items-center gap-2">
                                   <div className="shrink-0" style={{ width: GUT }} />
                                   {open && ot ? otPickers(r, i) : (
                                   <div className="min-w-0 flex-1">
-                                    <div className={`truncate text-sm ${rt ? "text-slate-100" : "text-slate-400"} ${ot && !open ? "text-teal-300" : ""}`} title={rowLabel(r, open)}>
+                                    <div className={`truncate text-sm transition-colors ${rt ? "text-slate-100" : "text-slate-400"} ${ot && !open ? "text-teal-300" : ""} group-hover/row:text-teal-200 group-focus-within/row:text-teal-200`} title={rowLabel(r, open)}>
                                       {rowLabel(r, open)}
                                     </div>
-                                    {open && rowDesc(r) && <div className="truncate text-[11px] leading-tight text-slate-500" title={rowDesc(r)}>{rowDesc(r)}</div>}
+                                    {open && rowDesc(r) && <div className="truncate text-[11px] leading-tight text-slate-500 group-hover/row:text-slate-300 group-focus-within/row:text-slate-300" title={rowDesc(r)}>{rowDesc(r)}</div>}
                                   </div>
                                   )}
                                   <div className="flex shrink-0 items-center gap-1">
@@ -3007,7 +3007,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                                       onFocus={(e) => e.target.select()}
                                       onKeyDown={(e) => gridKey(e, i, k)}
                                       title={ot ? `Tối đa ${fmtH(otMaxHours(taskById.get(r.taskId)))} giờ` : undefined}
-                                      className={`${CTRL} w-full rounded-md border bg-slate-950 px-1 text-center font-mono text-base font-medium focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[d] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "border-teal-900 text-slate-100" : isIncomplete(d) ? "border-amber-700/60 text-slate-100" : k >= 5 ? "border-slate-800 text-slate-100" : "border-slate-700 text-slate-100"}`} />
+                                      className={`${CTRL} w-full rounded-md border bg-slate-950 px-1 text-center font-mono text-base font-medium focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[d] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "border-teal-900 text-slate-100" : isIncomplete(d) ? "border-amber-700/60 text-slate-100" : k === 6 ? "border-slate-800 text-slate-100" : "border-slate-700 text-slate-100"}`} />
                                   ) : (
                                     <div className={`py-1.5 text-center font-mono text-sm ${r.days[d] > 0 ? (ot ? "text-teal-300" : "text-slate-200") : "text-slate-700"}`}>{r.days[d] > 0 ? r.days[d] : "·"}</div>
                                   )}
