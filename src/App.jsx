@@ -16,7 +16,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
-   Mới ở v6.9 — Nhân sự → sửa nhân sự: chọn "Dự án đang tham gia". Màn chấm công của nhân sự chỉ hiện các dự án được giao;
+   Mới ở v6.9 — Nhân sự: "Dự án đang tham gia" sửa ngay trên danh sách (✕ gỡ · + Dự án · Chép từ…), hoặc trong khung sửa nhân sự. Màn chấm công của nhân sự chỉ hiện các dự án được giao;
      chưa giao dự án nào = chỉ chấm Việc chung / vắng mặt. Cột "Dự án đang tham gia" ở danh sách = dự án được giao.
    Mới ở v6.8 — Dashboard cá nhân → Chi tiết tuần: ngày lễ khoanh vòng đỏ kèm tên ngày lễ.
      Màn chấm công nhân viên gọn hơn: bỏ ghi chú "Chọn dự án (hoặc Khác)…", bỏ chú thích cạnh nhãn Công việc chung /
@@ -6484,6 +6484,23 @@ function Employees({ cfg, saveCfg, flash }) {
   /* Khung thêm / sửa: { kind: "emp" | "admin", empId, accId, hadAcc, autoUser, f: {...} } */
   const [dlg, setDlg] = useState(null);
   const [pendingDel, setPendingDel] = useState(null); // nhân sự chờ xác nhận xoá
+  /* v6.9 (mẫu C) — sửa "Dự án đang tham gia" ngay trên danh sách: { kind: "add" | "copy", eid, x, y, q } */
+  const [pp, setPp] = useState(null);
+  useEffect(() => {
+    if (!pp) return;
+    const close = () => setPp(null);
+    const esc = (ev) => { if (ev.key === "Escape") setPp(null); };
+    document.addEventListener("click", close); document.addEventListener("keydown", esc); window.addEventListener("resize", close);
+    return () => { document.removeEventListener("click", close); document.removeEventListener("keydown", esc); window.removeEventListener("resize", close); };
+  }, [!!pp]); // eslint-disable-line react-hooks/exhaustive-deps
+  const projLabel = (p) => (p.code ? `[${p.code}] ${p.name}` : p.name);
+  const empProjs = (e) => (Array.isArray(e.projects) ? e.projects : []).filter((pid) => cfg.projects.some((p) => p.id === pid));
+  const setEmpProjs = (eid, list) => saveCfg({ ...cfg, employees: cfg.employees.map((x) => (x.id === eid ? { ...x, projects: list } : x)) });
+  const openPp = (ev, kind, eid) => {
+    ev.stopPropagation();
+    const r = ev.currentTarget.getBoundingClientRect(), W = 320;
+    setPp({ kind, eid, q: "", x: Math.max(8, Math.min(window.innerWidth - W - 8, r.left)), y: r.bottom + 6, top: r.top });
+  };
   const [pendingAcc, setPendingAcc] = useState(null); // tài khoản không gắn nhân sự chờ xác nhận xoá
 
   useEffect(() => {
@@ -6659,7 +6676,7 @@ function Employees({ cfg, saveCfg, flash }) {
   };
 
   const panelCls = "rounded-xl border border-slate-800 bg-slate-900";
-  const COLS = "md:grid md:grid-cols-[84px_minmax(150px,230px)_190px_170px_120px_minmax(160px,1fr)_156px] md:items-center md:gap-3";
+  const COLS = "md:grid md:grid-cols-[72px_minmax(140px,210px)_170px_150px_110px_minmax(260px,1fr)_156px] md:items-center md:gap-3";
   const adminBadge = <span className="rounded border border-teal-800 bg-teal-950 px-1.5 py-0.5 text-[10px] text-teal-300">Quản lý</span>;
   const lockedBadge = <span className="rounded border border-rose-900 bg-rose-950 px-1.5 py-0.5 text-[10px] text-rose-300">Đã khoá</span>;
   const none = <span className="text-slate-600">—</span>;
@@ -6674,11 +6691,24 @@ function Employees({ cfg, saveCfg, flash }) {
   /* ---------------- tab con Nhân sự ---------------- */
   const empRow = (e) => {
     const a = accByEmp.get(e.id);
-    // v6.9: cột "Dự án đang tham gia" = dự án quản lý đã giao (trước đây suy từ giờ đã gửi trong tháng)
-    const projs = (Array.isArray(e.projects) ? e.projects : []).map((pid) => cfg.projects.find((p) => p.id === pid)).filter(Boolean).map((p) => (p.code ? `[${p.code}] ${p.name}` : p.name));
     const dim = a?.disabled ? "text-slate-500" : "";
     const roleEl = e.role ? <span className="rounded border border-slate-700 px-1.5 py-0.5 font-mono text-[10px] text-teal-300">{roleLabel(e.role) || e.role}</span> : null;
-    const projEl = projs.map((p) => <span key={p} className="rounded border border-teal-800 bg-teal-950 px-1.5 py-0.5 text-[11px] text-teal-300">{p}</span>);
+    // v6.9 (mẫu C): chip dự án có ✕ để gỡ; "+ Dự án" mở danh sách tích chọn; "Chép từ…" lấy y nguyên dự án của người khác
+    const mine = empProjs(e);
+    const projEl = (
+      <>
+        {mine.map((pid) => { const p = cfg.projects.find((x) => x.id === pid);
+          return (
+            <span key={pid} className={`inline-flex h-8 items-center gap-1 rounded-md border pl-2 text-xs ${p.active ? "border-teal-900 bg-teal-950 text-teal-200" : "border-slate-700 text-slate-500"}`}>
+              {projLabel(p)}{!p.active && " (đã đóng)"}
+              <button onClick={() => setEmpProjs(e.id, mine.filter((x) => x !== pid))} title="Gỡ dự án" aria-label={`Gỡ ${p.name}`}
+                className="flex h-7 w-7 items-center justify-center rounded text-teal-400 hover:bg-rose-950 hover:text-rose-300"><X size={13} /></button>
+            </span>
+          ); })}
+        <button onClick={(ev) => openPp(ev, "add", e.id)} className="h-8 rounded-md border border-dashed border-slate-700 px-2.5 text-xs text-slate-400 hover:border-teal-600 hover:text-teal-300">+ Dự án</button>
+        <button onClick={(ev) => openPp(ev, "copy", e.id)} className="h-8 rounded-md px-2 text-xs text-slate-500 hover:text-slate-200">Chép từ…</button>
+      </>
+    );
     const btns = (
       <div className="flex shrink-0 justify-end gap-1">
         {a && accBtns(a, e.name)}
@@ -6697,7 +6727,7 @@ function Employees({ cfg, saveCfg, flash }) {
             {a ? <><span className="break-all font-mono text-xs text-slate-300">{a.username}</span>{a.isAdmin && adminBadge}{a.disabled && lockedBadge}</> : <span className="text-slate-600">Chưa có</span>}
           </div>
           <div><PasswordCell value={a?.password} shown={!!shown[a?.id]} onToggle={() => toggleShown(a.id)} /></div>
-          <div className="flex min-w-0 flex-wrap gap-1.5">{projs.length ? projEl : <span className="text-xs text-slate-600">Chỉ việc chung</span>}</div>
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">{projEl}</div>
           {btns}
         </div>
         {/* mobile: thẻ */}
@@ -6709,7 +6739,8 @@ function Employees({ cfg, saveCfg, flash }) {
             </div>
             {btns}
           </div>
-          {(roleEl || projs.length > 0) && <div className="mt-1.5 flex flex-wrap gap-1.5">{roleEl}{projEl}</div>}
+          {roleEl && <div className="mt-1.5 flex flex-wrap gap-1.5">{roleEl}</div>}
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">{projEl}</div>
           {a && (
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="break-all font-mono text-xs text-slate-300">{a.username}</span>
@@ -6868,6 +6899,47 @@ function Employees({ cfg, saveCfg, flash }) {
 
       {sub === "emp" ? empTab : adminTab}
       {formDlg}
+
+      {/* v6.9 (mẫu C) — popover chọn dự án / chép dự án từ người khác */}
+      {pp && (() => {
+        const e = cfg.employees.find((x) => x.id === pp.eid); if (!e) return null;
+        const mine = empProjs(e), kw = norm(pp.q.trim());
+        const field = (
+          <input autoFocus value={pp.q} onChange={(ev) => setPp({ ...pp, q: ev.target.value })} placeholder={pp.kind === "add" ? "Tìm dự án (gõ không dấu được)" : "Tìm người"}
+            className={inputCls} />
+        );
+        let body;
+        if (pp.kind === "add") {
+          const list = cfg.projects.filter((p) => (p.active || mine.includes(p.id)) && (!kw || norm(`${p.code || ""} ${p.name} ${p.client || ""}`).includes(kw)));
+          body = list.length ? list.map((p) => { const on = mine.includes(p.id);
+            return (
+              <button key={p.id} onClick={() => setEmpProjs(e.id, on ? mine.filter((x) => x !== p.id) : [...mine, p.id])}
+                className="flex min-h-[40px] w-full items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-slate-200 hover:bg-slate-800">
+                <span className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border ${on ? "border-teal-600 bg-teal-600 text-white" : "border-slate-600"}`}>{on && <Check size={12} />}</span>
+                {projLabel(p)}{!p.active && <span className="text-xs text-slate-500">(đã đóng)</span>}
+              </button>
+            ); }) : <div className="px-3 py-3 text-sm text-slate-500">Không có dự án khớp.</div>;
+        } else {
+          const list = cfg.employees.filter((x) => x.id !== e.id && empProjs(x).length && (!kw || norm(`${x.name} ${x.code || ""}`).includes(kw)));
+          body = list.length ? list.map((x) => (
+            <button key={x.id} onClick={() => { setEmpProjs(e.id, [...empProjs(x)]); setPp(null); flash(`Đã chép ${empProjs(x).length} dự án từ ${x.name} cho ${e.name}.`); }}
+              className="block w-full rounded-md px-2.5 py-2 text-left hover:bg-slate-800">
+              <div className="text-sm text-slate-200">{x.name}</div>
+              <div className="text-xs text-slate-500">{empProjs(x).map((pid) => projLabel(cfg.projects.find((p) => p.id === pid))).join(", ")}</div>
+            </button>
+          )) : <div className="px-3 py-3 text-sm text-slate-500">Chưa có ai được giao dự án.</div>;
+        }
+        const below = pp.y + 380 < window.innerHeight;
+        return (
+          <div onClick={(ev) => ev.stopPropagation()} className="fixed z-50 w-[320px] rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl"
+            style={below ? { left: pp.x, top: pp.y } : { left: pp.x, bottom: window.innerHeight - pp.top + 6 }}>
+            {pp.kind === "copy" && <div className="px-2.5 pb-1 pt-1.5 text-[11px] uppercase tracking-wider text-slate-500">Chép dự án từ người khác → {e.name}</div>}
+            <div className="p-1">{field}</div>
+            <div className="max-h-72 overflow-y-auto">{body}</div>
+            {pp.kind === "add" && <div className="flex justify-end p-1"><button onClick={() => setPp(null)} className={`${btnPrimary} h-9`}>Xong</button></div>}
+          </div>
+        );
+      })()}
 
       <ConfirmDialog
         open={!!pendingDel}
