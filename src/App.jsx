@@ -16,6 +16,8 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v6.9 — Nhân sự → sửa nhân sự: chọn "Dự án đang tham gia". Màn chấm công của nhân sự chỉ hiện các dự án được giao;
+     chưa giao dự án nào = chỉ chấm Việc chung / vắng mặt. Cột "Dự án đang tham gia" ở danh sách = dự án được giao.
    Mới ở v6.8 — Dashboard cá nhân → Chi tiết tuần: ngày lễ khoanh vòng đỏ kèm tên ngày lễ.
      Màn chấm công nhân viên gọn hơn: bỏ ghi chú "Chọn dự án (hoặc Khác)…", bỏ chú thích cạnh nhãn Công việc chung /
      Vắng mặt, bỏ nút "…" (mô tả dòng), bỏ "Chép tuần trước"; nút "Thêm dòng" đổi thành "Thêm tác vụ".
@@ -207,7 +209,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v6.8";
+const APP_VERSION = "v6.9";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1957,7 +1959,10 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
     && (!isOtId(r.taskId) || !!r.otFor || (admin && days.some((d) => (r.days[d] || 0) > 0)));
   const dayTotal = (d) => rows.reduce((s, r) => s + (r.days[d] || 0), 0);
   const dayName = (d) => `${DOW[(parseD(d).getDay() + 6) % 7]} ${dLabel(d)}`;
-  const activeProjects = cfg.projects.filter((p) => p.active && (admin || openPhasesOf(p.id).length > 0));
+  /* v6.9 — nhân sự chỉ thấy các dự án quản lý đã giao (Nhân sự → "Dự án đang tham gia"). Chưa giao dự án nào = chỉ chấm Việc chung / vắng mặt.
+     Quản lý sửa bảng công của người khác thì vẫn thấy mọi dự án. Dòng cũ của dự án không còn được giao vẫn hiện để xem / sửa giờ đã có. */
+  const assignedP = new Set(Array.isArray(emp?.projects) ? emp.projects : []);
+  const activeProjects = cfg.projects.filter((p) => p.active && (admin || (openPhasesOf(p.id).length > 0 && assignedP.has(p.id))));
   // Chỉ hiện hạng mục thuộc bộ phận của nhân sự — bớt danh sách dài và tránh chấm nhầm việc của bộ phận khác
   const myTasks = useMemo(() => tasksForDept(cfg.tasks, emp?.dept, emp?.role), [cfg.tasks, emp?.dept, emp?.role]);
   /* v2.9 — "Khác" (projectId = NO_PROJECT, không có giai đoạn) gồm tác vụ chung của công ty (không gắn vai trò) và vắng mặt.
@@ -2701,7 +2706,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
       {r.projectId === "" && <option value="" disabled>— Chọn dự án —</option>}
       <option value={NO_PROJECT}>Khác</option>
       {activeProjects.map((p) => <option key={p.id} value={p.id}>{p.code ? `[${p.code}] ` : ""}{p.name}</option>)}
-      {r.projectId !== NO_PROJECT && r.projectId !== "" && !activeProjects.some((p) => p.id === r.projectId) && <option value={r.projectId}>{projName(r.projectId)} ({cfg.projects.some((p) => p.id === r.projectId && p.active) ? "chưa mở giai đoạn" : "đã đóng"})</option>}
+      {r.projectId !== NO_PROJECT && r.projectId !== "" && !activeProjects.some((p) => p.id === r.projectId) && <option value={r.projectId}>{projName(r.projectId)} ({!cfg.projects.some((p) => p.id === r.projectId && p.active) ? "đã đóng" : openPhasesOf(r.projectId).length === 0 ? "chưa mở giai đoạn" : "không còn được giao"})</option>}
     </>
   );
   // v2.5: chỉ liệt kê giai đoạn có giờ dự kiến của dự án (quản lý thấy mọi giai đoạn đang dùng)
@@ -6547,13 +6552,13 @@ function Employees({ cfg, saveCfg, flash }) {
 
   /* ---- khung thêm / sửa ---- */
   const openAdd = () => setDlg({ kind: "emp", empId: null, accId: null, hadAcc: false, autoUser: true,
-    f: { code: "", name: "", dept: fDept || DEPTS[0], role: "", username: "", password: genPassword(), isAdmin: false } });
+    f: { code: "", name: "", dept: fDept || DEPTS[0], role: "", projects: [], username: "", password: genPassword(), isAdmin: false } });
   const openEdit = (e) => {
     const a = accByEmp.get(e.id);
     // sửa người đã có sẵn: KHÔNG tự gợi ý tên đăng nhập khi đổi họ tên, kẻo đổi tên một người chưa có tài khoản
     // lại vô tình điền tên đăng nhập và bị chặn vì thiếu mật khẩu
     setDlg({ kind: "emp", empId: e.id, accId: a?.id || null, hadAcc: !!a, autoUser: false,
-      f: { code: e.code || "", name: e.name, dept: e.dept, role: e.role || "", username: a?.username || "", password: a?.password || "", isAdmin: !!a?.isAdmin } });
+      f: { code: e.code || "", name: e.name, dept: e.dept, role: e.role || "", projects: Array.isArray(e.projects) ? e.projects : [], username: a?.username || "", password: a?.password || "", isAdmin: !!a?.isAdmin } });
   };
   const openAddAdmin = () => setDlg({ kind: "admin", empId: null, accId: null, hadAcc: false, autoUser: false, f: { username: "", password: genPassword(), isAdmin: true } });
   const openEditAdmin = (a) => setDlg({ kind: "admin", empId: a.empId || null, accId: a.id, hadAcc: true, autoUser: false, f: { username: a.username, password: a.password, isAdmin: a.isAdmin } });
@@ -6577,7 +6582,7 @@ function Employees({ cfg, saveCfg, flash }) {
       if (err) return flash(err, "err");
       setBusy(true);
       const id = dlg.empId || uid("e");
-      const row = { code, name, dept: f.dept, role: f.role || "" };
+      const row = { code, name, dept: f.dept, role: f.role || "", projects: (f.projects || []).filter((pid) => cfg.projects.some((p) => p.id === pid)) };   // v6.9
       const ok = await saveCfg({ ...cfg, employees: dlg.empId ? cfg.employees.map((e) => (e.id === id ? { ...e, ...row } : e)) : [...cfg.employees, { id, ...row }] });
       const accOk = ok !== false && (!wantsAcc || (await pushAccount(id, acc, f)));
       setBusy(false);
@@ -6585,7 +6590,7 @@ function Employees({ cfg, saveCfg, flash }) {
       // nhân sự đã lưu nhưng tài khoản lỗi: chuyển khung sang chế độ sửa người đó để sửa tiếp phần tài khoản
       if (!accOk) return setDlg({ ...dlg, empId: id });
       flash(dlg.empId ? "Đã cập nhật nhân sự." : "Đã thêm nhân sự.");
-      if (more) setDlg({ kind: "emp", empId: null, accId: null, hadAcc: false, autoUser: true, f: { code: "", name: "", dept: f.dept, role: "", username: "", password: genPassword(), isAdmin: false } });
+      if (more) setDlg({ kind: "emp", empId: null, accId: null, hadAcc: false, autoUser: true, f: { code: "", name: "", dept: f.dept, role: "", projects: f.projects || [], username: "", password: genPassword(), isAdmin: false } });
       else setDlg(null);
       return;
     }
@@ -6669,7 +6674,8 @@ function Employees({ cfg, saveCfg, flash }) {
   /* ---------------- tab con Nhân sự ---------------- */
   const empRow = (e) => {
     const a = accByEmp.get(e.id);
-    const projs = projByEmp.get(e.id) || [];
+    // v6.9: cột "Dự án đang tham gia" = dự án quản lý đã giao (trước đây suy từ giờ đã gửi trong tháng)
+    const projs = (Array.isArray(e.projects) ? e.projects : []).map((pid) => cfg.projects.find((p) => p.id === pid)).filter(Boolean).map((p) => (p.code ? `[${p.code}] ${p.name}` : p.name));
     const dim = a?.disabled ? "text-slate-500" : "";
     const roleEl = e.role ? <span className="rounded border border-slate-700 px-1.5 py-0.5 font-mono text-[10px] text-teal-300">{roleLabel(e.role) || e.role}</span> : null;
     const projEl = projs.map((p) => <span key={p} className="rounded border border-teal-800 bg-teal-950 px-1.5 py-0.5 text-[11px] text-teal-300">{p}</span>);
@@ -6691,7 +6697,7 @@ function Employees({ cfg, saveCfg, flash }) {
             {a ? <><span className="break-all font-mono text-xs text-slate-300">{a.username}</span>{a.isAdmin && adminBadge}{a.disabled && lockedBadge}</> : <span className="text-slate-600">Chưa có</span>}
           </div>
           <div><PasswordCell value={a?.password} shown={!!shown[a?.id]} onToggle={() => toggleShown(a.id)} /></div>
-          <div className="flex min-w-0 flex-wrap gap-1.5">{projs.length ? projEl : none}</div>
+          <div className="flex min-w-0 flex-wrap gap-1.5">{projs.length ? projEl : <span className="text-xs text-slate-600">Chỉ việc chung</span>}</div>
           {btns}
         </div>
         {/* mobile: thẻ */}
@@ -6803,6 +6809,25 @@ function Employees({ cfg, saveCfg, flash }) {
                   <option value="">— Không phân vai trò —</option>
                   {ROLES.filter((r) => r.dept === f.dept || r.id === f.role).map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
                 </select>
+              </div>
+              {/* v6.9 — dự án đang tham gia: nhân sự chỉ thấy và chấm được các dự án này (chưa chọn = chỉ chấm Việc chung / vắng mặt) */}
+              <div>
+                <div className="mb-1.5 flex items-center justify-between text-xs text-slate-500">
+                  <span>Dự án đang tham gia <span className="text-slate-600">· {(f.projects || []).length} dự án</span></span>
+                  {(f.projects || []).length > 0 && <button onClick={() => setF({ projects: [] })} className="text-slate-500 hover:text-slate-300">Bỏ chọn hết</button>}
+                </div>
+                <div className="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto">
+                  {cfg.projects.filter((p) => p.active || (f.projects || []).includes(p.id)).map((p) => {
+                    const on = (f.projects || []).includes(p.id);
+                    return (
+                      <button key={p.id} type="button" onClick={() => setF({ projects: on ? f.projects.filter((x) => x !== p.id) : [...(f.projects || []), p.id] })}
+                        className={`min-h-[36px] rounded-md border px-2.5 text-left text-[13px] ${on ? "border-teal-700 bg-teal-950 text-teal-200" : "border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200"}`}>
+                        {on ? "✓ " : ""}{p.code ? `[${p.code}] ` : ""}{p.name}{!p.active ? " (đã đóng)" : ""}
+                      </button>
+                    );
+                  })}
+                </div>
+                {(f.projects || []).length === 0 && <div className="mt-1.5 text-xs text-amber-400/80">Chưa giao dự án nào — nhân sự chỉ chấm được Việc chung và vắng mặt.</div>}
               </div>
             </>
           )}

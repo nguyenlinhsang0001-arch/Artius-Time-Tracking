@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v6.8 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v6.9 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.8`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v6.9`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,17 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v6.9 — Giao dự án cho từng nhân sự
+
+Không cần chạy SQL. File thay đổi so với v6.8: `src/App.jsx`, `README.md`, `index.html`, `package.json`.
+
+- **Nhân sự → bấm ✎ một người → "Dự án đang tham gia":** bấm chọn các dự án người đó được chấm công.
+- **Màn chấm công của nhân sự chỉ hiện các dự án được giao.** Chưa giao dự án nào = chỉ chấm được Việc chung và vắng mặt.
+  Dự án không được giao bị ẩn hẳn. Giờ cũ đã chấm vào dự án không còn được giao vẫn hiện để xem.
+- Quản lý sửa giờ công giúp nhân sự (Bảng công → ✎) vẫn thấy mọi dự án.
+- Cột **"Dự án đang tham gia"** ở danh sách Nhân sự giờ là các dự án được giao.
+- **Lưu ý khi cập nhật:** sau khi deploy, mọi nhân sự chưa được giao dự án sẽ chỉ chấm được Việc chung — giao dự án cho từng người trước khi báo nhân viên chấm công.
 
 ## Mới ở v6.8 — Màn chấm công nhân viên gọn hơn
 
