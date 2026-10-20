@@ -2974,10 +2974,10 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                                   <div className="shrink-0" style={{ width: GUT }} />
                                   {open && ot ? otPickers(r, i) : (
                                   <div className="min-w-0 flex-1">
-                                    <div className={`truncate text-sm transition-colors ${rt ? "text-slate-100" : "text-slate-400"} ${ot && !open ? "text-teal-300" : ""} group-hover/row:text-teal-200 group-focus-within/row:text-teal-200`} title={rowLabel(r, open)}>
+                                    <div className={`truncate text-sm transition-colors ${ot && !open ? "text-teal-300" : "text-slate-100"} group-hover/row:text-teal-200 group-focus-within/row:text-teal-200`} title={rowLabel(r, open)}>
                                       {rowLabel(r, open)}
                                     </div>
-                                    {open && rowDesc(r) && <div className="truncate text-[11px] leading-tight text-slate-500 group-hover/row:text-slate-300 group-focus-within/row:text-slate-300" title={rowDesc(r)}>{rowDesc(r)}</div>}
+                                    {open && rowDesc(r) && <div className="truncate text-[11px] leading-tight text-slate-600 group-hover/row:text-slate-400 group-focus-within/row:text-slate-400" title={rowDesc(r)}>{rowDesc(r)}</div>}
                                   </div>
                                   )}
                                   <div className="flex shrink-0 items-center gap-1">
