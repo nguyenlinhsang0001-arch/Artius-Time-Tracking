@@ -16,6 +16,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v7.0 — Dashboard cá nhân: bỏ Xuất Excel và khung Chi tiết tuần; khung Từng tuần cao vừa nội dung; thêm Lịch tháng (màu ô như bảng Tuần của quản lý), bấm một ngày → mở Chấm công đúng tuần đó.
    Mới ở v6.9 — Nhân sự: "Dự án đang tham gia" sửa ngay trên danh sách (✕ gỡ · + Dự án) hoặc trong khung sửa nhân sự. Tab Dự án: ⌄ dưới tên dự án mở danh sách Tên · Vai trò, + Nhân sự / ✕ để giao, gỡ. Màn chấm công của nhân sự chỉ hiện các dự án được giao;
      chưa giao dự án nào = chỉ chấm Việc chung / vắng mặt. Cột "Dự án đang tham gia" ở danh sách = dự án được giao.
    Mới ở v6.8 — Dashboard cá nhân → Chi tiết tuần: ngày lễ khoanh vòng đỏ kèm tên ngày lễ.
@@ -209,7 +210,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v6.9";
+const APP_VERSION = "v7.0";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1418,11 +1419,12 @@ function AppMain() {
   const [tab, setTab] = useState("dash");
   const [sheetDirty, setSheetDirty] = useState(false);   // bảng công còn thay đổi chưa lưu
   const [pendingTab, setPendingTab] = useState(null);    // tab muốn sang, đang chờ xác nhận
+  const [tsMonday, setTsMonday] = useState(null);        // v7.0: bấm ngày trên Lịch tháng → mở Chấm công đúng tuần đó
   // Rời khỏi màn chấm công khi còn thay đổi chưa lưu thì hỏi lại — trước đây mất dữ liệu lặng lẽ
   const go = (k) => {
     if (k === tab) return;
     if (sheetDirty && (tab === "ts" || tab === "sheet")) { setPendingTab(k); return; }
-    setTab(k);
+    setTsMonday(null); setTab(k);
   };
 
   const flash = useCallback((msg, kind = "ok") => {
@@ -1692,8 +1694,8 @@ desc={me?.type === "admin" ? "Giờ vừa sửa sẽ mất. Bấm Giữ lại đ
               </>
             ) : (
               <>
-                {tab === "ts" && <EmployeeArea cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} />}
-                {tab === "edash" && <EmployeeDashboard cfg={cfg} empId={me.empId} onGoTimesheet={() => setTab("ts")} />}
+                {tab === "ts" && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} />}
+                {tab === "edash" && <EmployeeDashboard cfg={cfg} empId={me.empId} onGoTimesheet={(mon) => { setTsMonday(mon || null); setTab("ts"); }} />}
                 {tab === "eset" && <EmployeeSettings cfg={cfg} empId={me.empId} />}
               </>
             )}
@@ -4464,6 +4466,94 @@ function EmployeeSettings({ cfg, empId }) {
 }
 
 
+/* v7.0 — Lịch tháng ở Dashboard cá nhân: mỗi ô một ngày, cùng quy tắc trạng thái và cùng bộ màu DAY_ST với bảng
+   Tuần của quản lý (đủ giờ · thiếu · nháp chưa gửi · bỏ trống · nghỉ phép "P" · ngày lễ "Lễ" · CN / chưa tới, +h tăng ca).
+   Bấm một ngày đã qua → mở màn Chấm công đúng tuần chứa ngày đó. */
+function MonthCalendar({ cfg, empId, anchor, onOpenWeek }) {
+  const dataTick = useDataTick();
+  const today = fmt(new Date());
+  const hoursCfg = cfg.hours || DEFAULT_HOURS;
+  const hs = useMemo(() => makeHolidayIndex(cfg.holidays), [cfg.holidays]);
+  const startYm = () => ymOf(anchor && anchor < today ? anchor : today);
+  const [ym, setYm] = useState(startYm);
+  useEffect(() => { setYm(startYm()); }, [anchor]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [tick, setTick] = useState(0);
+  useEffect(() => { let on = true; ensureMonths([ym]).then(() => on && setTick((t) => t + 1)); return () => { on = false; }; }, [ym, dataTick]);
+  const first = parseD(`${ym}-01`), last = lastOfMonth(first);
+  const step = (n) => setYm(ymOf(new Date(first.getFullYear(), first.getMonth() + n, 1)));
+  const cells = useMemo(() => {
+    const m = new Map();
+    const b = dbTs(empId, ym); const sent = b?.sent || {};
+    for (const r of b?.rows || []) for (const [d, hv] of Object.entries(r.days || {})) {
+      const h = Number(hv) || 0; if (h <= 0) continue;
+      const c = m.get(d) || { reg: 0, ot: 0, leave: 0, draft: 0 };
+      if (!sent[d]) c.draft += h; else if (isOtId(r.taskId)) c.ot += h; else if (isLeaveTask(r.taskId)) c.leave += h; else c.reg += h;
+      m.set(d, c);
+    }
+    return m;
+  }, [empId, ym, tick, dataTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  // cùng quy tắc với dayInfo() của bảng quản lý
+  const info = (d) => {
+    const c = cells.get(d) || { reg: 0, ot: 0, leave: 0, draft: 0 };
+    const std = minHoursFor(d, hoursCfg, hs) || 0, done = c.reg + c.leave;
+    let st;
+    if (hs.has(d)) st = "hol";
+    else if (d > today) st = "fut";
+    else if (d === today && done + c.ot + c.draft === 0) st = "fut";
+    else if (!std) st = done + c.ot > 0 ? (c.draft ? "draft" : "full") : c.draft ? "draft" : "off";
+    else if (c.leave > 0 && c.reg === 0 && !c.draft) st = "leave";
+    else if (done >= std) st = "full";
+    else if (c.draft > 0) st = "draft";
+    else st = done > 0 ? "part" : "none";
+    return { ...c, done, st };
+  };
+  const days = [];
+  for (let d = mondayOf(first); d <= last || d.getDay() !== 1; d = addDays(d, 1)) days.push(d.getMonth() === first.getMonth() ? fmt(d) : null);
+  let miss = 0, drafts = 0;
+  for (const d of days) if (d) { const s = info(d).st; if (s === "none" || s === "part") miss++; if (s === "draft") drafts++; }
+  const fh = (v) => fmtH(v);
+  const DOWS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
+  return (
+    <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <div className="mb-2.5 flex flex-wrap items-center gap-2">
+        <span className="text-[11px] uppercase tracking-wider text-slate-500">Lịch tháng</span>
+        <button type="button" onClick={() => step(-1)} aria-label="Tháng trước" className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200"><ChevronLeft size={15} /></button>
+        <span className="min-w-[96px] text-center text-sm font-semibold text-slate-100">Tháng {first.getMonth() + 1}/{first.getFullYear()}</span>
+        <button type="button" onClick={() => step(1)} aria-label="Tháng sau" className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200"><ChevronRight size={15} /></button>
+        <span className="w-full text-xs text-slate-400 sm:ml-auto sm:w-auto">
+          {miss ? <><b className="font-semibold text-rose-400">{miss} ngày</b> chưa đủ giờ</> : <span className="text-teal-300">Không sót ngày nào</span>}
+          {drafts > 0 && <> · {drafts} ngày nháp chưa gửi</>}
+        </span>
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {DOWS.map((x) => <div key={x} className="pb-0.5 text-center text-[10px] text-slate-500">{x}</div>)}
+        {days.map((d, i) => {
+          if (!d) return <div key={`e${i}`} />;
+          const x = info(d);
+          const txt = x.st === "hol" ? "Lễ" : x.st === "leave" ? "P" : x.st === "none" ? "—" : x.st === "fut" || x.st === "off" ? (x.done ? fh(x.done) : "") : fh(x.st === "draft" ? x.done + x.draft : x.done);
+          const plus = x.st === "hol" ? x.done + x.ot : x.ot;
+          const can = d <= today && !!onOpenWeek;
+          return (
+            <button key={d} type="button" disabled={!can} onClick={() => onOpenWeek(fmt(mondayOf(parseD(d))))} style={DAY_ST[x.st]}
+              title={`${DOWS[(parseD(d).getDay() + 6) % 7]} ${dLabel(d)}${hs.has(d) ? ` · ${hs.get(d)}` : ""}${can ? " — bấm để mở Chấm công tuần này" : ""}`}
+              className={`relative flex h-12 flex-col items-center justify-center rounded-md md:h-[52px] ${can ? "cursor-pointer hover:brightness-125" : "cursor-default"} ${x.st === "hol" ? "text-[13px] font-medium" : "font-mono text-[13px] font-semibold"} ${d === today ? "outline outline-2 outline-offset-1 outline-teal-400" : ""}`}>
+              <span className="absolute left-1.5 top-0.5 font-sans text-[10px] font-normal text-slate-500">{parseD(d).getDate()}</span>
+              {txt}
+              {plus > 0 && <small className="font-mono text-[10px] font-medium leading-none text-teal-400">+{fh(plus)}</small>}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-800 pt-2.5 text-[11px] text-slate-400">
+        {[["full", "Đủ giờ chuẩn"], ["part", "Thiếu giờ"], ["draft", "Nháp chưa gửi"], ["none", "Bỏ trống"], ["leave", "Nghỉ phép"], ["hol", "Ngày lễ"], ["fut", "CN / chưa tới"]].map(([k, l]) => (
+          <span key={k} className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded-[3px]" style={DAY_ST_SM[k]} />{l}</span>
+        ))}
+        <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full bg-teal-400" /><span>Tăng ca (<span className="font-mono text-teal-400">+h</span>)</span></span>
+      </div>
+    </div>
+  );
+}
+
 function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
   const emp = cfg.employees.find((e) => e.id === empId);
   const now = new Date();
@@ -4500,63 +4590,7 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
 
   useEffect(() => { load(); }, [load]);   // v3.8: đổi kỳ (hoặc bấm nút nhanh) là tải lại ngay, bỏ nút Cập nhật
 
-  const projMapById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
-  const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands, cfg.otLegacy]);
-  const projLabel = (id) => { if (id === NO_PROJECT) return "Khác"; const p = projMapById.get(id); return p ? (p.code ? `[${p.code}] ${p.name}` : p.name) : "(dự án đã xoá)"; };
-  const taskLabel = (id) => { const t = taskMap.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
 
-  // Xuất bảng công của riêng mình — nhân sự tự đối chiếu với bảng lương mà không cần xin file từ quản lý
-  const exportMine = async () => {
-    const XLSX = await loadXlsx();
-    if (!data || data.detail.length === 0) return;
-    const wb = XLSX.utils.book_new();
-    const rowsOut = [...data.detail].sort((a, b) => a.date.localeCompare(b.date)).map((d) => ({
-      "Ngày": d.date, "Thứ": DOW[(parseD(d.date).getDay() + 6) % 7],
-      "Dự án": projLabel(d.projectId), "Giai đoạn": d.projectId === NO_PROJECT || isLeaveTask(d.taskId) ? "" : phaseLabel(d.phaseId),
-      "Hạng mục": taskLabel(d.taskId), "Ghi chú": d.note || "", "Giờ": d.hours,
-    }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsOut), "Chi tiết");
-    const byProj = new Map();
-    for (const d of data.detail) byProj.set(d.projectId, (byProj.get(d.projectId) || 0) + d.hours);
-    const total = data.detail.reduce((s, d) => s + d.hours, 0);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-      [...byProj.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => ({
-        "Dự án": projLabel(k), "Tổng giờ": v, "Tỷ trọng %": +(v / total * 100).toFixed(1),
-      }))), "Theo dự án");
-    // v2.1: sửa lỗi có từ v1.6 — byPhase chưa được tính nên nút xuất file báo lỗi. Giờ vắng mặt không thuộc giai đoạn nào nên không tính ở đây.
-    const byPhase = new Map();
-    for (const d of data.detail) if (!isLeaveTask(d.taskId) && d.projectId !== NO_PROJECT) byPhase.set(d.phaseId || DEFAULT_PHASE, (byPhase.get(d.phaseId || DEFAULT_PHASE) || 0) + d.hours);
-    const phaseTotal = [...byPhase.values()].reduce((a, v) => a + v, 0);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(PHASES.filter((p) => p.active || byPhase.has(p.id)).map((p) => ({
-      "Giai đoạn": `${p.id} · ${p.name}`, "Tổng giờ": +(byPhase.get(p.id) || 0).toFixed(1),
-      "Tỷ trọng %": phaseTotal ? +((byPhase.get(p.id) || 0) / phaseTotal * 100).toFixed(1) : 0,
-    }))), "Theo giai đoạn");
-    // Tổng hợp theo ngày kèm OT — dùng để đối chiếu bảng lương
-    const perDay = new Map();   // v3.4: { tot, ot (hạng mục Tăng ca), reg (làm việc thường, không gồm vắng mặt) }
-    for (const d of data.detail) {
-      const c = perDay.get(d.date) || { tot: 0, ot: 0, reg: 0 };
-      c.tot += d.hours;
-      if (isOtId(d.taskId)) c.ot += d.hours; else if (!isLeaveTask(d.taskId)) c.reg += d.hours;
-      perDay.set(d.date, c);
-    }
-    const hCfg = cfg.hours || DEFAULT_HOURS;
-    const hSet = makeHolidayIndex(cfg.holidays);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-      [...perDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, c]) => {
-        const ef = effortHoursFor(date, c.reg, hCfg, hSet);
-        return {
-          "Ngày": date, "Thứ": DOW[(parseD(date).getDay() + 6) % 7],
-          "Ngày lễ": hSet.has(date) ? "Có" : "",
-          "Giờ chuẩn": hSet.has(date) ? 0 : stdHoursFor(date, hCfg),
-          "Tổng giờ": +c.tot.toFixed(1), "Giờ OT": +c.ot.toFixed(1), "Giờ cố gắng": +ef.toFixed(1), "Giờ thường": +(c.tot - c.ot - ef).toFixed(1),
-        };
-      })), "Theo ngày");
-    const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-    const a = document.createElement("a");
-    a.href = url; a.download = `ARTIUS_${(emp?.name || "nhan-su").replace(/\s+/g, "-")}_${from}_den_${to}.xlsx`; a.click();
-    URL.revokeObjectURL(url);
-  };
 
   /* v3.8 — Dashboard cá nhân kiểu "tóm tắt tuần" (phương án A): một câu nói thẳng trạng thái, danh sách từng tuần
      có nhãn Đủ / Thiếu / Đang chấm và thanh 3 màu (giờ chuẩn · OT · giờ cố gắng), cùng tỷ trọng theo dự án.
@@ -4612,32 +4646,13 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
   }, [data, from, to, todayStr, hoursCfg, holidaySet]);
 
   const cur = view?.weeks.find((w) => w.isCur) || null;
-  // v3.9: tuần đang chọn để xem chi tiết (mặc định tuần này, không có thì tuần mới nhất trong kỳ)
-  const [selWeek, setSelWeek] = useState(null);
-  const sel = view ? (view.weeks.find((w) => w.monday === selWeek) || cur || view.weeks[view.weeks.length - 1] || null) : null;
-  const selDetail = useMemo(() => {
-    if (!sel || !data) return null;
-    const ks = new Set(sel.days.map((x) => x.k));
-    const groups = new Map();   // "proj|phase" hoặc "__leave" -> { label, h, tasks: Map(taskId -> h) }
-    for (const d of data.detail) {
-      if (!ks.has(d.date)) continue;
-      const leave = isLeaveTask(d.taskId);
-      const gk = leave ? "__leave" : `${d.projectId}|${d.projectId === NO_PROJECT ? "" : d.phaseId || DEFAULT_PHASE}`;
-      const g = groups.get(gk) || { key: gk, label: leave ? "Nghỉ phép / vắng mặt" : `${projLabel(d.projectId)}${d.projectId === NO_PROJECT ? "" : ` · ${phaseLabel(d.phaseId || DEFAULT_PHASE)}`}`, leave, h: 0, tasks: new Map() };
-      g.h += d.hours;
-      g.tasks.set(d.taskId, (g.tasks.get(d.taskId) || 0) + d.hours);
-      groups.set(gk, g);
-    }
-    return [...groups.values()].sort((a, b) => (a.leave - b.leave) || b.h - a.h)
-      .map((g) => ({ ...g, tasks: [...g.tasks.entries()].sort((a, b) => (isOtId(a[0]) - isOtId(b[0])) || b[1] - a[1]) }));
-  }, [sel, data]); // eslint-disable-line react-hooks/exhaustive-deps
   const pastMiss = view ? view.weeks.filter((w) => !w.isCur && w.miss.length > 0) : [];
   const anyMiss = !!view && (pastMiss.length > 0 || (cur && cur.miss.length > 0));
   const shortDays = (list) => list.map((k) => `${DOW_SHORT[(parseD(k).getDay() + 6) % 7]} ${dLabel(k)}`).join(", ");
 
   return (
     <div className="space-y-3 md:space-y-4">
-      {/* Kỳ báo cáo + Xuất Excel gọn một hàng */}
+      {/* Kỳ báo cáo gọn một hàng — v7.0: nhân viên không cần Xuất Excel */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 p-2.5">
         <div className="w-full sm:w-80"><DateRangeField label="" from={from} to={to} onChange={setRange} /></div>
         {[["w4", "4 tuần gần nhất"], ["thisMonth", "Tháng này"], ["lastMonth", "Tháng trước"]].map(([k, l]) => (
@@ -4645,8 +4660,6 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
         ))}
         <div className="ml-auto flex items-center gap-2">
           {loading && <Loader2 className="animate-spin text-slate-500" size={16} />}
-          <button onClick={exportMine} disabled={!data || data.detail.length === 0}
-            className={`${btnGhost} disabled:opacity-40`}><Download size={15} /> Xuất Excel</button>
         </div>
       </div>
 
@@ -4680,14 +4693,14 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
               </div>
             )}
             {anyMiss && onGoTimesheet && (
-              <button onClick={onGoTimesheet} className={`${btnPrimary} shrink-0`}><Clock size={15} /> Chấm công ngay</button>
+              <button onClick={() => onGoTimesheet()} className={`${btnPrimary} shrink-0`}><Clock size={15} /> Chấm công ngay</button>
             )}
           </div>
 
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] md:gap-4">
-            {/* Từng tuần */}
+          <div className="grid items-start gap-3 lg:grid-cols-2 md:gap-4">
+            {/* Từng tuần — v7.0: khung cao vừa nội dung (items-start), không kéo giãn theo khung bên cạnh */}
             <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-900 p-4">
-              <div className="mb-1 grid grid-cols-[96px_minmax(0,1fr)_72px] items-end gap-3 md:grid-cols-[110px_minmax(0,1fr)_80px_172px]">
+              <div className="mb-1 grid grid-cols-[96px_minmax(0,1fr)_72px] items-end gap-3 md:grid-cols-[104px_minmax(0,1fr)_76px_140px]">
                 <span className="col-span-1 text-[11px] uppercase tracking-wider text-slate-500 md:whitespace-nowrap">Từng tuần</span>
                 {/* nhãn của nét dọc giờ chuẩn tuần */}
                 <div className="relative h-4">
@@ -4695,7 +4708,7 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                     style={{ left: `${(view.weekStd / view.scale) * 100}%` }}>{view.weekStd}h chuẩn</span>}
                 </div>
                 <span className="text-right text-[10px] text-slate-500">chuẩn / target</span>
-                <span className="hidden text-right text-[10px] text-slate-500 md:block">bấm một tuần để xem chi tiết</span>
+                <span className="hidden md:block" />
               </div>
               {view.weeks.length === 0 ? <p className="py-3 text-sm text-slate-500">Chưa có tuần nào trong kỳ này.</p> : (
                 <div className="divide-y divide-slate-800">
@@ -4708,9 +4721,9 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                       : [`Thiếu ${w.miss.length} ngày`, "border-rose-900 bg-rose-950 text-rose-300"];
                     const pct = (v) => `${(v / view.scale) * 100}%`;
                     return (
-                      <button key={w.monday} type="button" onClick={() => setSelWeek(w.monday)} aria-pressed={sel?.monday === w.monday}
-                        className={`-mx-2 grid w-[calc(100%+1rem)] grid-cols-[96px_minmax(0,1fr)_72px] items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm md:grid-cols-[110px_minmax(0,1fr)_80px_172px] ${sel?.monday === w.monday ? "bg-slate-800/80 ring-1 ring-teal-700" : "hover:bg-slate-800/40"}`}
-                        title={`Chuẩn ${w.std.toFixed(1)} · OT ${w.ot.toFixed(1)} · cố gắng ${w.ef.toFixed(1)} · tổng ${w.tot.toFixed(1)} giờ — bấm để xem chi tiết`}>
+                      <div key={w.monday}
+                        className="-mx-2 grid w-[calc(100%+1rem)] grid-cols-[96px_minmax(0,1fr)_72px] items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm md:grid-cols-[104px_minmax(0,1fr)_76px_140px]"
+                        title={`Chuẩn ${w.std.toFixed(1)} · OT ${w.ot.toFixed(1)} · cố gắng ${w.ef.toFixed(1)} · tổng ${w.tot.toFixed(1)} giờ`}>
                         <span className="font-mono text-xs text-slate-300">{w.label}</span>
                         <div className="relative">
                           <div className="flex h-2.5 overflow-hidden rounded-full bg-slate-800">
@@ -4723,7 +4736,7 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                         </div>
                         <span className={`text-right font-mono text-xs ${w.miss.length === 0 ? "text-blue-400" : w.isCur ? "text-amber-400" : "text-rose-400"}`}>{w.std.toFixed(1)} / {w.target.toFixed(0)}</span>
                         <span className={`hidden justify-self-end whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] md:inline-block ${pill[1]}`}>{pill[0]}</span>
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -4748,68 +4761,8 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
               </div>
             </div>
 
-            {/* v3.9 — Chi tiết tuần đang chọn: theo ngày ở trên, theo dự án → hạng mục ở dưới */}
-            <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-900 p-4">
-              {!sel ? <p className="py-2 text-sm text-slate-500">Chọn một tuần bên trái để xem chi tiết.</p> : (<>
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-[11px] uppercase tracking-wider text-slate-500">Chi tiết tuần <span className="font-mono normal-case tracking-normal text-slate-200">{sel.label}</span></span>
-                  <span className="font-mono text-sm font-semibold text-slate-50">{sel.tot.toFixed(1)} <span className="text-[11px] font-normal text-slate-500">giờ</span></span>
-                </div>
-                <table className="mt-2 w-full font-mono text-xs">
-                  <thead>
-                    <tr className="text-[10px] uppercase tracking-wider text-slate-500">
-                      <th className="py-1 text-left font-sans font-medium">Ngày</th><th className="py-1 text-right font-medium">Tổng</th>
-                      <th className="py-1 text-right font-medium text-blue-400">Chuẩn</th><th className="py-1 text-right font-medium text-teal-500">OT</th><th className="py-1 text-right font-medium text-violet-400">CG</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800">
-                    {sel.days.filter((x) => !(x.st === "off" && parseD(x.k).getDay() === 0)).map((x) => {
-                      const n = (v, c) => <td className={`py-1.5 text-right ${v ? c : "text-slate-700"}`}>{v ? v.toFixed(1) : "·"}</td>;
-                      return (
-                        <tr key={x.k} className={x.st === "fut" ? "opacity-40" : ""}>
-                          <td className={`py-1.5 font-sans ${x.st === "miss" ? "text-amber-400" : "text-slate-300"}`}>
-                            {/* v6.8: ngày lễ khoanh vòng cọ đỏ (như bảng chấm công) kèm tên ngày lễ */}
-                            {holidaySet.has(x.k)
-                              ? <><span className="-mx-2.5 -my-1.5 inline-block px-2.5 py-1.5 text-slate-100" style={{ backgroundImage: `url("data:image/svg+xml,${HOLIDAY_RING_WIDE}")`, backgroundRepeat: "no-repeat", backgroundSize: "100% 100%" }}>{shortDays([x.k])}</span>
-                                  <span className="ml-2 text-[10px] text-rose-400">{holidaySet.get(x.k)}</span></>
-                              : shortDays([x.k])}
-                            {x.st === "miss" && <span className="ml-1.5 text-[10px]">thiếu</span>}</td>
-                          <td className={`py-1.5 text-right font-semibold ${x.st === "miss" ? "text-amber-400" : x.tot ? "text-slate-100" : "text-slate-700"}`}>{x.tot ? x.tot.toFixed(1) : "—"}</td>
-                          {/* v4.0: giờ chuẩn thiếu (dưới giờ chuẩn của ngày) tô cam như bảng chấm công */}
-                          {x.st === "miss" ? <td className="py-1.5 text-right text-amber-400">{x.std ? x.std.toFixed(1) : "0.0"}</td> : n(x.std, "text-blue-400")}{n(x.ot, "text-teal-400")}{n(x.ef, "text-violet-400")}
-                        </tr>
-                      );
-                    })}
-                    <tr className="border-t border-slate-700 font-semibold">
-                      <td className="py-1.5 font-sans text-slate-400">Cả tuần</td><td className="py-1.5 text-right text-slate-50">{sel.tot.toFixed(1)}</td>
-                      <td className={`py-1.5 text-right ${sel.miss.length ? "text-amber-400" : "text-blue-400"}`}>{sel.std.toFixed(1)}</td><td className="py-1.5 text-right text-teal-400">{sel.ot.toFixed(1)}</td><td className="py-1.5 text-right text-violet-400">{sel.ef.toFixed(1)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <div className="mt-4 text-[11px] uppercase tracking-wider text-slate-500">Theo dự án · hạng mục</div>
-                {!selDetail || selDetail.length === 0 ? <p className="py-2 text-sm text-slate-500">Tuần này chưa có giờ nào.</p> : (
-                  <div className="mt-1 divide-y divide-slate-800">
-                    {selDetail.map((g) => (
-                      <div key={g.key} className="py-2">
-                        <div className="flex items-baseline justify-between gap-2 text-sm">
-                          <span className={`min-w-0 truncate ${g.leave ? "text-sky-300" : "text-slate-200"}`}>{g.label}</span>
-                          <span className="shrink-0 font-mono text-xs font-semibold text-slate-100">{g.h.toFixed(1)} h · {sel.tot ? Math.round((g.h / sel.tot) * 100) : 0}%</span>
-                        </div>
-                        <div className="mt-1 space-y-0.5">
-                          {g.tasks.map(([tid, h]) => (
-                            <div key={tid} className="flex items-baseline justify-between gap-2 pl-3 text-xs">
-                              <span className={`min-w-0 truncate ${isOtId(tid) ? "text-teal-400" : "text-slate-400"}`}>{isOtId(tid) && taskMap.get(tid) ? `Tăng ca ${otText(taskMap.get(tid))}` : taskLabel(tid)}</span>
-                              <span className={`shrink-0 font-mono ${isOtId(tid) ? "text-teal-400" : "text-slate-300"}`}>{h.toFixed(1)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>)}
-            </div>
+            {/* v7.0 — Lịch tháng thay cho Chi tiết tuần: nhân viên tự soát ngày chấm sót, màu ô giống hệt bảng Tuần của quản lý */}
+            <MonthCalendar cfg={cfg} empId={empId} anchor={to} onOpenWeek={onGoTimesheet} />
           </div>
         </>
       )}
