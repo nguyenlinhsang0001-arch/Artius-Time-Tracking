@@ -32,7 +32,7 @@ Ghi chú:
 Sau khi deploy, **một quản lý mở app một lần** để app tự lưu tác vụ "Chờ việc" vào thiết lập chung.
 
 - **Chờ việc** là tác vụ gắn cứng, nằm đầu mục Dùng chung (dòng "Khác" ở màn chấm công), ai cũng thấy.
-  Ở tab Tác vụ có ổ khoá: không đổi tên, không xoá, không kéo đổi chỗ.
+  Ở tab Tác vụ có ổ khoá: **đổi được tên và mô tả** (bút chì), không xoá, không kéo đổi chỗ, không chuyển sang vai trò khác.
 - Giờ chờ việc **tính là giờ công** (ngày vẫn đủ giờ, không bị báo thiếu), **không thành giờ cố gắng**
   (VD 8h dự án + 2h chờ việc: 2h đó không tính cố gắng), và **không tính vào tải**.
 - **Khúc xám riêng** ngay sau khúc giờ chuẩn: Từng tuần, Lịch tháng (`+chờ việc` xám ở dòng nhỏ), thanh Tổng / chuẩn ở Bảng công

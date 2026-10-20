@@ -1007,12 +1007,20 @@ const DEFAULT_LEAVE_TYPES = [
   { id: "biz", label: "Công tác ngoài", short: "CT", cls: "border-teal-800 bg-teal-950 text-teal-300" },
 ];
 const LEAVE_TASK_PREFIX = "LV_";
-/* v7.2 — tác vụ "Chờ việc": gắn cứng trong cfg.tasks (dùng chung, luôn đứng đầu), app tự thêm nếu chưa có, không sửa / xoá được.
+/* v7.2 — tác vụ "Chờ việc": gắn cứng trong cfg.tasks (dùng chung, luôn đứng đầu), app tự thêm nếu chưa có.
+   Quản lý đổi được tên và mô tả; không xoá, không kéo đổi chỗ, không chuyển sang vai trò khác (mã IDLE_WAIT giữ nguyên).
    Giờ chờ việc tính là giờ công của ngày (không bị báo thiếu) nhưng không thành giờ cố gắng và KHÔNG tính vào tải (khung Phân bổ). */
 const IDLE_TASK_ID = "IDLE_WAIT";
 const IDLE_TASK = { id: IDLE_TASK_ID, name: "Chờ việc", group: "Chung", depts: [], roles: [], desc: "Không có việc được giao — tính giờ công, không tính tải" };
 const isIdleTask = (id) => id === IDLE_TASK_ID;
-const withIdleTask = (c) => (c ? { ...c, tasks: [{ ...IDLE_TASK }, ...(c.tasks || []).filter((t) => t.id !== IDLE_TASK_ID)] } : c);
+const withIdleTask = (c) => {
+  if (!c) return c;
+  const cur = (c.tasks || []).find((t) => t.id === IDLE_TASK_ID);
+  // giữ tên / mô tả quản lý đã sửa; luôn là tác vụ dùng chung và đứng đầu
+  const idle = cur ? { ...IDLE_TASK, name: cur.name || IDLE_TASK.name, desc: cur.desc } : { ...IDLE_TASK };
+  if (!idle.desc) delete idle.desc;
+  return { ...c, tasks: [idle, ...(c.tasks || []).filter((t) => t.id !== IDLE_TASK_ID)] };
+};
 let IDLE_PENDING = false;   // v7.2: cấu hình trên server chưa có tác vụ Chờ việc — quản lý mở app sẽ tự lưu
 const NO_PROJECT = "__none__";
 const NO_PHASE = "?";   // v3.0: dòng mới, giai đoạn chưa chọn (dự án "" = chưa chọn, hạng mục "" = chưa chọn)
@@ -7123,7 +7131,7 @@ function Tasks({ cfg, saveCfg, flash }) {
     await saveCfg({ ...cfg, tasks: cfg.tasks.map((t) => {
       if (t.id !== editId) return t;
       const { desc: _old, ...rest } = t;                  // mô tả rỗng thì bỏ hẳn trường, không lưu chuỗi trống
-      return { ...rest, name: editName.trim(), ...patchFor(editOwner), ...(desc ? { desc } : {}) };
+      return { ...rest, name: editName.trim(), ...(isIdleTask(t.id) ? {} : patchFor(editOwner)), ...(desc ? { desc } : {}) };   // v7.2: Chờ việc luôn dùng chung
     }) });
     setEditId(null);
   };
@@ -7434,9 +7442,11 @@ function Tasks({ cfg, saveCfg, flash }) {
                         <input autoFocus value={editName} onChange={(e) => setEditName(e.target.value)}
                           onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditId(null); }} className={`min-w-0 md:flex-1 ${inputCls}`} />
                         <div className="flex gap-2">
+                          {!isIdleTask(t.id) && (
                           <select value={editOwner} onChange={(e) => setEditOwner(e.target.value)} className={`min-w-0 flex-1 md:w-56 md:flex-none ${selectCls}`}>
                             {boxes.map((x) => <option key={x.key} value={x.key}>{x.title}</option>)}
                           </select>
+                          )}
                           <button onClick={commit} className={`${sqBtn} border-teal-800 text-teal-400`}><Check size={15} /></button>
                           <button onClick={() => setEditId(null)} className={`${sqBtn}`}><X size={15} /></button>
                         </div>
@@ -7461,8 +7471,11 @@ function Tasks({ cfg, saveCfg, flash }) {
                         {t.desc && <div className="mt-0.5 text-xs text-slate-500">{t.desc}</div>}
                       </div>
                       {isIdleTask(t.id) ? (
-                        /* v7.2: tác vụ hệ thống — không sửa, không xoá */
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center text-slate-600" title="Tác vụ hệ thống — không sửa, không xoá"><Lock size={13} /></span>
+                        /* v7.2: tác vụ hệ thống — đổi được tên / mô tả, không xoá, không kéo đổi chỗ */
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <span className="flex h-8 w-8 items-center justify-center text-slate-600" title="Tác vụ hệ thống — không xoá, không đổi chỗ"><Lock size={13} /></span>
+                          <button onClick={() => startEdit(t)} className={iconBtn} title="Đổi tên / mô tả"><Pencil size={13} /></button>
+                        </div>
                       ) : (
                       <div className="flex shrink-0 gap-1.5">
                         <button onClick={() => startEdit(t)} className={iconBtn}><Pencil size={13} /></button>
