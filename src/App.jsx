@@ -1666,7 +1666,6 @@ function AppMain() {
       `}</style>
       {me && (
         <nav className="hidden w-24 shrink-0 flex-col items-center border-r border-slate-800 bg-slate-950 py-4 md:flex">
-          <div className="mb-5 flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 font-mono text-xs text-teal-400">AR</div>
           <div className="flex w-full flex-1 flex-col gap-1 px-2">
             {railItems.map(([k, label, Icon]) => (
               <button key={k} onClick={() => go(k)}
