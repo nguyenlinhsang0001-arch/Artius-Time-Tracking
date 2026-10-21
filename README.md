@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v7.5 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v7.6 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Trên máy tính, cạnh tên người dùng ở thanh trên cùng ghi `v7.5`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Trên máy tính ghi `v7.6` (nhân viên: cạnh tên ở thanh trên cùng; quản lý: cuối menu dọc).
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,20 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v7.6 — Menu dọc cho quản lý, làm đẹp phía nhân viên
+
+**Không đổi database** — bỏ qua bước 1 (SQL). Làm v7.5 trước (bản này nối tiếp v7.5).
+File thay đổi: `src/App.jsx`, `index.html`, `package.json`, `README.md`.
+
+- **Admin · BOD · Trưởng phòng (máy tính):** nội dung hiển thị full màn hình (không giới hạn 1520px). Menu là thẻ dọc bám mép trái
+  khung nội dung, dính theo khi cuộn, có nút Thoát và phiên bản ở cuối. Thanh trên cùng: tiêu đề trang (trái) · logo (giữa) · tên (phải).
+- **Nhân viên (máy tính):** giữ kiểu v7.5 — tab ngang trên thanh trên cùng, nội dung tối đa 1520px.
+- **Làm đẹp, không đổi thao tác** — tab Chấm công · Dashboard · Cài đặt phía nhân viên (Trưởng phòng, BOD cũng thấy ở các tab này):
+  khung có chiều sâu và bo góc mềm hơn; cột Hôm nay nền teal nhạt có vạch teal đầu cột; thanh giờ nhỏ (chuẩn · cố gắng · OT) dưới mỗi ngày;
+  ô nhập giờ sáng viền khi rê chuột, quầng teal khi đang nhập; thanh Tiến độ tuần dày hơn, màu chuyển dần; nút chính (Gửi giờ công…) gradient teal;
+  banner nhắc gửi giờ gradient. Khung chi tiết nhân sự mà Admin mở từ Bảng công giữ nguyên giao diện cũ.
+- **Điện thoại:** không đổi (menu dưới đáy).
 
 ## Mới ở v7.5 — Menu lên thanh trên cùng, giới hạn độ rộng 1520px
 
