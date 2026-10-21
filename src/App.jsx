@@ -1686,10 +1686,11 @@ function AppMain() {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3 md:px-6 md:py-3.5">
+        <header className="relative flex items-center justify-between border-b border-slate-800 px-4 py-3 md:px-6 md:py-3.5">
           <div className="flex min-w-0 flex-col md:flex-row md:items-center md:gap-4">
-            {/* v7.4: máy tính hiện logo ARTIUS Time Tracking (đã đăng nhập; màn đăng nhập có logo lớn riêng); điện thoại giữ chữ ARTIUS */}
-            {me && <img src="/logo-artius-time.svg" alt="ARTIUS Time Tracking" className="hidden h-9 w-auto shrink-0 md:block" />}
+            {/* v7.4: máy tính hiện logo chữ ARTIUS Time Tracking ở GIỮA cửa sổ trình duyệt (đã đăng nhập; màn đăng nhập có logo lớn riêng); điện thoại giữ chữ ARTIUS.
+                Header nằm bên phải sidebar w-24 (96px) → tâm trình duyệt = 50% header − 48px */}
+            {me && <img src="/logo-artius-time.svg" alt="ARTIUS Time Tracking" className="pointer-events-none absolute left-[calc(50%-48px)] top-1/2 hidden h-9 w-auto -translate-x-1/2 -translate-y-1/2 md:block" />}
             <span className={`font-mono text-sm tracking-[0.3em] text-slate-100 ${me ? "md:hidden" : ""}`}>ARTIUS</span>
             <span className="truncate text-xs text-slate-500">{me ? pageTitle : "Quản lý giờ công dự án"}</span>
           </div>
