@@ -16,6 +16,9 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v7.5 — Máy tính: bỏ thanh menu dọc bên trái; các tab đưa lên thanh trên cùng thành tab ngang (bên trái), logo giữ ở giữa,
+   tên · phiên bản · nút Thoát bên phải. Header và nội dung giới hạn rộng tối đa 1520px, căn giữa trình duyệt.
+   Tab ngang chỉ hiện icon ở màn hẹp, hiện chữ từ 1280px (≤ 4 tab) hoặc 1536px (Admin 6 tab). Điện thoại giữ nguyên thanh menu dưới đáy.
    Mới ở v7.2 — Tác vụ "Chờ việc" (gắn cứng, mục Khác · dùng chung): tính là giờ công (không bị báo thiếu), không thành giờ cố gắng,
    KHÔNG tính vào tải. Khúc xám riêng trên thanh Từng tuần / Lịch tháng / Bảng công / Phân bổ; khung Phân bổ có nhãn "Chờ việc",
    ô KPI Chờ việc, % tải = (tổng − chờ việc) / giờ chuẩn kỳ; Excel thêm cột Giờ chờ việc.
@@ -216,7 +219,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v7.4";
+const APP_VERSION = "v7.5";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1664,43 +1667,45 @@ function AppMain() {
         input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
       `}</style>
-      {me && (
-        <nav className="hidden w-24 shrink-0 flex-col items-center border-r border-slate-800 bg-slate-950 py-4 md:flex">
-          <div className="flex w-full flex-1 flex-col gap-1 px-2">
-            {railItems.map(([k, label, Icon]) => (
-              <button key={k} onClick={() => go(k)}
-                className={`relative flex w-full flex-col items-center gap-1 rounded-lg py-2 ${tab === k ? "bg-slate-800 text-teal-400" : "text-slate-500 hover:bg-slate-900 hover:text-slate-300"}`}>
-                <Icon size={18} />
-                {/* nhãn ngắn để không xuống dòng ở bề rộng 96px */}
-                <span className="w-full truncate px-1 text-center text-[10px] leading-none">{label}</span>
-                {tab === k && <span className="absolute -left-2 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-full bg-teal-400" />}
-              </button>
-            ))}
-          </div>
-          <button onClick={signOut} className="mt-2 flex w-[calc(100%-1rem)] flex-col items-center gap-1 rounded-lg py-2 text-slate-500 hover:bg-slate-900 hover:text-rose-400">
-            <LogOut size={18} />
-            <span className="text-[10px] leading-none">Thoát</span>
-          </button>
-          <div className="mt-2 select-none font-mono text-[10px] text-slate-600">ARTIUS {APP_VERSION}</div>
-        </nav>
-      )}
+      {/* v7.5: bỏ thanh menu dọc bên trái trên máy tính — tab chuyển lên header (tab ngang) */}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="relative flex items-center justify-between border-b border-slate-800 px-4 py-3 md:px-6 md:py-3.5">
-          <div className="flex min-w-0 flex-col md:flex-row md:items-center md:gap-4">
-            {/* v7.4: máy tính hiện logo chữ ARTIUS Time Tracking ở GIỮA cửa sổ trình duyệt (đã đăng nhập; màn đăng nhập có logo lớn riêng); điện thoại giữ chữ ARTIUS.
-                Header nằm bên phải sidebar w-24 (96px) → tâm trình duyệt = 50% header − 48px */}
-            {me && <img src="/logo-artius-time.svg" alt="ARTIUS Time Tracking" className="pointer-events-none absolute left-[calc(50%-48px)] top-1/2 hidden h-9 w-auto -translate-x-1/2 -translate-y-1/2 md:block" />}
-            <span className={`font-mono text-sm tracking-[0.3em] text-slate-100 ${me ? "md:hidden" : ""}`}>ARTIUS</span>
-            <span className="truncate text-xs text-slate-500">{me ? pageTitle : "Quản lý giờ công dự án"}</span>
-          </div>
-          <div className="flex min-w-0 items-center">
-            <InstallButton />
-            {me && <span className="ml-3 shrink-0 truncate text-xs text-slate-400">{myEmp?.name || who.username}</span>}
+        <header className="border-b border-slate-800">
+          {/* v7.5: nội dung header giới hạn 1520px, căn giữa — cùng trục với phần thân */}
+          <div className="relative mx-auto flex w-full max-w-[1520px] items-center justify-between px-4 py-3 md:px-6 md:py-3.5">
+            <div className="flex min-w-0 flex-col md:flex-row md:items-center md:gap-4">
+              {/* v7.5: tab ngang (máy tính). Màn hẹp chỉ hiện icon (rê chuột xem tên); chữ hiện từ xl (≤ 4 tab) / 2xl (Admin 6 tab) để không đè logo giữa */}
+              {me && (
+                <nav className="hidden items-center gap-0.5 rounded-xl border border-slate-800 bg-slate-900/60 p-1 md:flex">
+                  {railItems.map(([k, label, Icon]) => (
+                    <button key={k} onClick={() => go(k)} title={label}
+                      className={`flex h-9 items-center gap-2 rounded-lg px-3 text-sm transition-colors ${tab === k ? "bg-teal-500/15 text-teal-200 ring-1 ring-inset ring-teal-500/40" : "text-slate-400 hover:bg-slate-800/70 hover:text-slate-100"}`}>
+                      <Icon size={16} className="shrink-0" />
+                      <span className={`whitespace-nowrap ${railItems.length > 4 ? "hidden 2xl:inline" : "hidden xl:inline"}`}>{label}</span>
+                    </button>
+                  ))}
+                </nav>
+              )}
+              <span className={`font-mono text-sm tracking-[0.3em] text-slate-100 ${me ? "md:hidden" : ""}`}>ARTIUS</span>
+              {/* máy tính đã đăng nhập: tên trang thể hiện bằng tab đang chọn → ẩn dòng tiêu đề; điện thoại giữ như cũ */}
+              <span className={`truncate text-xs text-slate-500 ${me ? "md:hidden" : ""}`}>{me ? pageTitle : "Quản lý giờ công dự án"}</span>
+            </div>
+            {/* logo chữ ở giữa khung 1520px = giữa cửa sổ trình duyệt (khung căn giữa, không còn sidebar) */}
+            {me && <img src="/logo-artius-time.svg" alt="ARTIUS Time Tracking" className="pointer-events-none absolute left-1/2 top-1/2 hidden h-9 w-auto -translate-x-1/2 -translate-y-1/2 md:block" />}
+            <div className="flex min-w-0 items-center">
+              <InstallButton />
+              {me && <span className="ml-3 shrink-0 truncate text-xs text-slate-400">{myEmp?.name || who.username}</span>}
+              {me && <span className="ml-3 hidden select-none font-mono text-[10px] text-slate-600 md:inline">{APP_VERSION}</span>}
+              {me && (
+                <button onClick={signOut} title="Thoát" className="ml-2 hidden h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-900 hover:text-rose-400 md:grid">
+                  <LogOut size={16} />
+                </button>
+              )}
+            </div>
           </div>
         </header>
 
-        <main className="min-w-0 flex-1 px-3 pb-28 pt-4 md:px-6 md:pb-24 md:pt-5">
+        <main className="min-w-0 flex-1 px-3 pb-28 pt-4 md:mx-auto md:w-full md:max-w-[1520px] md:px-6 md:pb-24 md:pt-5">
           <ConfirmDialog
             open={pendingTab !== null}
             title="Rời khỏi bảng công khi chưa lưu?"
@@ -1765,7 +1770,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
         </nav>
       )}
 
-      {/* Ghi chú phiên bản: màn đăng nhập thì ở góc trái dưới; đã đăng nhập thì nằm trong thanh bên (máy tính), ẩn trên mobile */}
+      {/* Ghi chú phiên bản: màn đăng nhập thì ở góc trái dưới; đã đăng nhập thì nằm trên header cạnh tên (máy tính, v7.5), ẩn trên mobile */}
       {!me && (
         <div className="pointer-events-none fixed bottom-1.5 left-2 z-30 select-none font-mono text-[10px] text-slate-600">
           ARTIUS {APP_VERSION}
