@@ -16,11 +16,10 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
-   Mới ở v7.6 — Tài khoản quản lý (Admin, BOD, Trưởng phòng) trên máy tính: nội dung full màn hình (không giới hạn 1520px), menu dọc dạng thẻ
-   bám mép trái khung nội dung (dính khi cuộn), có Thoát + phiên bản; header chỉ còn tiêu đề trang · logo · tên. Nhân viên giữ kiểu v7.5.
-   Làm đẹp (không đổi thao tác) cho tab Chấm công · Dashboard · Cài đặt phía nhân viên (lớp .ep): khung có chiều sâu, cột Hôm nay viền teal,
-   thanh giờ nhỏ (chuẩn · cố gắng · OT) dưới mỗi ngày, ô nhập hover/focus teal, thanh tiến độ tuần dày + gradient, nút chính gradient teal,
-   banner nhắc gradient. Khung chi tiết nhân sự của Admin (EmployeeArea admin) không áp.
+   Mới ở v7.6 — Bỏ giới hạn 1520px của v7.5: mọi tài khoản hiển thị full màn hình. Quản lý (Admin, BOD, Trưởng phòng) trên máy tính:
+   menu dọc dạng thẻ bám mép trái khung nội dung (dính khi cuộn), có Thoát + phiên bản; header chỉ còn tiêu đề trang · logo · tên.
+   Nhân viên giữ tab ngang trên header (v7.5).
+   Nút Thoát nổi bật hơn (viền + nền đỏ nhạt, có chữ "Thoát"): header của nhân viên, cuối menu dọc của quản lý, thanh menu dưới đáy điện thoại.
    Mới ở v7.5 — Máy tính: bỏ thanh menu dọc bên trái; các tab đưa lên thanh trên cùng thành tab ngang (bên trái), logo giữ ở giữa,
    tên · phiên bản · nút Thoát bên phải. Header và nội dung giới hạn rộng tối đa 1520px, căn giữa trình duyệt.
    Tab ngang chỉ hiện icon ở màn hẹp, hiện chữ từ 1280px (≤ 4 tab) hoặc 1536px (Admin 6 tab). Điện thoại giữ nguyên thanh menu dưới đáy.
@@ -1643,7 +1642,6 @@ function AppMain() {
 
   // v7.6: Admin · BOD · Trưởng phòng — full màn hình + menu dọc bám khung; nhân viên giữ tab ngang + 1520px (v7.5)
   const isMgr = !!me && ["admin", "bod", "head"].includes(me.type);
-  const epTab = !!me && ["ts", "edash", "eset"].includes(tab); // v7.6: tab phía nhân viên được làm đẹp (lớp .ep)
 
   const pageTitle = { dash: "Dashboard giờ công", sheet: "Bảng công nhân sự", proj: "Dự án", emp: "Nhân sự", task: "Tác vụ công việc theo vai trò", set: "Thiết lập", ts: "", edash: "Dashboard cá nhân", eset: "Cài đặt cá nhân" }[tab];
 
@@ -1676,42 +1674,13 @@ function AppMain() {
         input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
-        /* v7.6 — LÀM ĐẸP phía nhân viên (Chấm công · Dashboard · Cài đặt), chỉ trong <main class="ep">. Không đổi bố cục/thao tác. */
-        .ep .rounded-xl.border-slate-800.bg-slate-900 {
-          border-radius: 1rem; border-color: rgba(51,65,85,.6);
-          background: linear-gradient(180deg, rgba(30,41,59,.55), rgba(15,23,42,.85));
-          box-shadow: inset 0 1px 0 rgba(255,255,255,.03), 0 20px 40px -24px rgba(0,0,0,.8);
-        }
-        /* banner nhắc gửi giờ công */
-        .ep .border-amber-900.bg-amber-950 { border-radius: 1rem; border-color: rgba(180,83,9,.5); background: linear-gradient(90deg, rgba(120,53,15,.6), rgba(69,26,3,.35) 55%, rgba(2,6,23,0)); }
-        .ep .border-rose-900.bg-rose-950 { border-radius: 1rem; border-color: rgba(190,18,60,.5); background: linear-gradient(90deg, rgba(136,19,55,.6), rgba(76,5,25,.35) 55%, rgba(2,6,23,0)); }
-        /* ô tổng Chuẩn · Phát sinh · Tổng */
-        .ep .flex.overflow-hidden.rounded-lg.border-slate-700 { border-radius: .75rem; border-color: rgba(51,65,85,.8); background: rgba(2,6,23,.5); }
-        .ep .flex.overflow-hidden.rounded-lg.border-slate-700 > div:last-child { background: rgba(45,212,191,.06); }
-        /* thanh tiến độ tuần: dày hơn + gradient */
-        .ep .h-1\\.5.w-full.overflow-hidden.rounded-full.bg-slate-800 { height: .625rem; }
-        .ep .h-full.rounded-full.bg-amber-500 { background: linear-gradient(90deg, #f59e0b, #fbbf24); transition: width .5s cubic-bezier(.2,.8,.2,1); }
-        .ep .h-full.rounded-full.bg-blue-400 { background: linear-gradient(90deg, #0ea5e9, #2dd4bf); transition: width .5s cubic-bezier(.2,.8,.2,1); }
-        /* cột Hôm nay: nền teal nhạt + vạch teal đầu cột */
-        .ep th.bg-slate-800\\/70 { background: rgba(45,212,191,.07); box-shadow: inset 0 2px 0 #2dd4bf; }
-        .ep td.bg-slate-800\\/70 { background: rgba(45,212,191,.07); }
-        .ep .rounded-sm.border-slate-600.bg-slate-700 { border-color: rgba(45,212,191,.6); background: rgba(45,212,191,.3); }
-        /* ô nhập giờ: hover sáng viền, focus quầng teal */
-        .ep td input[type="number"]:not(:disabled) { transition: border-color .15s, box-shadow .15s, background-color .15s; }
-        .ep td input[type="number"]:not(:disabled):hover { border-color: #475569; }
-        .ep td input[type="number"]:focus { box-shadow: 0 0 0 3px rgba(45,212,191,.18); background-color: rgba(45,212,191,.06); }
-        /* nút chính: gradient teal + glow */
-        .ep .bg-teal-600 { background: linear-gradient(90deg, #14b8a6, #10b981); box-shadow: 0 0 0 1px rgba(45,212,191,.35), 0 10px 26px -12px rgba(45,212,191,.6); }
-        .ep .bg-teal-600:hover { filter: brightness(1.1); }
-        .ep .bg-teal-600:disabled { box-shadow: none; filter: none; }
-        .ep button { transition-property: color, background-color, border-color, box-shadow, filter, transform; transition-duration: .15s; }
       `}</style>
       {/* v7.5: bỏ thanh menu dọc bên trái trên máy tính — tab chuyển lên header (tab ngang) */}
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="border-b border-slate-800">
           {/* v7.5: nội dung header giới hạn 1520px, căn giữa — cùng trục với phần thân */}
-          <div className={`relative mx-auto flex w-full ${isMgr ? "" : "max-w-[1520px]"} items-center justify-between px-4 py-3 md:px-6 md:py-3.5`}>
+          <div className="relative flex w-full items-center justify-between px-4 py-3 md:px-6 md:py-3.5">
             <div className="flex min-w-0 flex-col md:flex-row md:items-center md:gap-4">
               {/* v7.5: tab ngang (máy tính). Màn hẹp chỉ hiện icon (rê chuột xem tên); chữ hiện từ xl (≤ 4 tab) / 2xl (Admin 6 tab) để không đè logo giữa */}
               {me && !isMgr && (
@@ -1736,8 +1705,8 @@ function AppMain() {
               {me && <span className="ml-3 shrink-0 truncate text-xs text-slate-400">{myEmp?.name || who.username}</span>}
               {me && !isMgr && <span className="ml-3 hidden select-none font-mono text-[10px] text-slate-600 md:inline">{APP_VERSION}</span>}
               {me && !isMgr && (
-                <button onClick={signOut} title="Thoát" className="ml-2 hidden h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-900 hover:text-rose-400 md:grid">
-                  <LogOut size={16} />
+                <button onClick={signOut} title="Thoát khỏi app" className="ml-3 hidden h-9 items-center gap-1.5 rounded-lg border border-rose-900/80 bg-rose-950/50 px-3 text-sm text-rose-300 transition-colors hover:border-rose-600 hover:bg-rose-900/60 hover:text-rose-100 md:flex">
+                  <LogOut size={15} /> Thoát
                 </button>
               )}
             </div>
@@ -1756,14 +1725,14 @@ function AppMain() {
               </button>
             ))}
             <div className="my-1 h-px w-8 bg-slate-800" />
-            <button onClick={signOut} title="Thoát" className="flex w-full flex-col items-center gap-1 rounded-xl py-2.5 text-slate-500 hover:bg-slate-800 hover:text-rose-400">
+            <button onClick={signOut} title="Thoát khỏi app" className="flex w-full flex-col items-center gap-1 rounded-xl border border-rose-900/80 bg-rose-950/50 py-2.5 text-rose-300 transition-colors hover:border-rose-600 hover:bg-rose-900/60 hover:text-rose-100">
               <LogOut size={18} />
               <span className="text-[10px] leading-none">Thoát</span>
             </button>
             <div className="mt-1 select-none font-mono text-[9px] text-slate-600">{APP_VERSION}</div>
           </nav>
         )}
-        <main className={`min-w-0 flex-1 px-3 pb-28 pt-4 ${isMgr ? "md:px-0 md:pb-24 md:pt-0" : "md:mx-auto md:w-full md:max-w-[1520px] md:px-6 md:pb-24 md:pt-5"} ${epTab ? "ep" : ""}`}>
+        <main className={`min-w-0 flex-1 px-3 pb-28 pt-4 ${isMgr ? "md:px-0 md:pb-24 md:pt-0" : "md:px-6 md:pb-24 md:pt-5"}`}>
           <ConfirmDialog
             open={pendingTab !== null}
             title="Rời khỏi bảng công khi chưa lưu?"
@@ -1823,7 +1792,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
               <Icon size={19} /><span className="text-[10px] leading-none">{label}</span>
             </button>
           ))}
-          <button onClick={signOut} className="flex flex-1 flex-col items-center gap-0.5 py-2.5 text-slate-500">
+          <button onClick={signOut} className="flex flex-1 flex-col items-center gap-0.5 py-2.5 text-rose-400">
             <LogOut size={19} /><span className="text-[10px] leading-none">Thoát</span>
           </button>
         </nav>
@@ -2978,21 +2947,6 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                           </div>
                           <div className={`font-mono text-xs font-normal normal-case ${i === 6 ? "text-slate-600" : "text-slate-100"}`}>{dLabel(d)}</div>
                         </div>
-                        {/* v7.6: thanh giờ nhỏ — chuẩn (xanh) · cố gắng (tím) · OT (teal), so với giờ chuẩn của ngày */}
-                        {!admin && (() => {
-                          const tg = minHoursFor(d, hoursCfg, holidaySet) || 0;
-                          const st = stdHrs(d), ef = effortHrs(d), ot = otHrs(d);
-                          const mx = Math.max(tg, st + ef + ot);
-                          if (!mx) return <div className="mx-auto mt-1.5 h-1 w-10 rounded-full bg-slate-800/60" />;
-                          const w = (x) => `${(x / mx) * 100}%`;
-                          return (
-                            <div className="mx-auto mt-1.5 flex h-1 w-10 overflow-hidden rounded-full bg-slate-800">
-                              <div className="h-full bg-blue-400 transition-all duration-500" style={{ width: w(st) }} />
-                              <div className="h-full bg-violet-400 transition-all duration-500" style={{ width: w(ef) }} />
-                              <div className="h-full bg-teal-400 transition-all duration-500" style={{ width: w(ot) }} />
-                            </div>
-                          );
-                        })()}
                       </th>
                     );
                   })}
