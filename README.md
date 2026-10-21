@@ -35,7 +35,7 @@ File thay đổi: `src/App.jsx`, `index.html`, `package.json`, `README.md`, `pub
 
 - **Logo ngang** (nền trong suốt): màn đăng nhập (logo lớn) và góc trái thanh trên cùng sau khi đăng nhập — chỉ trên máy tính.
   Điện thoại giữ chữ ARTIUS như cũ.
-- **Icon app** (đồng hồ, nền #1E2124): icon khi cài app trên máy tính và điện thoại (Desktop, Start menu, Taskbar, màn hình chính),
+- **Icon app** (đồng hồ trắng, cung giờ màu teal, nền xanh đen bo góc): icon khi cài app trên máy tính và điện thoại (Desktop, Start menu, Taskbar, màn hình chính),
   icon trên tab trình duyệt, icon thông báo nhắc. `badge-96.png` là bản trắng một màu cho thanh trạng thái Android.
 - Máy đã cài app từ trước: Chrome/Edge tự đổi icon sau vài ngày (hoặc khi mở app lần sau). Muốn đổi ngay thì gỡ app rồi cài lại;
   iPhone thì xoá icon khỏi màn hình chính rồi "Thêm vào màn hình chính" lại.
