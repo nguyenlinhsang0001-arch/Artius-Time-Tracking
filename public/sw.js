@@ -9,8 +9,8 @@ self.addEventListener("push", (e) => {
   try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data ? e.data.text() : "" }; }
   e.waitUntil(self.registration.showNotification(d.title || "ARTIUS", {
     body: d.body || "Bạn còn ngày chưa gửi giờ công.",
-    icon: "/icon-192.png",
-    badge: "/badge-96.png",
+    icon: "/icon-192.png?v=74",
+    badge: "/badge-96.png?v=74",
     tag: "artius-nhac",          // cùng tag: thông báo mới thay thông báo cũ, không xếp chồng
     renotify: true,
     requireInteraction: true,    // trên máy tính: giữ trên màn hình tới khi người dùng bấm hoặc đóng
