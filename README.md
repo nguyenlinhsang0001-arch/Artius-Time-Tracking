@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v7.3 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v7.4 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v7.3`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v7.4`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,20 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v7.4 — Logo và icon ARTIUS Time Tracking
+
+**Không đổi database** — bỏ qua bước 1 (SQL). Làm v7.3 trước (bản này nối tiếp v7.3).
+File thay đổi: `src/App.jsx`, `index.html`, `package.json`, `README.md`, `public/manifest.webmanifest`,
+`public/logo-artius-time.svg`, `public/favicon.svg`, `public/favicon-32.png` (mới), `public/icon-192.png`, `public/icon-512.png`,
+`public/icon-maskable-512.png`, `public/apple-touch-icon.png`, `public/icon-96.png`, `public/badge-96.png` (thay ảnh cũ).
+
+- **Logo ngang** (nền trong suốt): màn đăng nhập (logo lớn) và góc trái thanh trên cùng sau khi đăng nhập — chỉ trên máy tính.
+  Điện thoại giữ chữ ARTIUS như cũ.
+- **Icon app** (đồng hồ, nền #1E2124): icon khi cài app trên máy tính và điện thoại (Desktop, Start menu, Taskbar, màn hình chính),
+  icon trên tab trình duyệt, icon thông báo nhắc. `badge-96.png` là bản trắng một màu cho thanh trạng thái Android.
+- Máy đã cài app từ trước: Chrome/Edge tự đổi icon sau vài ngày (hoặc khi mở app lần sau). Muốn đổi ngay thì gỡ app rồi cài lại;
+  iPhone thì xoá icon khỏi màn hình chính rồi "Thêm vào màn hình chính" lại.
 
 ## Mới ở v7.3 — Phân quyền theo phòng ban (4 cấp)
 

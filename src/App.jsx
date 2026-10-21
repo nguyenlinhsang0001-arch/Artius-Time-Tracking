@@ -216,7 +216,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v7.3";
+const APP_VERSION = "v7.4";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1688,8 +1688,10 @@ function AppMain() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3 md:px-6 md:py-3.5">
-          <div className="flex min-w-0 flex-col md:flex-row md:items-baseline md:gap-3">
-            <span className="font-mono text-sm tracking-[0.3em] text-slate-100">ARTIUS</span>
+          <div className="flex min-w-0 flex-col md:flex-row md:items-center md:gap-4">
+            {/* v7.4: máy tính hiện logo ARTIUS Time Tracking (đã đăng nhập; màn đăng nhập có logo lớn riêng); điện thoại giữ chữ ARTIUS */}
+            {me && <img src="/logo-artius-time.svg" alt="ARTIUS Time Tracking" className="hidden h-9 w-auto shrink-0 md:block" />}
+            <span className={`font-mono text-sm tracking-[0.3em] text-slate-100 ${me ? "md:hidden" : ""}`}>ARTIUS</span>
             <span className="truncate text-xs text-slate-500">{me ? pageTitle : "Quản lý giờ công dự án"}</span>
           </div>
           <div className="flex min-w-0 items-center">
@@ -1902,6 +1904,8 @@ function SignIn({ onSignedIn, flash }) {
 
   return (
     <div className="mx-auto mt-6 max-w-md md:mt-10">
+      {/* v7.4: logo lớn trên màn đăng nhập (máy tính) */}
+      <img src="/logo-artius-time.svg" alt="ARTIUS Time Tracking" className="mx-auto mb-8 hidden h-24 w-auto md:block" />
       <div className="rounded-xl border border-slate-800 bg-slate-900 p-5 md:p-6">
         <h1 className="text-lg font-semibold text-slate-50">{mode === "setup" ? "Tạo tài khoản quản lý" : "Đăng nhập"}</h1>
         {mode === null ? (
