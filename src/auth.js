@@ -21,11 +21,14 @@ const whoOf = (session) => {
   const u = session?.user;
   if (!u) return null;
   const m = u.app_metadata || {};
+  // v7.3: cấp quyền emp | head | bod | admin. Tài khoản tạo trước v7.3 chỉ có artius_admin.
+  const access = ["emp", "head", "bod", "admin"].includes(m.artius_access) ? m.artius_access : m.artius_admin === true ? "admin" : "emp";
   return {
     userId: u.id,
     username: m.username || String(u.email || "").split("@")[0],
     empId: m.emp_id || null,
-    admin: m.artius_admin === true,
+    access,
+    admin: access === "admin",
   };
 };
 

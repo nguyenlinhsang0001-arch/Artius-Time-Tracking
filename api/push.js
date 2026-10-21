@@ -41,7 +41,7 @@ async function requireMember(sb, req) {
   if (!token) throw new HttpError(401, "Chưa đăng nhập.");
   const { data, error } = await sb.auth.getUser(token);
   if (error || !data?.user) throw new HttpError(401, "Phiên đăng nhập hết hạn. Đăng nhập lại.");
-  const { data: row, error: e2 } = await sb.from("artius_accounts").select("id,emp_id,disabled,is_admin").eq("id", data.user.id).maybeSingle();
+  const { data: row, error: e2 } = await sb.from("artius_accounts").select("*").eq("id", data.user.id).maybeSingle();
   if (e2) throw dbFail("Đọc tài khoản", e2);
   if (!row || row.disabled) throw new HttpError(403, "Tài khoản không hợp lệ hoặc đã bị khoá.");
   return row;
@@ -121,8 +121,18 @@ const actions = {
   async nudge(sb, req, body) {
     vapidReady();
     const me = await requireMember(sb, req);
-    if (!me.is_admin) throw new HttpError(403, "Chỉ tài khoản quản lý được nhắc nộp.");
     const ids = [...new Set((Array.isArray(body.empIds) ? body.empIds : []).map(String).filter(Boolean))].slice(0, 300);
+    // v7.3: Admin nhắc được mọi người; Trưởng phòng chỉ nhắc nhân viên cùng phòng; BOD và nhân viên không nhắc được
+    const level = me.access || (me.is_admin ? "admin" : "emp");
+    if (level === "head") {
+      const { data: cr, error: ec } = await sb.from("artius_config").select("value").eq("id", "main").maybeSingle();
+      if (ec) throw dbFail("Đọc thiết lập", ec);
+      let emps = [];
+      try { emps = JSON.parse(cr?.value || "{}").employees || []; } catch { emps = []; }
+      const dept = emps.find((e) => e.id === me.emp_id)?.dept || "";
+      const mine = new Set(emps.filter((e) => dept && e.dept === dept && e.id !== me.emp_id).map((e) => e.id));
+      if (!dept || ids.some((id) => !mine.has(id))) throw new HttpError(403, "Trưởng phòng chỉ nhắc được nhân viên trong phòng ban của mình.");
+    } else if (level !== "admin") throw new HttpError(403, "Tài khoản này không được nhắc nộp.");
     const from = String(body.from || ""), to = String(body.to || "");
     if (!ids.length) throw new HttpError(400, "Chưa chọn người cần nhắc.");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) throw new HttpError(400, "Kỳ nhắc không hợp lệ.");

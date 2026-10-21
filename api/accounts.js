@@ -11,7 +11,11 @@
      status      (không cần đăng nhập)  -> { hasAccounts, needPin }
      bootstrap   (không cần đăng nhập)  -> tạo tài khoản quản lý đầu tiên; chỉ chạy khi chưa có
                                            tài khoản nào và phải nhập đúng mã PIN quản lý cũ
-     list / save / setDisabled / remove -> chỉ tài khoản có quyền quản lý
+     list / save / setDisabled / remove -> chỉ tài khoản Admin
+
+   v7.3 — cấp quyền (cột access): emp = Nhân viên, head = Trưởng phòng, bod = BOD (chỉ xem), admin = Admin.
+          is_admin luôn ghi bằng (access === "admin") để các hàm cũ vẫn đúng. Trưởng phòng phải gắn với một nhân sự
+          (phòng ban lấy theo nhân sự đó).
    ============================================================ */
 import { createClient } from "@supabase/supabase-js";
 
@@ -24,6 +28,8 @@ const DB_KEY = "artius:db:v1";
 const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,29}$/;
 const PASSWORD_MIN = 6;
 const BAN_FOREVER = "876000h"; // ~100 năm
+const LEVELS = ["emp", "head", "bod", "admin"];
+const accessOf = (r) => (LEVELS.includes(r?.access) ? r.access : r?.is_admin ? "admin" : "emp");
 
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -34,8 +40,15 @@ const emailOf = (username) => `${username}@${LOGIN_DOMAIN}`;
 const normUsername = (s) => String(s || "").trim().toLowerCase();
 const publicRow = (r) => ({
   id: r.id, empId: r.emp_id, username: r.username, password: r.password,
-  isAdmin: !!r.is_admin, disabled: !!r.disabled,
+  access: accessOf(r), isAdmin: accessOf(r) === "admin", disabled: !!r.disabled,
 });
+/* v7.3: nhận access; bản app cũ chỉ gửi isAdmin thì quy về admin / emp */
+function levelOf(body, empId) {
+  const a = LEVELS.includes(body.access) ? body.access : body.isAdmin ? "admin" : "emp";
+  if (a === "head" && !empId) throw bad("Trưởng phòng phải gắn với một nhân sự (để biết phòng ban).");
+  if (a === "emp" && !empId) throw bad("Tài khoản không gắn nhân sự chỉ được là BOD hoặc Admin.");
+  return a;
+}
 
 function checkCredentials(username, password) {
   if (!USERNAME_RE.test(username)) {
@@ -57,20 +70,21 @@ async function requireAdmin(sb, req) {
   // Bảng tài khoản là nguồn quyết định quyền, không tin riêng nội dung token
   const { data: row, error: e2 } = await sb.from(ACCOUNTS).select("*").eq("id", data.user.id).maybeSingle();
   if (e2) throw dbFail("Đọc tài khoản", e2);
-  if (!row || row.disabled || !row.is_admin) throw new HttpError(403, "Tài khoản không có quyền quản lý.");
+  if (!row || row.disabled || accessOf(row) !== "admin") throw new HttpError(403, "Chỉ tài khoản Admin được quản lý tài khoản.");
   return row;
 }
 
-async function createAccount(sb, { empId, username, password, isAdmin }) {
+async function createAccount(sb, { empId, username, password, access }) {
+  const isAdmin = access === "admin";
   const { data, error } = await sb.auth.admin.createUser({
     email: emailOf(username), password, email_confirm: true,
-    app_metadata: { username, emp_id: empId || null, artius_admin: !!isAdmin },
+    app_metadata: { username, emp_id: empId || null, artius_admin: isAdmin, artius_access: access },
   });
   if (error || !data?.user) {
     if (/already|registered|exists/i.test(error?.message || "")) throw bad("Tên đăng nhập đã có người dùng.");
     throw dbFail("Tạo tài khoản", error);
   }
-  const row = { id: data.user.id, emp_id: empId || null, username, password, is_admin: !!isAdmin, disabled: false };
+  const row = { id: data.user.id, emp_id: empId || null, username, password, is_admin: isAdmin, access, disabled: false };
   const { error: e2 } = await sb.from(ACCOUNTS).insert(row);
   if (e2) {
     await sb.auth.admin.deleteUser(data.user.id); // không để lại tài khoản mồ côi
@@ -95,7 +109,7 @@ const actions = {
     if (pin && String(body.pin || "") !== pin) throw new HttpError(403, "Sai mã PIN quản lý.");
     const username = normUsername(body.username);
     checkCredentials(username, body.password);
-    await createAccount(sb, { empId: null, username, password: body.password, isAdmin: true });
+    await createAccount(sb, { empId: null, username, password: body.password, access: "admin" });
     return { ok: true };
   },
 
@@ -111,7 +125,6 @@ const actions = {
     const me = await requireAdmin(sb, req);
     const username = normUsername(body.username);
     checkCredentials(username, body.password);
-    const isAdmin = !!body.isAdmin;
     const empId = body.empId || null;
 
     if (!body.id) {
@@ -123,13 +136,15 @@ const actions = {
       const { data: taken, error: e0 } = await sb.from(ACCOUNTS).select("id").eq("username", username).maybeSingle();
       if (e0) throw dbFail("Kiểm tra tên đăng nhập", e0);
       if (taken) throw bad("Tên đăng nhập đã có người dùng.");
-      return { account: publicRow(await createAccount(sb, { empId, username, password: body.password, isAdmin })) };
+      return { account: publicRow(await createAccount(sb, { empId, username, password: body.password, access: levelOf(body, empId) })) };
     }
 
     const { data: cur, error } = await sb.from(ACCOUNTS).select("*").eq("id", body.id).maybeSingle();
     if (error) throw dbFail("Đọc tài khoản", error);
     if (!cur) throw new HttpError(404, "Không tìm thấy tài khoản.");
-    if (cur.id === me.id && !isAdmin) throw bad("Không thể tự bỏ quyền quản lý của chính mình.");
+    const access = levelOf(body, cur.emp_id);
+    const isAdmin = access === "admin";
+    if (cur.id === me.id && !isAdmin) throw bad("Không thể tự bỏ quyền Admin của chính mình.");
     if (username !== cur.username) {
       const { data: taken, error: e0 } = await sb.from(ACCOUNTS).select("id").eq("username", username).maybeSingle();
       if (e0) throw dbFail("Kiểm tra tên đăng nhập", e0);
@@ -137,10 +152,10 @@ const actions = {
     }
     const { error: e1 } = await sb.auth.admin.updateUserById(cur.id, {
       email: emailOf(username), password: body.password, email_confirm: true,
-      app_metadata: { username, emp_id: cur.emp_id, artius_admin: isAdmin },
+      app_metadata: { username, emp_id: cur.emp_id, artius_admin: isAdmin, artius_access: access },
     });
     if (e1) throw dbFail("Cập nhật tài khoản", e1);
-    const patch = { username, password: body.password, is_admin: isAdmin, updated_at: new Date().toISOString() };
+    const patch = { username, password: body.password, is_admin: isAdmin, access, updated_at: new Date().toISOString() };
     const { error: e2 } = await sb.from(ACCOUNTS).update(patch).eq("id", cur.id);
     if (e2) throw dbFail("Lưu tài khoản", e2);
     return { account: publicRow({ ...cur, ...patch }) };

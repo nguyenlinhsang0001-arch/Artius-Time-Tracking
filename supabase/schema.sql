@@ -1,7 +1,9 @@
--- ARTIUS — Quản lý giờ công v3.1
+-- ARTIUS — Quản lý giờ công v7.3
 -- Chạy trong Supabase → SQL Editor. Chạy lại nhiều lần được, không xoá dữ liệu.
 -- Nâng cấp từ bất kỳ bản v1.7 → v3.0: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v3.1.
 -- (Lịch gửi nhắc nhở nằm riêng ở supabase/cron.sql — chạy sau file này, xem README.)
+-- (v7.3 thêm mục 16: cấp quyền 4 mức — Nhân viên / Trưởng phòng / BOD / Admin. Trưởng phòng xem và sửa bảng công
+--  của nhân viên CÙNG PHÒNG BAN; BOD xem toàn công ty, không sửa gì; Admin toàn quyền. Sửa mục 7, 8d, 9, 13, 14.)
 -- (v5.6 sửa mục 14: artius_phase_detail trả thêm "et" — giờ theo nhân sự × tác vụ, cho thẻ tác vụ khi rê chuột vào tên nhân sự.)
 -- (v4.7 thêm mục 14: hàm artius_phase_detail — chi tiết theo tuần / nhân sự / tác vụ của từng giai đoạn cho Dashboard.)
 -- (v2.1 thêm mục 9: hàm artius_usage tính tổng giờ toàn bộ dữ liệu cho tab Dự án và tab Thiết lập.)
@@ -33,6 +35,14 @@ create table if not exists public.artius_accounts (
   disabled   boolean not null default false,
   updated_at timestamptz not null default now()
 );
+-- v7.3: cấp quyền của tài khoản. emp = nhân viên, head = trưởng phòng, bod = ban giám đốc (chỉ xem), admin = toàn quyền.
+--       is_admin vẫn giữ và luôn bằng (access = 'admin') — hàm server ghi cả hai.
+alter table public.artius_accounts add column if not exists access text not null default 'emp';
+alter table public.artius_accounts drop constraint if exists artius_accounts_access_chk;
+alter table public.artius_accounts add constraint artius_accounts_access_chk check (access in ('emp', 'head', 'bod', 'admin'));
+-- tài khoản quản lý có từ trước v7.3 thành Admin; chạy lại nhiều lần vẫn đúng
+update public.artius_accounts set access = 'admin' where is_admin and access <> 'admin';
+update public.artius_accounts set is_admin = (access = 'admin') where is_admin is distinct from (access = 'admin');
 
 -- 3. Hai bảng mới ở v1.8
 --    artius_config: một dòng duy nhất (id = 'main') chứa thiết lập: nhân sự, dự án, tác vụ, vai trò, ngày lễ…
@@ -74,6 +84,37 @@ revoke all on function public.artius_my_emp()    from public, anon;
 grant execute on function public.artius_is_member() to authenticated, service_role;
 grant execute on function public.artius_is_admin()  to authenticated, service_role;
 grant execute on function public.artius_my_emp()    to authenticated, service_role;
+
+-- 4b. v7.3 — Phạm vi theo cấp quyền.
+--     artius_view_all():    Admin hoặc BOD — xem bảng công toàn công ty.
+--     artius_managed_emps(): danh sách mã nhân sự mà trưởng phòng đang đăng nhập được xem và sửa bảng công:
+--                            mọi nhân sự cùng phòng ban (theo nhân sự gắn với tài khoản, ở artius_config), TRỪ chính mình
+--                            — bảng công của chính trưởng phòng vẫn theo luật nhân viên (gửi là khoá, không tự mở khoá).
+--                            Người không phải trưởng phòng: mảng rỗng. Đổi phòng ban của nhân sự ở tab Nhân sự là phạm vi đổi theo ngay.
+create or replace function public.artius_view_all()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.artius_accounts a where a.id = auth.uid() and not a.disabled and a.access in ('admin', 'bod'));
+$$;
+create or replace function public.artius_managed_emps()
+returns text[] language sql stable security definer set search_path = public as $$
+  with me as (
+    select a.emp_id from public.artius_accounts a
+    where a.id = auth.uid() and not a.disabled and a.access = 'head' and a.emp_id is not null
+  ),
+  emps as (
+    select e from public.artius_config c,
+         jsonb_array_elements(case when jsonb_typeof(c.value::jsonb -> 'employees') = 'array' then c.value::jsonb -> 'employees' else '[]'::jsonb end) as e
+    where c.id = 'main'
+  ),
+  dept as (select e ->> 'dept' as d from emps, me where e ->> 'id' = me.emp_id)
+  select coalesce(array_agg(e ->> 'id'), '{}'::text[])
+  from emps, dept, me
+  where coalesce(dept.d, '') <> '' and e ->> 'dept' = dept.d and e ->> 'id' <> me.emp_id;
+$$;
+revoke all on function public.artius_view_all()     from public, anon;
+revoke all on function public.artius_managed_emps() from public, anon;
+grant execute on function public.artius_view_all()     to authenticated, service_role;
+grant execute on function public.artius_managed_emps() to authenticated, service_role;
 
 -- 5. Chuyển dữ liệu từ bảng cũ sang bảng mới. Chỉ chạy khi bảng mới chưa có thiết lập,
 --    nên chạy lại file này sau khi đã dùng v1.8 sẽ KHÔNG ghi đè dữ liệu mới.
@@ -258,7 +299,9 @@ declare
   dk text;
   pid text;
 begin
-  if auth.uid() is not null and not public.artius_is_admin() then
+  -- v7.3: trưởng phòng sửa bảng công nhân viên cùng phòng như quản lý (mở khoá, sửa ngày đã gửi…)
+  if auth.uid() is not null and not public.artius_is_admin()
+     and not (case when tg_op = 'DELETE' then old.emp_id else new.emp_id end) = any (public.artius_managed_emps()) then
     /* v3.4 — App ghi bằng upsert (INSERT … ON CONFLICT DO UPDATE). Postgres chạy trigger BEFORE INSERT trước khi biết
        dòng đã tồn tại, nên ở bước INSERT phải lấy bản đang có trên server làm "bản cũ"; nếu coi là rỗng thì giờ sẵn có
        ở ngày chưa tới / dự án đã đóng / giai đoạn chưa mở bị hiểu nhầm là vừa thêm và bị chặn sai. */
@@ -359,15 +402,35 @@ create policy "artius_config_admin_update" on public.artius_config
   using ((select public.artius_is_admin()))
   with check ((select public.artius_is_admin()));
 
--- 8d. Bảng công: nhân sự chỉ đọc/ghi dòng của chính mình; tài khoản quản lý đọc/ghi tất cả
+-- 8d. Bảng công.
+--     v7.3: Xem — Admin, BOD: tất cả · trưởng phòng: của mình + nhân viên cùng phòng · nhân viên: của mình.
+--           Sửa — Admin: tất cả · trưởng phòng: của mình + nhân viên cùng phòng · nhân viên: của mình · BOD: chỉ của mình (nếu có gắn nhân sự).
 revoke all on public.artius_ts from anon, authenticated;
 grant select, insert, update, delete on public.artius_ts to authenticated;
 grant all on public.artius_ts to service_role;
 drop policy if exists "artius_ts_own_or_admin" on public.artius_ts;
-create policy "artius_ts_own_or_admin" on public.artius_ts
-  for all to authenticated
-  using ((select public.artius_is_admin()) or emp_id = (select public.artius_my_emp()))
-  with check ((select public.artius_is_admin()) or emp_id = (select public.artius_my_emp()));
+drop policy if exists "artius_ts_read" on public.artius_ts;
+drop policy if exists "artius_ts_insert" on public.artius_ts;
+drop policy if exists "artius_ts_update" on public.artius_ts;
+drop policy if exists "artius_ts_delete" on public.artius_ts;
+create policy "artius_ts_read" on public.artius_ts
+  for select to authenticated
+  using ((select public.artius_view_all()) or emp_id = (select public.artius_my_emp())
+         or emp_id in (select unnest(public.artius_managed_emps())));
+create policy "artius_ts_insert" on public.artius_ts
+  for insert to authenticated
+  with check ((select public.artius_is_admin()) or emp_id = (select public.artius_my_emp())
+              or emp_id in (select unnest(public.artius_managed_emps())));
+create policy "artius_ts_update" on public.artius_ts
+  for update to authenticated
+  using ((select public.artius_is_admin()) or emp_id = (select public.artius_my_emp())
+         or emp_id in (select unnest(public.artius_managed_emps())))
+  with check ((select public.artius_is_admin()) or emp_id = (select public.artius_my_emp())
+              or emp_id in (select unnest(public.artius_managed_emps())));
+create policy "artius_ts_delete" on public.artius_ts
+  for delete to authenticated
+  using ((select public.artius_is_admin()) or emp_id = (select public.artius_my_emp())
+         or emp_id in (select unnest(public.artius_managed_emps())));
 
 -- 9. v2.1 — Tổng giờ theo dự án × giai đoạn trên TOÀN BỘ bảng công.
 --    App chỉ tải sẵn 6 tháng gần nhất, nên con số "từ trước tới nay" (tab Dự án, tab Thiết lập → Giai đoạn) hỏi hàm này.
@@ -384,7 +447,7 @@ language sql stable security definer set search_path = public as $$
        cross join lateral (select t.value::jsonb as j) as v
        cross join lateral jsonb_array_elements(case when jsonb_typeof(v.j -> 'rows') = 'array' then v.j -> 'rows' else '[]'::jsonb end) as rw
        cross join lateral jsonb_each(case when jsonb_typeof(rw -> 'days') = 'object' then rw -> 'days' else '{}'::jsonb end) as d
-  where public.artius_is_admin()
+  where public.artius_view_all()   -- v7.3: Admin và BOD
     and jsonb_typeof(d.value) = 'number'
     and (d.value #>> '{}')::numeric > 0
   group by 1, 2;
@@ -453,10 +516,11 @@ grant all on public.artius_push     to service_role;
 grant all on public.artius_push_log to service_role;
 drop policy if exists "artius_push_admin_read" on public.artius_push;
 drop policy if exists "artius_push_log_admin_read" on public.artius_push_log;
+-- v7.3: BOD xem được như Admin; trưởng phòng xem được của nhân viên cùng phòng (cột Nhắc ở Bảng công)
 create policy "artius_push_admin_read" on public.artius_push
-  for select to authenticated using ((select public.artius_is_admin()));
+  for select to authenticated using ((select public.artius_view_all()) or emp_id in (select unnest(public.artius_managed_emps())));
 create policy "artius_push_log_admin_read" on public.artius_push_log
-  for select to authenticated using ((select public.artius_is_admin()));
+  for select to authenticated using ((select public.artius_view_all()) or emp_id in (select unnest(public.artius_managed_emps())));
 
 -- 14. v4.7 — Chi tiết từng giai đoạn cho Dashboard quản lý (rê chuột / bấm vào ô giai đoạn ở "Tiến độ dự án").
 --     Trả về MỘT khối JSON cho mọi cặp dự án × giai đoạn (chỉ giờ của ngày đã gửi, trên toàn bộ bảng công):
@@ -481,7 +545,7 @@ language sql stable security definer set search_path = public as $$
          cross join lateral (select t.value::jsonb as j) as v
          cross join lateral jsonb_array_elements(case when jsonb_typeof(v.j -> 'rows') = 'array' then v.j -> 'rows' else '[]'::jsonb end) as rw
          cross join lateral jsonb_each(case when jsonb_typeof(rw -> 'days') = 'object' then rw -> 'days' else '{}'::jsonb end) as d
-    where public.artius_is_admin()
+    where public.artius_view_all()   -- v7.3: Admin và BOD
       and coalesce(rw ->> 'projectId', '') not in ('', '__none__')
       and d.key ~ '^\d{4}-\d{2}-\d{2}$'
       and jsonb_typeof(d.value) = 'number'

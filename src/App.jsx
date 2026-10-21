@@ -216,7 +216,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v7.2";
+const APP_VERSION = "v7.3";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1489,7 +1489,7 @@ function AppMain() {
   /* Vào app sau khi có danh tính: tải dữ liệu rồi mở đúng màn hình theo quyền */
   const enter = useCallback(async (w) => {
     setBooting(true);
-    setWho(w); setTab(w.admin ? "dash" : "ts");
+    setWho(w); setTab(w.access === "admin" || w.access === "bod" ? "dash" : "ts");
     await openData();
     setBooting(false);
   }, [openData]);
@@ -1527,7 +1527,7 @@ function AppMain() {
     const tick = () => { if (visible() && Date.now() - last < IDLE) pullTs(); };
     const wake = () => { const idle = Date.now() - last >= IDLE; last = Date.now(); if (idle && visible()) pullTs(); };
     const now = () => { last = Date.now(); if (visible()) pullTs(); };
-    const id = setInterval(tick, who.admin ? 30000 : 60000);
+    const id = setInterval(tick, who.access !== "emp" ? 30000 : 60000);   // v7.3: Admin / BOD / Trưởng phòng 30 giây
     const probe = setInterval(() => { if (!NET_OK && visible()) pullTs(); }, 10000);
     document.addEventListener("visibilitychange", now);
     window.addEventListener("focus", now);
@@ -1539,7 +1539,7 @@ function AppMain() {
       document.removeEventListener("visibilitychange", now); window.removeEventListener("focus", now); window.removeEventListener("online", now);
       window.removeEventListener("pointerdown", wake); window.removeEventListener("keydown", wake);
     };
-  }, [who?.userId, who?.admin, !!cfg]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [who?.userId, who?.access, !!cfg]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveCfg = useCallback(async (next) => {
     next = withIdleTask(next);   // v7.2: Chờ việc luôn có mặt và đứng đầu
@@ -1578,13 +1578,21 @@ function AppMain() {
     setWho(null); setCfg(null); setLoadFailed(false); setSheetDirty(false); setPendingTab(null);
   };
 
-  /* Danh tính dùng trong app, suy ra từ tài khoản:
-     · tài khoản có quyền quản lý -> khu vực quản lý
-     · tài khoản thường -> bảng công của đúng nhân sự gắn với tài khoản đó */
+  /* Danh tính dùng trong app, suy ra từ tài khoản (v7.3: 4 cấp quyền):
+     · Admin -> khu vực quản lý, toàn quyền
+     · BOD -> Dashboard + Bảng công toàn công ty, chỉ xem (gắn nhân sự thì chấm công của mình như nhân viên)
+     · Trưởng phòng -> chấm công của mình + Bảng công nhân viên cùng phòng ban (xem và sửa)
+     · Nhân viên -> bảng công của đúng nhân sự gắn với tài khoản đó */
   const myEmp = who?.empId && cfg ? cfg.employees.find((e) => e.id === who.empId) || null : null;
   const me = !who || !cfg ? null
-    : who.admin ? { type: "admin", empId: myEmp?.id || null }
-    : myEmp ? { type: "emp", empId: myEmp.id } : null;
+    : who.access === "admin" ? { type: "admin", empId: myEmp?.id || null }
+    : who.access === "bod" ? { type: "bod", empId: myEmp?.id || null }
+    : myEmp ? { type: who.access === "head" ? "head" : "emp", empId: myEmp.id, dept: myEmp.dept || "" } : null;
+  // trưởng phòng: Bảng công chỉ gồm nhân viên cùng phòng (trừ chính mình) — database cũng chỉ cho đọc/ghi đúng phạm vi này
+  const headCfg = useMemo(() => (me?.type === "head" && cfg
+    ? { ...cfg, employees: cfg.employees.filter((e) => me.dept && e.dept === me.dept && e.id !== me.empId) } : null),
+  [cfg, me?.type, me?.dept, me?.empId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const bodSave = useCallback(async () => { flash("Tài khoản BOD chỉ xem, không sửa được.", "err"); return false; }, [flash]);
   const orphan = !!who && !!cfg && !me;   // tài khoản thường nhưng nhân sự gắn kèm đã bị xoá
 
   /* v4.1 — Bấm thông báo nhắc khi app ĐANG MỞ: service worker gửi tin sang đây thay vì tải lại trang.
@@ -1618,6 +1626,11 @@ function AppMain() {
   const railItems = me?.type === "admin"
     ? [["dash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList], ["proj", "Dự án", FolderKanban],
        ["emp", "Nhân sự", Users], ["task", "Tác vụ", ListChecks], ["set", "Thiết lập", Settings]]
+    : me?.type === "bod"
+      ? [["dash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList],
+         ...(me.empId ? [["ts", "Chấm công", Clock], ["eset", "Cài đặt", Settings]] : [])]
+    : me?.type === "head"
+      ? [["ts", "Chấm công", Clock], ["edash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList], ["eset", "Cài đặt", Settings]]
     : me ? [["ts", "Chấm công", Clock], ["edash", "Dashboard", LayoutDashboard], ["eset", "Cài đặt", Settings]] : [];
 
   const pageTitle = { dash: "Dashboard giờ công", sheet: "Bảng công nhân sự", proj: "Dự án", emp: "Nhân sự", task: "Tác vụ công việc theo vai trò", set: "Thiết lập", ts: "", edash: "Dashboard cá nhân", eset: "Cài đặt cá nhân" }[tab];
@@ -1689,7 +1702,7 @@ function AppMain() {
           <ConfirmDialog
             open={pendingTab !== null}
             title="Rời khỏi bảng công khi chưa lưu?"
-desc={me?.type === "admin" ? "Giờ vừa sửa sẽ mất. Bấm Giữ lại để quay về bảng công và bấm Lưu trước." : "Giờ bạn vừa nhập chưa gửi nên sẽ mất. Bấm Giữ lại để quay về bảng công và bấm Gửi trước."}
+desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ vừa sửa sẽ mất. Bấm Giữ lại để quay về bảng công và bấm Lưu trước." : "Giờ bạn vừa nhập chưa gửi nên sẽ mất. Bấm Giữ lại để quay về bảng công và bấm Gửi trước."}
             confirmLabel="Rời đi, bỏ thay đổi"
             onConfirm={() => { setSheetDirty(false); setTab(pendingTab); setPendingTab(null); }}
             onCancel={() => setPendingTab(null)}
@@ -1708,6 +1721,14 @@ desc={me?.type === "admin" ? "Giờ vừa sửa sẽ mất. Bấm Giữ lại đ
                 </div>
               </div>
             )
+            : me.type === "bod" ? (
+              <>
+                {tab === "dash" && <Dashboard cfg={cfg} saveCfg={bodSave} flash={flash} />}
+                {tab === "sheet" && <AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} readOnly />}
+                {tab === "ts" && me.empId && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} />}
+                {tab === "eset" && me.empId && <EmployeeSettings cfg={cfg} empId={me.empId} />}
+              </>
+            )
             : me.type === "admin" ? (
               <>
                 {tab === "dash" && <Dashboard cfg={cfg} saveCfg={saveCfg} flash={flash} />}
@@ -1722,6 +1743,7 @@ desc={me?.type === "admin" ? "Giờ vừa sửa sẽ mất. Bấm Giữ lại đ
                 {tab === "ts" && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} />}
                 {tab === "edash" && <EmployeeDashboard cfg={cfg} empId={me.empId} onGoTimesheet={(mon) => { setTsMonday(mon || null); setTab("ts"); }} />}
                 {tab === "eset" && <EmployeeSettings cfg={cfg} empId={me.empId} />}
+                {tab === "sheet" && me.type === "head" && headCfg && <AdminTimesheet cfg={headCfg} flash={flash} onDirtyChange={setSheetDirty} oneDept />}
               </>
             )}
         </main>
@@ -3586,7 +3608,9 @@ const saveDayTs = async (empId, d, vals) => {
   return ok;
 };
 
-function TimesheetBoard({ cfg, flash, onDirtyChange }) {
+/* v7.3 — readOnly: BOD chỉ xem (không sửa nhanh, không mở ngăn kéo, không mở khoá, không nhắc).
+          oneDept: trưởng phòng — cfg.employees đã lọc còn phòng của mình, ẩn ô chọn bộ phận. */
+function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept = false }) {
   const dataTick = useDataTick();
   const today = fmt(new Date());
   const [mode, setMode] = useState("week");                     // week | month
@@ -3846,7 +3870,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
   });
   /* v6.0 (C) — bấm một ô ngày: hộp sửa nhanh các dòng giờ của ngày đó (dòng có giờ trong tuần của ngày) */
   const openPop = (eid, d, ev) => {
-    if (d > today) return;
+    if (readOnly || d > today) return;
     const wd = weekDays(fmt(mondayOf(parseD(d)))), b = dbTs(eid, ymOf(d));
     const items = (b?.rows || []).filter((r) => wd.some((x) => Number(r.days?.[x]) > 0)).map((r) => ({
       key: tsRowKey(r), ot: isOtId(r.taskId),
@@ -3872,7 +3896,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
   };
   /* v6.0 (A) — ngăn kéo sửa cả tuần: dùng lại đúng bảng sửa của Chi tiết nhân viên (quản lý) */
   const drawerDirtyCb = useCallback((v) => { setDrawerDirty(v); onDirtyChange?.(v); }, [onDirtyChange]);
-  const openDrawer = (eid) => { setPop(null); setTip(null); setDrawer(eid); };
+  const openDrawer = (eid) => { if (readOnly) return; setPop(null); setTip(null); setDrawer(eid); };
   const closeDrawer = (force = false) => {
     if (drawerDirty && !force) { setLeaveAsk(true); return; }
     setLeaveAsk(false); setDrawer(null); setDrawerDirty(false); onDirtyChange?.(false); setLoadTick((t) => t + 1);
@@ -3902,8 +3926,8 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
   );
   const NameCell = ({ e }) => (
     <td className="sticky left-0 z-10 border-b border-slate-800/70 bg-slate-900 px-3 py-1.5 md:px-4">
-      <button onClick={() => { if (mode === "month") setMonday(fmt(mondayOf(ym === ymOf(today) ? new Date() : parseD(`${ym}-01`)))); openDrawer(e.id); }} title="Sửa giờ công tuần này" className="block w-full min-w-[150px] text-left">
-        <span className="block truncate text-sm text-slate-100 hover:text-teal-300">{e.name}</span>
+      <button onClick={() => { if (mode === "month") setMonday(fmt(mondayOf(ym === ymOf(today) ? new Date() : parseD(`${ym}-01`)))); openDrawer(e.id); }} title={readOnly ? undefined : "Sửa giờ công tuần này"} className={`block w-full min-w-[150px] text-left ${readOnly ? "cursor-default" : ""}`}>
+        <span className={`block truncate text-sm text-slate-100 ${readOnly ? "" : "hover:text-teal-300"}`}>{e.name}</span>
         <span className="block truncate text-[11px] text-slate-500">{roleTitle(e.role) || e.dept}</span>
       </button>
     </td>
@@ -3927,6 +3951,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
           ))}
           <th className="border-b border-slate-800 px-3 py-2 text-left font-normal">Tổng / chuẩn</th>
           <th className="border-b border-slate-800 px-2 py-2 font-normal">Nộp tuần</th>
+          {!readOnly && <>
           <th className="whitespace-nowrap border-b border-slate-800 px-2 py-2 font-normal" title="Mở khoá tuần cho nhân sự sửa · Sửa giờ công">Mở khoá / sửa</th>
           <th className="w-24 whitespace-nowrap border-b border-slate-800 px-2 py-2 font-normal">
             Nhắc{toNudge.length > 0 && (
@@ -3936,10 +3961,11 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
               </button>
             )}
           </th>
+          </>}
         </tr>
       </thead>
       <tbody>
-        {groups.map((g) => [DeptRow({ g, span: days.length + 5 }), ...g.items.map((e) => {
+        {groups.map((g) => [DeptRow({ g, span: days.length + (readOnly ? 3 : 5) }), ...g.items.map((e) => {
           const ws = weekState(e.id, monday), rs = reasons(e.id), at = nudged.get(e.id);
           return (
             <tr key={e.id}>
@@ -3951,7 +3977,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
                 return (
                   <td key={d} className="border-b border-slate-800/70 px-1 py-1.5">
                     <div {...dayHandlers(e.id, d)} style={DAY_ST[x.st]}
-                      className={`mx-auto flex h-11 min-w-[54px] max-w-[110px] ${d > today ? "cursor-default" : "cursor-pointer hover:brightness-125"} flex-col items-center justify-center rounded-md ${x.st === "hol" ? "text-[13px] font-medium" : "font-mono text-[13px] font-semibold"}`}>
+                      className={`mx-auto flex h-11 min-w-[54px] max-w-[110px] ${d > today || readOnly ? "cursor-default" : "cursor-pointer hover:brightness-125"} flex-col items-center justify-center rounded-md ${x.st === "hol" ? "text-[13px] font-medium" : "font-mono text-[13px] font-semibold"}`}>
                       {txt}
                       {plus > 0 && <small className="font-mono text-[10px] font-medium leading-none text-teal-400">+{fmtH(plus)}</small>}
                     </div>
@@ -3962,6 +3988,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
               <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
                 {ws === "fut" || (ws === "dr" && monday >= fmt(mondayOf(new Date()))) ? null : <span className={`whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] ${WEEK_ST[ws][1]}`}>{WEEK_ST[ws][0]}</span>}
               </td>
+              {!readOnly && <>
               <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
                 <span className="inline-flex gap-1.5">
                   {weekDays(monday).some((d) => daySent(e.id, d)) ? (
@@ -3979,6 +4006,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
                   : <button onClick={() => nudge([e.id])} disabled={nudging} title={`Nhắc nộp — ${rs.join(" · ")}`}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-amber-400 hover:bg-slate-800 disabled:opacity-40"><Bell size={15} /></button>)}
               </td>
+              </>}
             </tr>
           );
         })])}
@@ -4002,18 +4030,18 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
           </th>
           <th className="border-b border-slate-800 px-3 py-2 text-left font-normal">Tổng / chuẩn</th>
           <th className="whitespace-nowrap border-b border-slate-800 px-3 py-2 font-normal">Nộp từng tuần</th>
-          <th className="w-24 whitespace-nowrap border-b border-slate-800 px-2 py-2 font-normal">
+          {!readOnly && <th className="w-24 whitespace-nowrap border-b border-slate-800 px-2 py-2 font-normal">
             Nhắc{mToNudge.length > 0 && (
               <button onClick={() => nudgeMonth(mToNudge)} disabled={nudging} title={`Nhắc tất cả ${mToNudge.length} người còn tuần chưa nộp`}
                 className="ml-1.5 inline-flex h-8 items-center gap-1 rounded-md border border-slate-700 px-2 align-middle font-mono text-xs normal-case text-amber-400 hover:bg-slate-800 disabled:opacity-40">
                 <Bell size={12} />{mToNudge.length}
               </button>
             )}
-          </th>
+          </th>}
         </tr>
       </thead>
       <tbody>
-        {groups.map((g) => [DeptRow({ g, span: 5 }), ...g.items.map((e) => (
+        {groups.map((g) => [DeptRow({ g, span: readOnly ? 4 : 5 }), ...g.items.map((e) => (
           <tr key={e.id}>
             {NameCell({ e })}
             <td className="border-b border-slate-800/70 px-2 py-1.5">
@@ -4022,7 +4050,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
                   const x = dayInfo(e.id, d);
                   return (
                     <span key={d} {...dayHandlers(e.id, d)} style={DAY_ST_SM[x.st]}
-                      className={`relative h-[22px] w-[22px] shrink-0 rounded ${d > today ? "cursor-default" : "cursor-pointer hover:brightness-150"} ${i > 0 && parseD(d).getDay() === 1 ? "ml-2" : ""} ${d === today ? "outline outline-1 outline-offset-2 outline-slate-100/40" : ""}`}>
+                      className={`relative h-[22px] w-[22px] shrink-0 rounded ${d > today || readOnly ? "cursor-default" : "cursor-pointer hover:brightness-150"} ${i > 0 && parseD(d).getDay() === 1 ? "ml-2" : ""} ${d === today ? "outline outline-1 outline-offset-2 outline-slate-100/40" : ""}`}>
                       {x.ot + (x.st === "hol" ? x.done : 0) > 0 && <i className="absolute right-0.5 top-0.5 h-[5px] w-[5px] rounded-full bg-teal-400" />}
                     </span>
                   );
@@ -4041,7 +4069,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
                 })}
               </span>
             </td>
-            <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
+            {!readOnly && <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
               {(() => {
                 const b = monthBell(e.id), wl = b.mw.map(dLabel).join(", ");
                 if (!b.mw.length) return null;
@@ -4055,7 +4083,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
                     <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-700 px-1 font-mono text-[10px] font-semibold text-white">{b.mw.length}</span>
                   </button>);
               })()}
-            </td>
+            </td>}
           </tr>
         ))])}
       </tbody>
@@ -4109,10 +4137,10 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
           <button onClick={() => shift(1)} className={`${CTRL} w-11 rounded-md border border-slate-700 text-slate-400 hover:text-slate-100`}><ChevronRight size={16} className="mx-auto" /></button>
           {!isNow && <button onClick={() => { setMonday(fmt(mondayOf(new Date()))); setYm(ymOf(today)); }} className="ml-1 text-xs text-teal-400 hover:text-teal-300">{mode === "week" ? "Tuần này" : "Tháng này"}</button>}
         </div>
-        <select value={fDept} onChange={(e) => setFDept(e.target.value)} className={`w-full sm:w-44 ${selectCls}`} aria-label="Bộ phận">
+        {!oneDept && <select value={fDept} onChange={(e) => setFDept(e.target.value)} className={`w-full sm:w-44 ${selectCls}`} aria-label="Bộ phận">
           <option value="all">Mọi bộ phận</option>
           {DEPTS.map((d) => <option key={d}>{d}</option>)}
-        </select>
+        </select>}
         <div className="relative w-full sm:w-56">
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm nhân sự" className={`pl-9 ${inputCls}`} />
@@ -4224,13 +4252,13 @@ function TimesheetBoard({ cfg, flash, onDirtyChange }) {
 
 /* v6.1 — Bảng công (quản lý) chỉ còn Tổng quan bảng công: xem Tuần / Tháng, sửa nhanh từng ô, sửa cả tuần trong ngăn kéo.
    Bỏ tab "Chi tiết nhân viên" (ngăn kéo đã dùng đúng bảng sửa đó). */
-function AdminTimesheet({ cfg, flash, onDirtyChange }) {
+function AdminTimesheet({ cfg, flash, onDirtyChange, readOnly = false, oneDept = false }) {
   if (cfg.employees.length === 0) return (
     <Panel title="Bảng công nhân sự">
-      <p className="text-sm text-slate-500">Chưa có nhân sự nào. Thêm nhân sự ở tab Nhân sự trước đã.</p>
+      <p className="text-sm text-slate-500">{oneDept ? "Phòng ban của bạn chưa có nhân viên nào khác." : "Chưa có nhân sự nào. Thêm nhân sự ở tab Nhân sự trước đã."}</p>
     </Panel>
   );
-  return <TimesheetBoard cfg={cfg} flash={flash} onDirtyChange={onDirtyChange} />;
+  return <TimesheetBoard cfg={cfg} flash={flash} onDirtyChange={onDirtyChange} readOnly={readOnly} oneDept={oneDept} />;
 }
 
 /* --------- cảnh báo hạn chốt công (ẩn tạm trong phiên, hoặc tắt vĩnh viễn theo thiết bị) --------- */
@@ -6497,6 +6525,10 @@ function Projects({ cfg, saveCfg, flash }) {
 /* ============================ NHÂN SỰ ============================ */
 /* v1.7: kiểm tra phần tài khoản của một dòng. Trả về thông điệp lỗi, hoặc null nếu hợp lệ.
    Bỏ trống cả hai ô = không tạo tài khoản (chỉ được phép khi dòng đó chưa có tài khoản). */
+/* v7.3 — 4 cấp quyền của tài khoản */
+const ACCESS_LEVELS = [["emp", "Nhân viên"], ["head", "Trưởng phòng"], ["bod", "BOD"], ["admin", "Admin"]];
+const accessOfAcc = (a) => a?.access || (a?.isAdmin ? "admin" : "emp");
+const accessLabel = (k) => ACCESS_LEVELS.find((x) => x[0] === k)?.[1] || "";
 const accountError = (acc, d) => {
   const u = normUsername(d.username), p = d.password || "";
   if (!acc && !u && !p) return null;
@@ -6628,11 +6660,11 @@ function Employees({ cfg, saveCfg, flash }) {
 
   /* Tạo hoặc cập nhật tài khoản. Trả về true nếu xong hoặc không có gì để làm. */
   const pushAccount = async (empId, acc, d) => {
-    const u = normUsername(d.username), p = d.password || "", adm = !!d.isAdmin;
+    const u = normUsername(d.username), p = d.password || "", lv = d.access || "emp";
     if (!acc && !u) return true;
-    if (acc && acc.username === u && acc.password === p && acc.isAdmin === adm) return true;
+    if (acc && acc.username === u && acc.password === p && accessOfAcc(acc) === lv) return true;
     try {
-      const r = await accountsApi("save", { id: acc?.id, empId, username: u, password: p, isAdmin: adm });
+      const r = await accountsApi("save", { id: acc?.id, empId, username: u, password: p, access: lv, isAdmin: lv === "admin" });
       mergeAcc(r.account);
       return true;
     } catch (e) { flash(e.message, "err"); return false; }
@@ -6640,16 +6672,16 @@ function Employees({ cfg, saveCfg, flash }) {
 
   /* ---- khung thêm / sửa ---- */
   const openAdd = () => setDlg({ kind: "emp", empId: null, accId: null, hadAcc: false, autoUser: true,
-    f: { code: "", name: "", dept: fDept || DEPTS[0], role: "", projects: [], username: "", password: genPassword(), isAdmin: false } });
+    f: { code: "", name: "", dept: fDept || DEPTS[0], role: "", projects: [], username: "", password: genPassword(), access: "emp" } });
   const openEdit = (e) => {
     const a = accByEmp.get(e.id);
     // sửa người đã có sẵn: KHÔNG tự gợi ý tên đăng nhập khi đổi họ tên, kẻo đổi tên một người chưa có tài khoản
     // lại vô tình điền tên đăng nhập và bị chặn vì thiếu mật khẩu
     setDlg({ kind: "emp", empId: e.id, accId: a?.id || null, hadAcc: !!a, autoUser: false,
-      f: { code: e.code || "", name: e.name, dept: e.dept, role: e.role || "", projects: Array.isArray(e.projects) ? e.projects : [], username: a?.username || "", password: a?.password || "", isAdmin: !!a?.isAdmin } });
+      f: { code: e.code || "", name: e.name, dept: e.dept, role: e.role || "", projects: Array.isArray(e.projects) ? e.projects : [], username: a?.username || "", password: a?.password || "", access: a ? accessOfAcc(a) : "emp" } });
   };
-  const openAddAdmin = () => setDlg({ kind: "admin", empId: null, accId: null, hadAcc: false, autoUser: false, f: { username: "", password: genPassword(), isAdmin: true } });
-  const openEditAdmin = (a) => setDlg({ kind: "admin", empId: a.empId || null, accId: a.id, hadAcc: true, autoUser: false, f: { username: a.username, password: a.password, isAdmin: a.isAdmin } });
+  const openAddAdmin = () => setDlg({ kind: "admin", empId: null, accId: null, hadAcc: false, autoUser: false, f: { username: "", password: genPassword(), access: "admin" } });
+  const openEditAdmin = (a) => setDlg({ kind: "admin", empId: a.empId || null, accId: a.id, hadAcc: true, autoUser: false, f: { username: a.username, password: a.password, access: accessOfAcc(a) } });
   const setF = (patch, extra = {}) => setDlg((d) => (d ? { ...d, ...extra, f: { ...d.f, ...patch } } : d));
   // gõ họ tên thì tên đăng nhập tự gợi ý, cho tới khi người dùng tự sửa ô tên đăng nhập
   const onNameChange = (v) => setDlg((d) => (d ? { ...d, f: { ...d.f, name: v, ...(d.autoUser ? { username: suggestUsername(v, takenUsernames(d.accId)) } : {}) } } : d));
@@ -6678,14 +6710,14 @@ function Employees({ cfg, saveCfg, flash }) {
       // nhân sự đã lưu nhưng tài khoản lỗi: chuyển khung sang chế độ sửa người đó để sửa tiếp phần tài khoản
       if (!accOk) return setDlg({ ...dlg, empId: id });
       flash(dlg.empId ? "Đã cập nhật nhân sự." : "Đã thêm nhân sự.");
-      if (more) setDlg({ kind: "emp", empId: null, accId: null, hadAcc: false, autoUser: true, f: { code: "", name: "", dept: f.dept, role: "", projects: f.projects || [], username: "", password: genPassword(), isAdmin: false } });
+      if (more) setDlg({ kind: "emp", empId: null, accId: null, hadAcc: false, autoUser: true, f: { code: "", name: "", dept: f.dept, role: "", projects: f.projects || [], username: "", password: genPassword(), access: "emp" } });
       else setDlg(null);
       return;
     }
     const err = accountError(acc, f);
     if (err) return flash(err, "err");
     setBusy(true);
-    const done = await pushAccount(dlg.empId, acc, { ...f, isAdmin: acc ? acc.isAdmin : true });
+    const done = await pushAccount(dlg.empId, acc, f);
     setBusy(false);
     if (done) { setDlg(null); flash(acc ? "Đã cập nhật tài khoản." : "Đã thêm tài khoản."); }
   };
@@ -6748,7 +6780,9 @@ function Employees({ cfg, saveCfg, flash }) {
 
   const panelCls = "rounded-xl border border-slate-800 bg-slate-900";
   const COLS = "md:grid md:grid-cols-[72px_minmax(140px,210px)_170px_150px_110px_minmax(260px,1fr)_156px] md:items-center md:gap-3";
-  const adminBadge = <span className="rounded border border-teal-800 bg-teal-950 px-1.5 py-0.5 text-[10px] text-teal-300">Quản lý</span>;
+  // v7.3: nhãn cấp quyền (Nhân viên thì không hiện)
+  const LV_CLS = { head: "border-sky-800 bg-sky-950 text-sky-300", bod: "border-violet-800 bg-violet-950 text-violet-300", admin: "border-teal-800 bg-teal-950 text-teal-300" };
+  const lvBadge = (a) => { const k = accessOfAcc(a); return k === "emp" ? null : <span className={`rounded border px-1.5 py-0.5 text-[10px] ${LV_CLS[k]}`}>{accessLabel(k)}</span>; };
   const lockedBadge = <span className="rounded border border-rose-900 bg-rose-950 px-1.5 py-0.5 text-[10px] text-rose-300">Đã khoá</span>;
   const none = <span className="text-slate-600">—</span>;
   const accBtns = (a, name) => (
@@ -6794,7 +6828,7 @@ function Employees({ cfg, saveCfg, flash }) {
           <div className={`min-w-0 break-words ${dim || "text-slate-100"}`}>{e.name}</div>
           <div className="min-w-0">{roleEl || none}</div>
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            {a ? <><span className="break-all font-mono text-xs text-slate-300">{a.username}</span>{a.isAdmin && adminBadge}{a.disabled && lockedBadge}</> : <span className="text-slate-600">Chưa có</span>}
+            {a ? <><span className="break-all font-mono text-xs text-slate-300">{a.username}</span>{lvBadge(a)}{a.disabled && lockedBadge}</> : <span className="text-slate-600">Chưa có</span>}
           </div>
           <div><PasswordCell value={a?.password} shown={!!shown[a?.id]} onToggle={() => toggleShown(a.id)} /></div>
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">{projEl}</div>
@@ -6815,7 +6849,7 @@ function Employees({ cfg, saveCfg, flash }) {
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="break-all font-mono text-xs text-slate-300">{a.username}</span>
               <PasswordCell value={a.password} shown={!!shown[a.id]} onToggle={() => toggleShown(a.id)} />
-              {a.isAdmin && adminBadge}{a.disabled && lockedBadge}
+              {lvBadge(a)}{a.disabled && lockedBadge}
             </div>
           )}
         </div>
@@ -6871,7 +6905,7 @@ function Employees({ cfg, saveCfg, flash }) {
             <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
               <span className="break-all font-mono text-slate-100">{a.username}</span>
               <PasswordCell value={a.password} shown={!!shown[a.id]} onToggle={() => toggleShown(a.id)} />
-              {a.isAdmin && adminBadge}{a.disabled && lockedBadge}
+              {lvBadge(a)}{a.disabled && lockedBadge}
             </div>
             <div className="flex shrink-0 gap-1">
               {accBtns(a, "")}
@@ -6886,7 +6920,7 @@ function Employees({ cfg, saveCfg, flash }) {
   /* ---------------- khung thêm / sửa ---------------- */
   const onEnter = (e) => { if (e.key === "Enter") saveDlg(false); };
   const f = dlg?.f;
-  const dlgTitle = !dlg ? "" : dlg.kind === "emp" ? (dlg.empId ? "Sửa nhân sự" : "Thêm nhân sự") : (dlg.accId ? "Sửa tài khoản" : "Thêm tài khoản quản lý");
+  const dlgTitle = !dlg ? "" : dlg.kind === "emp" ? (dlg.empId ? "Sửa nhân sự" : "Thêm nhân sự") : (dlg.accId ? "Sửa tài khoản" : "Thêm tài khoản BOD / Admin");
   const formDlg = dlg && (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 pt-[8vh]" onMouseDown={(e) => { if (e.target === e.currentTarget) setDlg(null); }}>
       <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
@@ -6941,11 +6975,15 @@ function Employees({ cfg, saveCfg, flash }) {
               <button onClick={() => setF({ password: genPassword() })} title="Sinh mật khẩu" className={sqBtn}><RotateCcw size={15} /></button>
             </div>
           </div>
-          {dlg.kind === "emp" && (
-            <label className="flex min-h-[32px] w-max cursor-pointer items-center gap-2 text-sm text-slate-300">
-              <input type="checkbox" checked={!!f.isAdmin} onChange={(e) => setF({ isAdmin: e.target.checked })} className="h-4 w-4 accent-teal-500" /> Quản lý
-            </label>
-          )}
+          {/* v7.3 — cấp quyền. Tài khoản không gắn nhân sự chỉ là BOD hoặc Admin (trưởng phòng cần phòng ban của nhân sự) */}
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Cấp quyền">
+            {ACCESS_LEVELS.filter(([k]) => dlg.kind === "emp" || k === "bod" || k === "admin" || (dlg.accId && k === accessOfAcc((accounts || []).find((x) => x.id === dlg.accId)))).map(([k, l]) => (
+              <button key={k} type="button" role="radio" aria-checked={(f.access || "emp") === k} onClick={() => setF({ access: k })}
+                className={`h-11 rounded-md border px-3.5 text-sm ${(f.access || "emp") === k ? "border-teal-700 bg-teal-950 text-teal-200" : "border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200"}`}>{l}</button>
+            ))}
+          </div>
+          {f.access === "head" && <div className="text-xs text-slate-500">Xem và sửa Bảng công nhân viên phòng {f.dept || "—"}.</div>}
+          {f.access === "bod" && <div className="text-xs text-slate-500">Xem Dashboard và Bảng công toàn công ty, không sửa được gì.</div>}
         </div>
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-800 px-4 py-3">
           <button onClick={() => setDlg(null)} className={btnGhost}>Huỷ</button>
@@ -6959,7 +6997,7 @@ function Employees({ cfg, saveCfg, flash }) {
   return (
     <div className="space-y-3 md:space-y-4">
       <div className="inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-1">
-        {[["emp", "Nhân sự", cfg.employees.length], ["admin", "Tài khoản quản lý", loose.length]].map(([k, l, n]) => (
+        {[["emp", "Nhân sự", cfg.employees.length], ["admin", "Tài khoản BOD / Admin", loose.length]].map(([k, l, n]) => (
           <button key={k} onClick={() => setSub(k)}
             className={`h-9 whitespace-nowrap rounded-md px-4 text-sm ${sub === k ? "bg-slate-800 font-medium text-white" : "text-slate-400 hover:text-slate-200"}`}>
             {l}<span className="ml-1.5 font-mono text-xs text-slate-500">{n}</span>

@@ -1,4 +1,4 @@
-# ARTIUS — Quản lý giờ công · v7.2 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v7.3 (bản webapp cho Vercel)
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +8,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v7.2`.
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Góc trái dưới ghi `ARTIUS v7.3`.
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
@@ -25,6 +25,23 @@ Ghi chú:
 | `public/` | Service worker, `manifest.webmanifest` (cài app), biểu tượng app và thông báo |
 | `supabase/schema.sql`, `supabase/cron.sql` | Database và lịch nhắc |
 | `package.json`, `vite.config.js`, `tailwind.config.js`, `postcss.config.js`, `.gitignore`, `.env.example` | Cấu hình build |
+
+## Mới ở v7.3 — Phân quyền theo phòng ban (4 cấp)
+
+**CÓ đổi database** — bắt buộc chạy bước 1 (`supabase/schema.sql`) **trước** khi upload code.
+File thay đổi: `supabase/schema.sql`, `api/accounts.js`, `api/push.js`, `src/auth.js`, `src/App.jsx`, `package.json`, `index.html`, `README.md`.
+
+| Cấp | Thấy gì | Sửa được gì |
+|---|---|---|
+| **Nhân viên** | Chấm công, Dashboard cá nhân, Cài đặt | Bảng công của mình (gửi là khoá như cũ) |
+| **Trưởng phòng** | Như nhân viên + tab **Bảng công** chỉ gồm nhân viên **cùng phòng ban** | Bảng công nhân viên phòng mình: sửa nhanh, sửa cả tuần, mở khoá, nhắc nộp. Bảng công **của chính mình** vẫn theo luật nhân viên |
+| **BOD** | Dashboard + Bảng công **toàn công ty** | Không sửa gì (không sửa giờ, mở khoá, nhắc, đổi thiết lập). Gắn nhân sự thì vẫn chấm công của mình |
+| **Admin** | Toàn bộ như "Quản lý" cũ | Toàn quyền |
+
+- Chọn cấp ở **Nhân sự → Sửa nhân sự** (4 nút thay cho ô "Quản lý"). Tab con đổi tên **Tài khoản BOD / Admin** (tài khoản không gắn nhân sự chỉ là BOD hoặc Admin).
+- Phòng ban của trưởng phòng = phòng ban của nhân sự gắn với tài khoản. Chuyển phòng ban ở tab Nhân sự là phạm vi đổi theo ngay. Mỗi trưởng phòng quản một phòng.
+- **Database chặn**, không chỉ ẩn trên giao diện: trưởng phòng gọi thẳng API cũng không đọc / ghi được bảng công phòng khác; BOD không ghi được gì.
+- Tài khoản "Quản lý" cũ tự thành **Admin**. Người vừa đổi cấp: **đăng xuất rồi đăng nhập lại** để menu đổi theo.
 
 ## Mới ở v7.2 — Tác vụ "Chờ việc"
 
