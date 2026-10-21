@@ -16,6 +16,10 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v7.7 — Chuông nhắc ở Bảng công bấm lại được nhiều lần (tuần và tháng), cách nhau tối thiểu 30 phút cho mỗi người: trong 30 phút chuông mờ đi,
+   rê chuột hiện "nhắc lại được lúc …"; chuông có dấu ✓ nhỏ nếu người đó đã được nhắc; "Nhắc tất cả" bỏ qua người đang trong 30 phút.
+   BOD xem được mọi mục quản lý (Dự án, Nhân sự, Tác vụ, Thiết lập) ở chế độ chỉ xem — không lưu được thay đổi, không xem tài khoản/mật khẩu.
+   Chỉ đổi giao diện (src/App.jsx); không đổi database hay api/push.js.
    Mới ở v7.6 — Bỏ giới hạn 1520px của v7.5: mọi tài khoản hiển thị full màn hình. Quản lý (Admin, BOD, Trưởng phòng) trên máy tính:
    menu dọc dạng thẻ bám mép trái khung nội dung (dính khi cuộn), có Thoát + phiên bản; header chỉ còn tiêu đề trang · logo · tên.
    Nhân viên giữ tab ngang trên header (v7.5).
@@ -223,7 +227,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v7.6";
+const APP_VERSION = "v7.7";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1634,13 +1638,14 @@ function AppMain() {
     ? [["dash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList], ["proj", "Dự án", FolderKanban],
        ["emp", "Nhân sự", Users], ["task", "Tác vụ", ListChecks], ["set", "Thiết lập", Settings]]
     : me?.type === "bod"
-      ? [["dash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList],
+      ? [["dash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList], ["proj", "Dự án", FolderKanban],
+         ["emp", "Nhân sự", Users], ["task", "Tác vụ", ListChecks], ["set", "Thiết lập", Settings],
          ...(me.empId ? [["ts", "Chấm công", Clock], ["eset", "Cài đặt", Settings]] : [])]
     : me?.type === "head"
       ? [["ts", "Chấm công", Clock], ["edash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList], ["eset", "Cài đặt", Settings]]
     : me ? [["ts", "Chấm công", Clock], ["edash", "Dashboard", LayoutDashboard], ["eset", "Cài đặt", Settings]] : [];
 
-  // v7.6: Admin · BOD · Trưởng phòng — full màn hình + menu dọc bám khung; nhân viên giữ tab ngang + 1520px (v7.5)
+  // v7.6: Admin · BOD · Trưởng phòng — full màn hình + menu dọc bám khung; nhân viên giữ tab ngang trên header; mọi tài khoản full màn hình
   const isMgr = !!me && ["admin", "bod", "head"].includes(me.type);
 
   const pageTitle = { dash: "Dashboard giờ công", sheet: "Bảng công nhân sự", proj: "Dự án", emp: "Nhân sự", task: "Tác vụ công việc theo vai trò", set: "Thiết lập", ts: "", edash: "Dashboard cá nhân", eset: "Cài đặt cá nhân" }[tab];
@@ -1679,7 +1684,7 @@ function AppMain() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="border-b border-slate-800">
-          {/* v7.5: nội dung header giới hạn 1520px, căn giữa — cùng trục với phần thân */}
+          {/* v7.6: header full màn hình (bỏ giới hạn 1520px của v7.5) */}
           <div className="relative flex w-full items-center justify-between px-4 py-3 md:px-6 md:py-3.5">
             <div className="flex min-w-0 flex-col md:flex-row md:items-center md:gap-4">
               {/* v7.5: tab ngang (máy tính). Màn hẹp chỉ hiện icon (rê chuột xem tên); chữ hiện từ xl (≤ 4 tab) / 2xl (Admin 6 tab) để không đè logo giữa */}
@@ -1698,7 +1703,7 @@ function AppMain() {
               {/* máy tính đã đăng nhập: tên trang thể hiện bằng tab đang chọn → ẩn dòng tiêu đề; điện thoại giữ như cũ */}
               <span className={`truncate text-xs text-slate-500 ${me && !isMgr ? "md:hidden" : ""}`}>{me ? pageTitle : "Quản lý giờ công dự án"}</span>
             </div>
-            {/* logo chữ ở giữa khung 1520px = giữa cửa sổ trình duyệt (khung căn giữa, không còn sidebar) */}
+            {/* logo chữ ở giữa header = giữa cửa sổ trình duyệt */}
             {me && <img src="/logo-artius-time.svg" alt="ARTIUS Time Tracking" className="pointer-events-none absolute left-1/2 top-1/2 hidden h-9 w-auto -translate-x-1/2 -translate-y-1/2 md:block" />}
             <div className="flex min-w-0 items-center">
               <InstallButton />
@@ -1759,6 +1764,11 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
               <>
                 {tab === "dash" && <Dashboard cfg={cfg} saveCfg={bodSave} flash={flash} />}
                 {tab === "sheet" && <AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} readOnly />}
+                {/* v7.7 — BOD xem được mọi mục quản lý nhưng không sửa: mọi lệnh lưu cấu hình bị chặn bởi bodSave */}
+                {tab === "proj" && <ReadOnlyView><Projects cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
+                {tab === "emp" && <ReadOnlyView><Employees cfg={cfg} saveCfg={bodSave} flash={flash} readOnly /></ReadOnlyView>}
+                {tab === "task" && <ReadOnlyView><Tasks cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
+                {tab === "set" && <ReadOnlyView><SettingsTab cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
                 {tab === "ts" && me.empId && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} />}
                 {tab === "eset" && me.empId && <EmployeeSettings cfg={cfg} empId={me.empId} />}
               </>
@@ -1851,6 +1861,20 @@ function StorageBanner() {
 }
 
 /* Ghi chú của một dòng — mở bằng nút "…" thay vì chiếm hẳn một cột trong bảng */
+const NUDGE_GAP_MIN = 30;   // v7.7: khoảng cách tối thiểu giữa hai lần bấm chuông nhắc cho cùng một người (phút)
+
+/* v7.7 — Khung "chỉ xem" cho BOD: hiện dải thông báo, ô nhập/chọn không thao tác được; lưu cấu hình đã bị chặn ở bodSave */
+function ReadOnlyView({ children }) {
+  return (
+    <div>
+      <div className="mx-3 mb-3 mt-3 flex items-center gap-2 rounded-lg border border-violet-900 bg-violet-950/60 px-3 py-2 text-xs text-violet-200 md:mx-6">
+        <Eye size={14} className="shrink-0" /> Chế độ chỉ xem — tài khoản BOD xem được mục này nhưng không chỉnh sửa được.
+      </div>
+      <div className="[&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none">{children}</div>
+    </div>
+  );
+}
+
 function NoteDialog({ open, title, value, readOnly, onSave, onClose }) {
   const [text, setText] = useState(value || "");
   useEffect(() => { if (open) setText(value || ""); }, [open, value]);
@@ -3658,6 +3682,14 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
   const [tip, setTip] = useState(null);                         // { eid, d, x, y } — thẻ chi tiết một ngày
   const [nudged, setNudged] = useState(() => new Map());        // empId -> giờ đã nhắc (tuần đang xem)
   const [nudging, setNudging] = useState(false);
+  /* v7.7 — chuông bấm lại được, cách nhau tối thiểu NUDGE_GAP_MIN phút cho mỗi người; đồng hồ nhịp 20s để chuông tự sáng lại */
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNowMs(Date.now()), 20000); return () => clearInterval(t); }, []);
+  const gapMs = NUDGE_GAP_MIN * 60000;
+  const nudgeAgain = (at) => (at ? new Date(at).getTime() + gapMs : 0);          // thời điểm được nhắc lại
+  const cooling = (at) => !!at && nudgeAgain(at) > nowMs;
+  const hhmm = (v) => new Date(v).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+  const laterIso = (a, b) => (!a || (b && b > a) ? b : a);
   const [mNudged, setMNudged] = useState(() => new Map());      // v6.4: empId -> Map(thứ Hai tuần -> giờ đã nhắc), các tuần của tháng đang xem
   const [unlockFor, setUnlockFor] = useState(null);             // empId đang chờ xác nhận mở khoá tuần
   const [drawer, setDrawer] = useState(null);                   // v6.0 (A): empId đang mở ngăn kéo sửa cả tuần
@@ -3778,7 +3810,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
   /* nhắc đã gửi trong tuần đang xem (đọc nhật ký nhắc — quản lý đọc được) */
   useEffect(() => {
     let alive = true;
-    fetchNudgeLog(monday).then((rows) => { if (alive) setNudged(new Map(rows.map((r) => [r.emp_id, r.sent_at]))); }).catch(() => {});
+    fetchNudgeLog(monday).then((rows) => { if (alive) setNudged(rows.reduce((m, r) => m.set(r.emp_id, laterIso(m.get(r.emp_id), r.sent_at)), new Map())); }).catch(() => {});
     return () => { alive = false; };
   }, [monday]);
   /* v6.4 — chuông ở bảng Tháng: các tuần đã qua (hết Chủ nhật) chưa nộp đủ; bấm một lần nhắc gộp mọi tuần đó */
@@ -3790,7 +3822,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
     fetchNudgeLogRange(ws[0], ws[ws.length - 1]).then((rows) => {
       if (!alive) return;
       const m = new Map();
-      for (const r of rows) { const wk = String(r.period || "").slice(0, 10); if (!m.has(r.emp_id)) m.set(r.emp_id, new Map()); m.get(r.emp_id).set(wk, r.sent_at); }
+      for (const r of rows) { const wk = String(r.period || "").slice(0, 10); if (!m.has(r.emp_id)) m.set(r.emp_id, new Map()); const mm = m.get(r.emp_id); mm.set(wk, laterIso(mm.get(wk), r.sent_at)); }
       setMNudged(m);
     }).catch(() => {});
     return () => { alive = false; };
@@ -3798,16 +3830,16 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
   const missWeeks = (eid) => weeks.filter((m) => fmt(addDays(parseD(m), 6)) < today && !weekDone(eid, m));
   const monthBell = (eid) => {
     const mw = missWeeks(eid), log = mNudged.get(eid) || new Map();
-    const todo = mw.filter((m) => !log.has(m));
-    const last = mw.map((m) => log.get(m)).filter(Boolean).sort().pop();
-    return { mw, todo, last };
+    const last = [...log.values()].filter(Boolean).sort().pop();      // lần nhắc gần nhất của người này trong tháng
+    return { mw, last, wait: cooling(last), again: nudgeAgain(last) };
   };
-  const mToNudge = mode === "month" ? emps.filter((e) => monthBell(e.id).todo.length > 0).map((e) => e.id) : [];
+  const mToNudge = mode === "month" ? emps.filter((e) => { const b = monthBell(e.id); return b.mw.length > 0 && !b.wait; }).map((e) => e.id) : [];
   const nudgeMonth = async (ids) => {
+    ids = ids.filter((id) => !monthBell(id).wait);
     if (!ids.length || nudging) return;
     setNudging(true);
     const groupsBy = new Map();   // cùng danh sách tuần thiếu → một lệnh gửi
-    for (const id of ids) { const mw = missWeeks(id); if (!mw.length) continue; const k = mw.join(","); if (!groupsBy.has(k)) groupsBy.set(k, []); groupsBy.get(k).push(id); }
+    for (const id of ids) { const mw = missWeeks(id); if (!mw.length || monthBell(id).wait) continue; const k = mw.join(","); if (!groupsBy.has(k)) groupsBy.set(k, []); groupsBy.get(k).push(id); }
     const sent = [], noDev = [];
     try {
       for (const [k, gids] of groupsBy) {
@@ -3824,8 +3856,9 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
     setNudging(false);
   };
   const needIds = mode === "week" ? emps.filter((e) => reasons(e.id).length > 0).map((e) => e.id) : [];
-  const toNudge = needIds.filter((id) => !nudged.has(id));
+  const toNudge = needIds.filter((id) => !cooling(nudged.get(id)));
   const nudge = async (ids) => {
+    ids = ids.filter((id) => !cooling(nudged.get(id)));
     if (!ids.length || nudging) return;
     setNudging(true);
     try {
@@ -4037,11 +4070,13 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
                 </span>
               </td>
               <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
-                {rs.length > 0 && (at
-                  ? <span title={`Đã nhắc lúc ${new Date(at).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })} — ${rs.join(" · ")}`}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-teal-900 text-teal-300"><Check size={15} /></span>
-                  : <button onClick={() => nudge([e.id])} disabled={nudging} title={`Nhắc nộp — ${rs.join(" · ")}`}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-amber-400 hover:bg-slate-800 disabled:opacity-40"><Bell size={15} /></button>)}
+                {rs.length > 0 && (
+                  <button onClick={() => nudge([e.id])} disabled={nudging || cooling(at)}
+                    title={at ? (cooling(at) ? `Đã nhắc lúc ${hhmm(at)} — nhắc lại được lúc ${hhmm(nudgeAgain(at))} · ${rs.join(" · ")}` : `Đã nhắc lúc ${hhmm(at)} — bấm để nhắc lại · ${rs.join(" · ")}`) : `Nhắc nộp — ${rs.join(" · ")}`}
+                    className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-amber-400 hover:bg-slate-800 ${cooling(at) ? "cursor-not-allowed opacity-40 hover:bg-transparent" : "disabled:opacity-40"}`}>
+                    <Bell size={15} />
+                    {at && <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-teal-700 text-white"><Check size={9} strokeWidth={3} /></span>}
+                  </button>)}
               </td>
               </>}
             </tr>
@@ -4110,14 +4145,13 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
               {(() => {
                 const b = monthBell(e.id), wl = b.mw.map(dLabel).join(", ");
                 if (!b.mw.length) return null;
-                if (!b.todo.length) return (
-                  <span title={`Đã nhắc${b.last ? ` lúc ${new Date(b.last).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}` : ""} — tuần ${wl}`}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-teal-900 text-teal-300"><Check size={15} /></span>);
                 return (
-                  <button onClick={() => nudgeMonth([e.id])} disabled={nudging} title={`Nhắc nộp ${b.mw.length} tuần: ${wl} — gửi một thông báo`}
-                    className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-amber-400 hover:bg-slate-800 disabled:opacity-40">
+                  <button onClick={() => nudgeMonth([e.id])} disabled={nudging || b.wait}
+                    title={b.last ? (b.wait ? `Đã nhắc lúc ${hhmm(b.last)} — nhắc lại được lúc ${hhmm(b.again)} · tuần ${wl}` : `Đã nhắc lúc ${hhmm(b.last)} — bấm để nhắc lại · tuần ${wl}`) : `Nhắc nộp ${b.mw.length} tuần: ${wl} — gửi một thông báo`}
+                    className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-amber-400 hover:bg-slate-800 ${b.wait ? "cursor-not-allowed opacity-40 hover:bg-transparent" : "disabled:opacity-40"}`}>
                     <Bell size={15} />
                     <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-700 px-1 font-mono text-[10px] font-semibold text-white">{b.mw.length}</span>
+                    {b.last && <span className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-teal-700 text-white"><Check size={9} strokeWidth={3} /></span>}
                   </button>);
               })()}
             </td>}
@@ -6613,7 +6647,7 @@ const copyText = async (text) => {
   } catch { return false; }
 };
 
-function Employees({ cfg, saveCfg, flash }) {
+function Employees({ cfg, saveCfg, flash, readOnly = false }) {
   const [sub, setSub] = useState("emp");              // tab con: emp | admin
   const [q, setQ] = useState("");
   const [fDept, setFDept] = useState("");
@@ -6645,6 +6679,7 @@ function Employees({ cfg, saveCfg, flash }) {
 
   useEffect(() => {
     let alive = true;
+    if (readOnly) { setAccounts([]); return () => { alive = false; }; }   // v7.7: BOD không xem tài khoản đăng nhập / mật khẩu
     (async () => {
       try { const r = await accountsApi("list"); if (alive) setAccounts(r.accounts); }
       catch (e) { if (alive) flash(e.message, "err"); }
@@ -7020,7 +7055,7 @@ function Employees({ cfg, saveCfg, flash }) {
             ))}
           </div>
           {f.access === "head" && <div className="text-xs text-slate-500">Xem và sửa Bảng công nhân viên phòng {f.dept || "—"}.</div>}
-          {f.access === "bod" && <div className="text-xs text-slate-500">Xem Dashboard và Bảng công toàn công ty, không sửa được gì.</div>}
+          {f.access === "bod" && <div className="text-xs text-slate-500">Xem mọi mục quản lý (Dashboard, Bảng công, Dự án, Nhân sự, Tác vụ, Thiết lập), không sửa được gì.</div>}
         </div>
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-800 px-4 py-3">
           <button onClick={() => setDlg(null)} className={btnGhost}>Huỷ</button>

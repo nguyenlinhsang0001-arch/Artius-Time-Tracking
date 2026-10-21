@@ -1,4 +1,13 @@
-# ARTIUS — Quản lý giờ công · v7.6 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v7.7 (bản webapp cho Vercel)
+
+## Mới ở v7.7 — Chuông nhắc bấm lại được, BOD xem mọi mục quản lý
+
+- **Chuông nhắc (Bảng công, cả chế độ Tuần và Tháng):** bấm lại được nhiều lần. Mỗi người cách nhau tối thiểu **30 phút**;
+  trong 30 phút chuông mờ đi, rê chuột hiện "Đã nhắc lúc … — nhắc lại được lúc …". Chuông có dấu ✓ nhỏ khi người đó đã được nhắc.
+  Nút **Nhắc tất cả** bỏ qua người còn trong 30 phút. Đổi khoảng cách: hằng số `NUDGE_GAP_MIN` trong `src/App.jsx`.
+- **BOD:** thêm các mục Dự án, Nhân sự, Tác vụ, Thiết lập ở chế độ **chỉ xem** (có dải thông báo, ô nhập không thao tác, mọi lệnh lưu bị chặn;
+  không hiện danh sách tài khoản đăng nhập/mật khẩu). Quyền nhắc vẫn như cũ: chỉ Admin và Trưởng phòng (cùng phòng) bấm chuông.
+- Chỉ đổi `src/App.jsx`: **không cần chạy lại schema.sql**, không đổi `api/push.js`.
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
 
@@ -8,7 +17,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Trên máy tính ghi `v7.6` (nhân viên: cạnh tên ở thanh trên cùng; quản lý: cuối menu dọc).
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Trên máy tính ghi `v7.7` (nhân viên: cạnh tên ở thanh trên cùng; quản lý: cuối menu dọc).
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.
