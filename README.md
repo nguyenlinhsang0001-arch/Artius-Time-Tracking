@@ -1,4 +1,12 @@
-# ARTIUS — Quản lý giờ công · v7.8 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v7.9 (bản webapp cho Vercel)
+
+## Mới ở v7.9 — Hoàn thiện giao diện Sáng (giao diện Tối không đổi)
+
+- **Chấm công:** rê chuột vào dòng tác vụ, chữ chuyển **xanh dương** (trước là xanh ngọc).
+- **Giờ chuẩn / Giờ cố gắng:** Giờ chuẩn xanh dương đậm; Giờ cố gắng giữ màu tím nhưng **số có nền chip tím nhạt** và **thanh tổng dạng sọc tím** — phân biệt rõ trên nền sáng (chân bảng Chấm công, ô CHUẨN / PHÁT SINH, Dashboard, Bảng công).
+- **Bảng công (Admin):** phần thiếu ở thanh tổng là **dải cam nhạt đặc** (bỏ sọc vàng), chữ "thiếu x" nâu cam đậm; ô ngày **"Bỏ trống" nhạt hơn** (nền hồng rất nhạt, viền mảnh).
+- **Bảng công chế độ Tháng:** Thiếu giờ **vàng đậm có viền**, Nghỉ phép **tím lavender** (không còn trùng màu); ngày hôm nay = **dải xám nhạt chạy dọc cả cột** + số ngày trong **chip đen** (bỏ viền to).
+- Chỉ đổi `src/App.jsx` và `src/lightTheme.js` — không cần chạy lại schema.sql.
 
 ## Mới ở v7.8 — Giao diện Sáng / Tối
 
@@ -32,7 +40,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Trên máy tính ghi `v7.8` (nhân viên: cạnh tên ở thanh trên cùng; quản lý: cuối menu dọc).
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Trên máy tính ghi `v7.9` (nhân viên: cạnh tên ở thanh trên cùng; quản lý: cuối menu dọc).
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.

@@ -17,6 +17,9 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v7.9 — Hoàn thiện giao diện Sáng: rê chuột dòng chấm công chữ xanh dương; Giờ chuẩn xanh đậm, Giờ cố gắng giữ tím có nền chip + thanh sọc;
+   phần thiếu ở thanh tổng Bảng công là dải cam nhạt đặc (bỏ sọc), ô "Bỏ trống" nhạt hơn; bảng Tháng: Thiếu giờ vàng đậm, Nghỉ phép tím lavender,
+   hôm nay = dải xám cả cột + số ngày trong chip đen. Giao diện Tối không đổi.
    Mới ở v7.8 — Giao diện Sáng (Light) bên cạnh giao diện Tối (Dark): nút "Sáng / Tối" ở góc phải thanh trên cùng (mọi màn, kể cả đăng nhập);
    lựa chọn nhớ riêng từng máy, mặc định Tối. CSS Sáng nằm ở src/lightTheme.js (sinh tự động từ class Tailwind), logo Sáng ở public/logo-artius-time-light.svg.
    Nhãn / thanh trạng thái ở giao diện Sáng dùng màu riêng, đặc và đậm hơn (xanh lá Bình thường, cam Sắp vượt, đỏ Vượt…) cho dễ nhìn trên nền sáng.
@@ -285,7 +288,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v7.8";
+const APP_VERSION = "v7.9";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -2983,7 +2986,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                 <div className="whitespace-nowrap font-mono text-[10px]">
                   <span className={anyOtHigh ? "text-red-400" : "text-teal-400"}>OT {otTotal.toFixed(1)}</span>
                   <span className="text-slate-600"> · </span>
-                  <span className="text-violet-400">CG {effortTotal.toFixed(1)}</span>
+                  <span className="cg-num text-violet-400">CG {effortTotal.toFixed(1)}</span>
                 </div>
               </div>
               <div className="border-l border-slate-700 px-2.5 py-1 md:px-3.5">
@@ -3255,9 +3258,9 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                         <span className="mr-2 inline-block h-2 w-2 rounded-sm bg-violet-400" />+ Giờ cố gắng<span className="ml-1.5 text-[11px] text-slate-600">vượt giờ chuẩn</span></td>
                       {days.map((d) => {
                         const ef = effortHrs(d);
-                        return <td key={d} className={`px-1 py-2 text-center ${dayCol(d)} ${ef ? "text-violet-400" : "text-slate-700"}`}>{ef ? ef.toFixed(1) : "·"}</td>;
+                        return <td key={d} className={`px-1 py-2 text-center ${dayCol(d)} ${ef ? "text-violet-400" : "text-slate-700"}`}>{ef ? <span className="cg-num">{ef.toFixed(1)}</span> : "·"}</td>;
                       })}
-                      <td className="px-2 py-2 text-center font-semibold text-violet-400">{effortTotal.toFixed(1)}</td>
+                      <td className="px-2 py-2 text-center font-semibold text-violet-400"><span className="cg-num">{effortTotal.toFixed(1)}</span></td>
                     </tr>
                   )}
                 </>)}
@@ -3697,22 +3700,26 @@ const DAY_ST_L = {
   full: { background: "#3b82f61f", color: "#1d4ed8" },
   part: { background: "#f59e0b1f", color: "#b45309", boxShadow: "inset 0 0 0 1px #d9770666" },
   draft: { color: "#64748b", fontWeight: 500, border: "1.5px dashed #94a3b8" },
-  none: { background: "#f43f5e12", color: "#e11d48", boxShadow: "inset 0 0 0 1px #e11d4850" },
-  leave: { background: "#f973161f", color: "#c2410c", boxShadow: "inset 0 0 0 1px #ea580c55" },
+  none: { background: "#fff1f2", color: "#e11d48", boxShadow: "inset 0 0 0 1px #fecdd3" },   // v7.9: nhạt hơn
+  leave: { background: "#ede9fe", color: "#6d28d9", boxShadow: "inset 0 0 0 1px #a78bfa" },   // v7.9: nghỉ phép tím lavender (tách khỏi thiếu giờ vàng)
   hol: { background: "repeating-linear-gradient(45deg,#64748b22 0 4px,transparent 4px 8px)", color: "#64748b", boxShadow: "inset 0 0 0 1px #64748b40" },
   off: { color: "#cbd5e1" },
   fut: { color: "#cbd5e1", boxShadow: "inset 0 0 0 1px #e2e8f0" },
 };
 const DAY_ST_SM_L = {
   full: { background: "#3b82f633" },
-  part: { background: "#f59e0b2e", boxShadow: "inset 0 0 0 1px #d9770670" },
+  part: { background: "#fde68a", boxShadow: "inset 0 0 0 1px #f59e0b" },   // v7.9: thiếu giờ vàng đậm
   draft: { border: "1.5px dashed #94a3b8" },
   none: { background: "#fecdd380" },   // bỏ trống: nền hồng nhạt, không viền — đỡ rối khi cả tháng
-  leave: { background: "#f9731640", boxShadow: "inset 0 0 0 1px #ea580c66" },
+  leave: { background: "#ddd6fe", boxShadow: "inset 0 0 0 1px #a78bfa" },
   hol: { background: "repeating-linear-gradient(45deg,#64748b30 0 3px,transparent 3px 6px)" },
   off: { background: "#e2e8f080" },
-  fut: { boxShadow: "inset 0 0 0 1px #e2e8f0" },
+  fut: { background: "#fff", boxShadow: "inset 0 0 0 1px #e2e8f0" },
 };
+/* v7.9 — hôm nay ở bảng Tháng (giao diện Sáng): cả cột nằm trên dải xám nhạt, số ngày trong chip đen */
+const TODAY_BAND = "#e2e8f0";
+const todayBand = (st) => ({ ...st, boxShadow: `${st?.boxShadow ? `${st.boxShadow}, ` : ""}0 -16px 0 3px ${TODAY_BAND}, 0 16px 0 3px ${TODAY_BAND}` });   // phủ kín khoảng đệm trên/dưới để dải liền giữa các dòng
+const TODAY_CHIP = { background: "#0f172a", color: "#fff", fontWeight: 700, borderRadius: 999, boxShadow: `0 0 0 3px ${TODAY_BAND}, 0 12px 0 3px ${TODAY_BAND}` };
 const dayStyle = (k) => (isLight() ? DAY_ST_L : DAY_ST)[k];
 const dayStyleSm = (k) => (isLight() ? DAY_ST_SM_L : DAY_ST_SM)[k];
 /* ô nhỏ của chế độ Tháng: cùng bộ màu, đậm hơn một chút để thấy rõ ở kích thước 22px */
@@ -4030,11 +4037,11 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
       <div className="min-w-[150px]" title={`Chuẩn ${fmtH(blue)} h${idle ? ` · chờ việc ${fmtH(idle)} h` : ""} · cố gắng ${fmtH(s.eff)} h · OT ${fmtH(s.ot)} h${miss ? ` · thiếu ${fmtH(miss)} h` : ""}`}>
         <div className="whitespace-nowrap font-mono text-sm"><span className="font-semibold text-slate-100">{fmtH(s.t)}</span><span className="text-slate-500"> / {fmtH(s.std)} h</span>
           {idle > 0 && <span className="ml-1.5 text-[11px] text-slate-400">chờ {fmtH(idle)}</span>}
-          {miss > 0 && <span className={`ml-1.5 text-[11px] ${low ? "text-amber-400" : "text-slate-500"}`}>thiếu {fmtH(miss)}</span>}</div>
+          {miss > 0 && <span className={`miss-txt ml-1.5 text-[11px] ${low ? "text-amber-400" : "text-slate-500"}`}>thiếu {fmtH(miss)}</span>}</div>
         <div className="mt-1 flex h-[6px] gap-px overflow-hidden rounded-full bg-slate-800">
           {blue > 0 && <i className="block h-full bg-blue-400" style={{ width: w(blue) }} />}
           {idle > 0 && <i className="block h-full bg-slate-400" style={{ width: w(idle) }} />}
-          {miss > 0 && <i className="block h-full" style={{ width: w(miss), boxShadow: "inset 0 0 0 1px #fbbf24aa", background: "repeating-linear-gradient(135deg,#fbbf2433 0 3px,transparent 3px 6px)" }} />}
+          {miss > 0 && <i className="block h-full" style={isLight() ? { width: w(miss), background: "#fed7aa" } : { width: w(miss), boxShadow: "inset 0 0 0 1px #fbbf24aa", background: "repeating-linear-gradient(135deg,#fbbf2433 0 3px,transparent 3px 6px)" }} />}
           {s.eff > 0 && <i className="block h-full bg-violet-400" style={{ width: w(s.eff) }} />}
           {s.ot > 0 && <i className="block h-full bg-teal-400" style={{ width: w(s.ot) }} />}
         </div>
@@ -4099,7 +4106,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
         <i className="ml-1 inline-block h-2 w-3 rounded-sm bg-blue-400" />chuẩn
         <i className="ml-1 inline-block h-2 w-3 rounded-sm bg-violet-400" />cố gắng
         <i className="ml-1 inline-block h-2 w-3 rounded-sm bg-teal-400" />OT
-        <i className="ml-1 inline-block h-2 w-3 rounded-sm" style={{ boxShadow: "inset 0 0 0 1px #fbbf24aa", background: "repeating-linear-gradient(135deg,#fbbf2455 0 2px,transparent 2px 4px)" }} />thiếu</span>
+        <i className="ml-1 inline-block h-2 w-3 rounded-sm" style={isLight() ? { background: "#fed7aa" } : { boxShadow: "inset 0 0 0 1px #fbbf24aa", background: "repeating-linear-gradient(135deg,#fbbf2455 0 2px,transparent 2px 4px)" }} />thiếu</span>
     </div>
   );
   const NameCell = ({ e }) => (
@@ -4203,7 +4210,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
           <th className="border-b border-slate-800 px-2 py-2 text-left font-normal">
             <div className="flex gap-0.5 font-mono text-[10px] normal-case tracking-normal">
               {days.map((d, i) => (
-                <span key={d} title={hs.get(d) || undefined} className={`w-[22px] shrink-0 text-center ${i > 0 && parseD(d).getDay() === 1 ? "ml-2" : ""}
+                <span key={d} title={hs.get(d) || undefined} style={d === today && isLight() && !hs.has(d) ? TODAY_CHIP : undefined} className={`w-[22px] shrink-0 text-center ${i > 0 && parseD(d).getDay() === 1 ? "ml-2" : ""}
                   ${hs.has(d) ? "rounded-[3px] bg-slate-300 text-slate-900" : d === today ? "text-slate-100" : parseD(d).getDay() === 0 ? "text-slate-700" : "text-slate-600"}`}>{+d.slice(8)}</span>
               ))}
             </div>
@@ -4229,8 +4236,8 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
                 {days.map((d, i) => {
                   const x = dayInfo(e.id, d);
                   return (
-                    <span key={d} {...dayHandlers(e.id, d)} style={dayStyleSm(x.st)}
-                      className={`relative h-[22px] w-[22px] shrink-0 rounded ${d > today || readOnly ? "cursor-default" : "cursor-pointer hover:brightness-150"} ${i > 0 && parseD(d).getDay() === 1 ? "ml-2" : ""} ${d === today ? "outline outline-1 outline-offset-2 outline-slate-100/40" : ""}`}>
+                    <span key={d} {...dayHandlers(e.id, d)} style={d === today && isLight() ? todayBand(dayStyleSm(x.st)) : dayStyleSm(x.st)}
+                      className={`relative h-[22px] w-[22px] shrink-0 rounded ${d > today || readOnly ? "cursor-default" : "cursor-pointer hover:brightness-150"} ${i > 0 && parseD(d).getDay() === 1 ? "ml-2" : ""} ${d === today && !isLight() ? "outline outline-1 outline-offset-2 outline-slate-100/40" : ""}`}>
                       {x.ot + (x.st === "hol" ? x.done : 0) > 0 && <i className="absolute right-0.5 top-0.5 h-[5px] w-[5px] rounded-full bg-teal-400" />}
                     </span>
                   );
@@ -4785,7 +4792,7 @@ function MonthCalendar({ cfg, empId, ym, setYm, loading, onOpenWeek }) {
                   {x.sd > 0 && <span className="text-blue-400">{fh(x.sd)}</span>}
                   {x.idle > 0 && <span className="text-slate-400">{x.sd > 0 ? "+" : ""}{fh(x.idle)}</span>}
                   {x.ot > 0 && <span className="text-teal-400">{x.sd + x.idle > 0 ? "+" : ""}{fh(x.ot)}</span>}
-                  {x.ef > 0 && <span className="text-violet-400">+{fh(x.ef)}</span>}
+                  {x.ef > 0 && <span className="cg-num text-violet-400">+{fh(x.ef)}</span>}
                 </small>
               )}
             </button>
@@ -4990,7 +4997,7 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                   <span className="text-blue-400">{(view.std - view.idle).toFixed(1)}</span> chuẩn <span className="text-slate-600">+</span>{" "}
                   {view.idle > 0 && <><span className="text-slate-400">{view.idle.toFixed(1)}</span> chờ việc <span className="text-slate-600">+</span>{" "}</>}
                   <span className="text-teal-400">{view.ot.toFixed(1)}</span> OT <span className="text-slate-600">+</span>{" "}
-                  <span className="text-violet-400">{view.ef.toFixed(1)}</span> cố gắng <span className="text-slate-600">=</span>{" "}
+                  <span className="cg-num text-violet-400">{view.ef.toFixed(1)}</span> cố gắng <span className="text-slate-600">=</span>{" "}
                   <b className="text-slate-50">{view.tot.toFixed(1)}</b> giờ
                 </span>
                 <span className="text-[11px] text-slate-500">· target đến hôm nay {view.target.toFixed(0)} giờ chuẩn</span>
