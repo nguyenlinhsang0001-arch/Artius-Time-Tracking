@@ -1707,6 +1707,11 @@ function AppMain() {
             {me && <img src="/logo-artius-time.svg" alt="ARTIUS Time Tracking" className="pointer-events-none absolute left-1/2 top-1/2 hidden h-9 w-auto -translate-x-1/2 -translate-y-1/2 md:block" />}
             <div className="flex min-w-0 items-center">
               <InstallButton />
+              {me?.type === "bod" && ["proj", "emp", "task", "set"].includes(tab) && (
+                <span className="ml-3 inline-flex shrink-0 items-center gap-1.5 rounded-md border border-violet-900 bg-violet-950/60 px-2 py-1 text-[11px] text-violet-200" title="Tài khoản BOD xem được mục này nhưng không chỉnh sửa được">
+                  <Eye size={12} /> Chế độ chỉ xem
+                </span>
+              )}
               {me && <span className="ml-3 shrink-0 truncate text-xs text-slate-400">{myEmp?.name || who.username}</span>}
               {me && !isMgr && <span className="ml-3 hidden select-none font-mono text-[10px] text-slate-600 md:inline">{APP_VERSION}</span>}
               {me && !isMgr && (
@@ -1863,13 +1868,10 @@ function StorageBanner() {
 /* Ghi chú của một dòng — mở bằng nút "…" thay vì chiếm hẳn một cột trong bảng */
 const NUDGE_GAP_MIN = 30;   // v7.7: khoảng cách tối thiểu giữa hai lần bấm chuông nhắc cho cùng một người (phút)
 
-/* v7.7 — Khung "chỉ xem" cho BOD: hiện dải thông báo, ô nhập/chọn không thao tác được; lưu cấu hình đã bị chặn ở bodSave */
+/* v7.7 — Khung "chỉ xem" cho BOD (nhãn "Chế độ chỉ xem" hiện ở header cạnh tên tài khoản): ô nhập/chọn không thao tác được; lưu cấu hình đã bị chặn ở bodSave */
 function ReadOnlyView({ children }) {
   return (
     <div>
-      <div className="mx-3 mb-3 mt-3 flex items-center gap-2 rounded-lg border border-violet-900 bg-violet-950/60 px-3 py-2 text-xs text-violet-200 md:mx-6">
-        <Eye size={14} className="shrink-0" /> Chế độ chỉ xem — tài khoản BOD xem được mục này nhưng không chỉnh sửa được.
-      </div>
       <div className="[&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none">{children}</div>
     </div>
   );
