@@ -18,7 +18,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    ARTIUS — Quản lý giờ công theo dự án · v5.6
    Mới ở v7.7 — Chuông nhắc ở Bảng công bấm lại được nhiều lần (tuần và tháng), cách nhau tối thiểu 30 phút cho mỗi người: trong 30 phút chuông mờ đi,
    rê chuột hiện "nhắc lại được lúc …"; chuông có dấu ✓ nhỏ nếu người đó đã được nhắc; "Nhắc tất cả" bỏ qua người đang trong 30 phút.
-   BOD xem được mọi mục quản lý (Dự án, Nhân sự, Tác vụ, Thiết lập) ở chế độ chỉ xem — không lưu được thay đổi, không xem tài khoản/mật khẩu.
+   BOD xem được mọi mục quản lý (Dự án, Nhân sự, Tác vụ, Thiết lập) ở chế độ chỉ xem; nhãn "Chế độ chỉ xem" ở header cạnh tên tài khoản (mọi mục quản lý) — không lưu được thay đổi, không xem tài khoản/mật khẩu.
    Chỉ đổi giao diện (src/App.jsx); không đổi database hay api/push.js.
    Mới ở v7.6 — Bỏ giới hạn 1520px của v7.5: mọi tài khoản hiển thị full màn hình. Quản lý (Admin, BOD, Trưởng phòng) trên máy tính:
    menu dọc dạng thẻ bám mép trái khung nội dung (dính khi cuộn), có Thoát + phiên bản; header chỉ còn tiêu đề trang · logo · tên.
@@ -1707,7 +1707,7 @@ function AppMain() {
             {me && <img src="/logo-artius-time.svg" alt="ARTIUS Time Tracking" className="pointer-events-none absolute left-1/2 top-1/2 hidden h-9 w-auto -translate-x-1/2 -translate-y-1/2 md:block" />}
             <div className="flex min-w-0 items-center">
               <InstallButton />
-              {me?.type === "bod" && ["proj", "emp", "task", "set"].includes(tab) && (
+              {me?.type === "bod" && ["dash", "sheet", "proj", "emp", "task", "set"].includes(tab) && (
                 <span className="ml-3 inline-flex shrink-0 items-center gap-1.5 rounded-md border border-violet-900 bg-violet-950/60 px-2 py-1 text-[11px] text-violet-200" title="Tài khoản BOD xem được mục này nhưng không chỉnh sửa được">
                   <Eye size={12} /> Chế độ chỉ xem
                 </span>
