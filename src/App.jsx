@@ -18,7 +18,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
    Mới ở v8.0 — Chấm công: tuần còn trống thì tự mở sẵn một khối trống (Dự án · Giai đoạn · Hạng mục) như vừa bấm "Thêm tác vụ",
-   nhân viên chọn và nhập giờ ngay. Khối trống không làm hiện cảnh báo "chưa lưu"; quản lý sửa hộ (ngăn kéo Bảng công) thì không tự thêm.
+   nhân viên chọn và nhập giờ ngay. Rê chuột vào dòng tác vụ: tên tác vụ in đậm (cả Sáng và Tối), dòng chú thích giữ nguyên. Khối trống không làm hiện cảnh báo "chưa lưu"; quản lý sửa hộ (ngăn kéo Bảng công) thì không tự thêm.
    Mới ở v7.9 — Hoàn thiện giao diện Sáng: rê chuột dòng chấm công chữ xanh dương; Giờ chuẩn xanh đậm, Giờ cố gắng giữ tím có nền chip + thanh sọc;
    phần thiếu ở thanh tổng Bảng công là dải cam nhạt đặc (bỏ sọc), ô "Bỏ trống" nhạt hơn; bảng Tháng: Thiếu giờ vàng đậm, Nghỉ phép xám xanh, Giờ cố gắng tím đặc,
    hôm nay = dải xám liền một khối dọc cả cột + số ngày trong chip đen. Rê chuột vào ô ngày: viền xanh lá nhạt (cả Sáng và Tối).
@@ -3180,7 +3180,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                                   <div className="shrink-0" style={{ width: GUT }} />
                                   {open && ot ? otPickers(r, i) : (
                                   <div className="min-w-0 flex-1">
-                                    <div className={`truncate text-sm transition-colors ${ot && !open ? "text-teal-300" : "text-slate-100"} group-hover/row:text-teal-200 group-focus-within/row:text-teal-200`} title={rowLabel(r, open)}>
+                                    <div className={`truncate text-sm transition-colors ${ot && !open ? "text-teal-300" : "text-slate-100"} group-hover/row:text-teal-200 group-focus-within/row:text-teal-200 group-hover/row:font-semibold group-focus-within/row:font-semibold`} title={rowLabel(r, open)}>
                                       {rowLabel(r, open)}
                                     </div>
                                     {open && rowDesc(r) && <div className="truncate text-[11px] leading-tight text-slate-600 group-hover/row:text-slate-400 group-focus-within/row:text-slate-400" title={rowDesc(r)}>{rowDesc(r)}</div>}

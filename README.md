@@ -4,6 +4,7 @@
 
 - Nhân viên mở một tuần còn trống (ví dụ đầu tuần mới) → app **tự mở sẵn một khối trống** với 3 ô Dự án · Giai đoạn · Hạng mục, như vừa bấm **Thêm tác vụ** — chọn và nhập giờ ngay, bớt một lần bấm.
 - Khối trống **không** làm hiện cảnh báo "rời đi khi chưa lưu" và không được gửi nếu chưa nhập giờ.
+- Rê chuột vào một dòng tác vụ ở bảng chấm công tuần: **tên tác vụ in đậm** (và đổi màu như trước), dòng chú thích bên dưới giữ nguyên — cả giao diện Sáng và Tối.
 - Tuần đã có dữ liệu giữ nguyên như cũ. Quản lý sửa hộ trong ngăn kéo Bảng công thì không tự thêm khối.
 - Chỉ đổi `src/App.jsx` — không cần chạy lại schema.sql.
 
