@@ -1,4 +1,11 @@
-# ARTIUS — Quản lý giờ công · v7.9 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v8.0 (bản webapp cho Vercel)
+
+## Mới ở v8.0 — Chấm công: mở sẵn khối "Thêm tác vụ"
+
+- Nhân viên mở một tuần còn trống (ví dụ đầu tuần mới) → app **tự mở sẵn một khối trống** với 3 ô Dự án · Giai đoạn · Hạng mục, như vừa bấm **Thêm tác vụ** — chọn và nhập giờ ngay, bớt một lần bấm.
+- Khối trống **không** làm hiện cảnh báo "rời đi khi chưa lưu" và không được gửi nếu chưa nhập giờ.
+- Tuần đã có dữ liệu giữ nguyên như cũ. Quản lý sửa hộ trong ngăn kéo Bảng công thì không tự thêm khối.
+- Chỉ đổi `src/App.jsx` — không cần chạy lại schema.sql.
 
 ## Mới ở v7.9 — Hoàn thiện giao diện Sáng (giao diện Tối không đổi)
 
@@ -41,7 +48,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Trên máy tính ghi `v7.9` (nhân viên: cạnh tên ở thanh trên cùng; quản lý: cuối menu dọc).
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Trên máy tính ghi `v8.0` (nhân viên: cạnh tên ở thanh trên cùng; quản lý: cuối menu dọc).
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.

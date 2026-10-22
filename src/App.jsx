@@ -17,6 +17,8 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v8.0 — Chấm công: tuần còn trống thì tự mở sẵn một khối trống (Dự án · Giai đoạn · Hạng mục) như vừa bấm "Thêm tác vụ",
+   nhân viên chọn và nhập giờ ngay. Khối trống không làm hiện cảnh báo "chưa lưu"; quản lý sửa hộ (ngăn kéo Bảng công) thì không tự thêm.
    Mới ở v7.9 — Hoàn thiện giao diện Sáng: rê chuột dòng chấm công chữ xanh dương; Giờ chuẩn xanh đậm, Giờ cố gắng giữ tím có nền chip + thanh sọc;
    phần thiếu ở thanh tổng Bảng công là dải cam nhạt đặc (bỏ sọc), ô "Bỏ trống" nhạt hơn; bảng Tháng: Thiếu giờ vàng đậm, Nghỉ phép xám xanh, Giờ cố gắng tím đặc,
    hôm nay = dải xám liền một khối dọc cả cột + số ngày trong chip đen. Rê chuột vào ô ngày: viền xanh lá nhạt (cả Sáng và Tối).
@@ -288,7 +290,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v7.9";
+const APP_VERSION = "v8.0";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -2304,7 +2306,10 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
           }
         } catch { /* bản tạm hỏng: bỏ qua */ }
       }
-      setRows(sortByGroup([...map.values()].filter((r) => days.some((d) => r.days[d] > 0))));
+      const got = sortByGroup([...map.values()].filter((r) => days.some((d) => r.days[d] > 0)));
+      /* v8.0 — tuần còn trống: tự mở sẵn một khối "Thêm tác vụ" (Dự án · Giai đoạn · Hạng mục để trống) cho nhân viên chọn ngay,
+         không cần bấm nút. Khối trống không tính là "chưa lưu" và không được gửi nếu không nhập giờ. Quản lý sửa hộ thì không tự thêm. */
+      setRows(got.length || admin ? got : [{ projectId: "", phaseId: NO_PHASE, taskId: "", note: "", days: {} }]);
       setOpenKeys(new Set()); setUndoRow(null);
       setDirty(restored > 0); setLoading(false);
       if (restored > 0) flash("Đã khôi phục giờ tạm lưu chưa gửi trên máy này. Kiểm tra lại rồi bấm Gửi giờ công.");
