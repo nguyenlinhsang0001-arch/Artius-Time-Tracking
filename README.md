@@ -3,9 +3,10 @@
 ## Mới ở v7.9 — Hoàn thiện giao diện Sáng (giao diện Tối không đổi)
 
 - **Chấm công:** rê chuột vào dòng tác vụ, chữ chuyển **xanh dương** (trước là xanh ngọc).
-- **Giờ chuẩn / Giờ cố gắng:** Giờ chuẩn xanh dương đậm; Giờ cố gắng giữ màu tím nhưng **số có nền chip tím nhạt** và **thanh tổng dạng sọc tím** — phân biệt rõ trên nền sáng (chân bảng Chấm công, ô CHUẨN / PHÁT SINH, Dashboard, Bảng công).
+- **Giờ chuẩn / Giờ cố gắng:** Giờ chuẩn xanh dương đậm; Giờ cố gắng **tím đặc**, **số có nền chip tím nhạt** — phân biệt rõ trên nền sáng (chân bảng Chấm công, ô CHUẨN / PHÁT SINH, Dashboard, Bảng công).
 - **Bảng công (Admin):** phần thiếu ở thanh tổng là **dải cam nhạt đặc** (bỏ sọc vàng), chữ "thiếu x" nâu cam đậm; ô ngày **"Bỏ trống" nhạt hơn** (nền hồng rất nhạt, viền mảnh).
-- **Bảng công chế độ Tháng:** Thiếu giờ **vàng đậm có viền**, Nghỉ phép **tím lavender** (không còn trùng màu); ngày hôm nay = **dải xám nhạt chạy dọc cả cột** + số ngày trong **chip đen** (bỏ viền to).
+- **Bảng công chế độ Tháng:** Thiếu giờ **vàng đậm có viền**, Nghỉ phép **xám xanh** (không trùng Thiếu giờ vàng hay Giờ cố gắng tím); ngày hôm nay = **dải xám nhạt chạy dọc cả cột** + số ngày trong **chip đen** (bỏ viền to).
+- **Rê chuột vào ô ngày** (Bảng công Tuần / Tháng, Lịch tháng ở Dashboard cá nhân): hiện **viền xanh lá nhạt** bám theo góc bo của ô thay cho đổi độ sáng — áp dụng cả giao diện Sáng và Tối.
 - Chỉ đổi `src/App.jsx` và `src/lightTheme.js` — không cần chạy lại schema.sql.
 
 ## Mới ở v7.8 — Giao diện Sáng / Tối

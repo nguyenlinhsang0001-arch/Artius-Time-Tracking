@@ -18,8 +18,8 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
    Mới ở v7.9 — Hoàn thiện giao diện Sáng: rê chuột dòng chấm công chữ xanh dương; Giờ chuẩn xanh đậm, Giờ cố gắng giữ tím có nền chip + thanh sọc;
-   phần thiếu ở thanh tổng Bảng công là dải cam nhạt đặc (bỏ sọc), ô "Bỏ trống" nhạt hơn; bảng Tháng: Thiếu giờ vàng đậm, Nghỉ phép tím lavender,
-   hôm nay = dải xám cả cột + số ngày trong chip đen. Giao diện Tối không đổi.
+   phần thiếu ở thanh tổng Bảng công là dải cam nhạt đặc (bỏ sọc), ô "Bỏ trống" nhạt hơn; bảng Tháng: Thiếu giờ vàng đậm, Nghỉ phép xám xanh, Giờ cố gắng tím đặc,
+   hôm nay = dải xám liền một khối dọc cả cột + số ngày trong chip đen. Rê chuột vào ô ngày: viền xanh lá nhạt (cả Sáng và Tối).
    Mới ở v7.8 — Giao diện Sáng (Light) bên cạnh giao diện Tối (Dark): nút "Sáng / Tối" ở góc phải thanh trên cùng (mọi màn, kể cả đăng nhập);
    lựa chọn nhớ riêng từng máy, mặc định Tối. CSS Sáng nằm ở src/lightTheme.js (sinh tự động từ class Tailwind), logo Sáng ở public/logo-artius-time-light.svg.
    Nhãn / thanh trạng thái ở giao diện Sáng dùng màu riêng, đặc và đậm hơn (xanh lá Bình thường, cam Sắp vượt, đỏ Vượt…) cho dễ nhìn trên nền sáng.
@@ -1745,6 +1745,11 @@ function AppMain() {
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+        /* v7.9 — rê chuột vào ô ngày (Bảng công Tuần/Tháng, Lịch tháng cá nhân): viền xanh lá nhạt bám theo góc bo của ô */
+        .cell-hov { position: relative; }
+        .cell-hov:hover { outline: 2px solid #86efac; outline-offset: 1px; z-index: 2; }
+        html[data-theme="light"] .cell-hov:hover { outline-color: #4ade80; }
 
         /* v7.8 — nền chung cho giao diện Sáng (phần còn lại do LIGHT_CSS đảo màu các class Tailwind) */
         html[data-theme="light"] body { background: #f1f5f9; color: #0f172a; }
@@ -3701,7 +3706,7 @@ const DAY_ST_L = {
   part: { background: "#f59e0b1f", color: "#b45309", boxShadow: "inset 0 0 0 1px #d9770666" },
   draft: { color: "#64748b", fontWeight: 500, border: "1.5px dashed #94a3b8" },
   none: { background: "#fff1f2", color: "#e11d48", boxShadow: "inset 0 0 0 1px #fecdd3" },   // v7.9: nhạt hơn
-  leave: { background: "#ede9fe", color: "#6d28d9", boxShadow: "inset 0 0 0 1px #a78bfa" },   // v7.9: nghỉ phép tím lavender (tách khỏi thiếu giờ vàng)
+  leave: { background: "#cbd5e1", color: "#334155", boxShadow: "inset 0 0 0 1px #94a3b8" },   // v7.9: nghỉ phép xám xanh (tách khỏi thiếu giờ vàng và giờ cố gắng tím)
   hol: { background: "repeating-linear-gradient(45deg,#64748b22 0 4px,transparent 4px 8px)", color: "#64748b", boxShadow: "inset 0 0 0 1px #64748b40" },
   off: { color: "#cbd5e1" },
   fut: { color: "#cbd5e1", boxShadow: "inset 0 0 0 1px #e2e8f0" },
@@ -3711,15 +3716,14 @@ const DAY_ST_SM_L = {
   part: { background: "#fde68a", boxShadow: "inset 0 0 0 1px #f59e0b" },   // v7.9: thiếu giờ vàng đậm
   draft: { border: "1.5px dashed #94a3b8" },
   none: { background: "#fecdd380" },   // bỏ trống: nền hồng nhạt, không viền — đỡ rối khi cả tháng
-  leave: { background: "#ddd6fe", boxShadow: "inset 0 0 0 1px #a78bfa" },
+  leave: { background: "#cbd5e1", boxShadow: "inset 0 0 0 1px #94a3b8" },
   hol: { background: "repeating-linear-gradient(45deg,#64748b30 0 3px,transparent 3px 6px)" },
   off: { background: "#e2e8f080" },
   fut: { background: "#fff", boxShadow: "inset 0 0 0 1px #e2e8f0" },
 };
-/* v7.9 — hôm nay ở bảng Tháng (giao diện Sáng): cả cột nằm trên dải xám nhạt, số ngày trong chip đen */
+/* v7.9 — hôm nay ở bảng Tháng (giao diện Sáng): số ngày trong chip đen; dải xám liền một khối chạy dọc cả cột (vẽ ở TimesheetBoard) */
 const TODAY_BAND = "#e2e8f0";
-const todayBand = (st) => ({ ...st, boxShadow: `${st?.boxShadow ? `${st.boxShadow}, ` : ""}0 -16px 0 3px ${TODAY_BAND}, 0 16px 0 3px ${TODAY_BAND}` });   // phủ kín khoảng đệm trên/dưới để dải liền giữa các dòng
-const TODAY_CHIP = { background: "#0f172a", color: "#fff", fontWeight: 700, borderRadius: 999, boxShadow: `0 0 0 3px ${TODAY_BAND}, 0 12px 0 3px ${TODAY_BAND}` };
+const TODAY_CHIP = { background: "#0f172a", color: "#fff", fontWeight: 700, borderRadius: 999 };
 const dayStyle = (k) => (isLight() ? DAY_ST_L : DAY_ST)[k];
 const dayStyleSm = (k) => (isLight() ? DAY_ST_SM_L : DAY_ST_SM)[k];
 /* ô nhỏ của chế độ Tháng: cùng bộ màu, đậm hơn một chút để thấy rõ ở kích thước 22px */
@@ -3809,6 +3813,20 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
   const [unlockFor, setUnlockFor] = useState(null);             // empId đang chờ xác nhận mở khoá tuần
   const [drawer, setDrawer] = useState(null);                   // v6.0 (A): empId đang mở ngăn kéo sửa cả tuần
   const [drawerDirty, setDrawerDirty] = useState(false);
+  /* v7.9 — giao diện Sáng, bảng Tháng: một dải xám bo góc chạy liền từ số ngày hôm nay xuống hết bảng (nằm dưới các ô) */
+  const mWrapRef = useRef(null);
+  const [band, setBand] = useState(null);
+  const [bandTick, setBandTick] = useState(0);
+  useEffect(() => { const f = () => setBandTick((n) => n + 1); window.addEventListener("resize", f); window.addEventListener("artius:theme", f); return () => { window.removeEventListener("resize", f); window.removeEventListener("artius:theme", f); }; }, []);
+  useLayoutEffect(() => {
+    const w = mWrapRef.current, h = w?.querySelector("[data-today-head]"), t = w?.querySelector("table");
+    let nb = null;
+    if (w && h && t && isLight()) {
+      const wr = w.getBoundingClientRect(), hr = h.getBoundingClientRect(), tr = t.getBoundingClientRect();
+      nb = { left: Math.round(hr.left - wr.left + w.scrollLeft - 3), top: Math.round(hr.top - wr.top - 4), width: Math.round(hr.width + 6), height: Math.round(tr.bottom - hr.top + 2) };
+    }
+    if (JSON.stringify(nb) !== JSON.stringify(band)) setBand(nb);
+  });   // đo lại sau mỗi lần vẽ; chỉ setState khi vị trí đổi
   const [leaveAsk, setLeaveAsk] = useState(false);              // đang hỏi bỏ thay đổi chưa lưu
   const [pop, setPop] = useState(null);                         // v6.0 (C): { eid, d, x, y, items, vals } — sửa nhanh một ô ngày
   const [popSaving, setPopSaving] = useState(false);
@@ -4162,7 +4180,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
                 return (
                   <td key={d} className="border-b border-slate-800/70 px-1 py-1.5">
                     <div {...dayHandlers(e.id, d)} style={dayStyle(x.st)}
-                      className={`mx-auto flex h-11 min-w-[54px] max-w-[110px] ${d > today || readOnly ? "cursor-default" : "cursor-pointer hover:brightness-125"} flex-col items-center justify-center rounded-md ${x.st === "hol" ? "text-[13px] font-medium" : "font-mono text-[13px] font-semibold"}`}>
+                      className={`mx-auto flex h-11 min-w-[54px] max-w-[110px] ${d > today || readOnly ? "cursor-default" : "cell-hov cursor-pointer"} flex-col items-center justify-center rounded-md ${x.st === "hol" ? "text-[13px] font-medium" : "font-mono text-[13px] font-semibold"}`}>
                       {txt}
                       {plus > 0 && <small className="font-mono text-[10px] font-medium leading-none text-teal-400">+{fmtH(plus)}</small>}
                     </div>
@@ -4203,14 +4221,14 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
 
   /* ---- chế độ Tháng ---- */
   const MonthView = () => (
-    <table className="min-w-full border-separate border-spacing-0">
+    <table className="relative z-[1] min-w-full border-separate border-spacing-0">
       <thead>
         <tr className="text-[11px] uppercase tracking-wider text-slate-500">
           <th className="sticky left-0 z-10 border-b border-slate-800 bg-slate-900 px-3 py-2 text-left font-normal md:px-4">Nhân sự</th>
           <th className="border-b border-slate-800 px-2 py-2 text-left font-normal">
             <div className="flex gap-0.5 font-mono text-[10px] normal-case tracking-normal">
               {days.map((d, i) => (
-                <span key={d} title={hs.get(d) || undefined} style={d === today && isLight() && !hs.has(d) ? TODAY_CHIP : undefined} className={`w-[22px] shrink-0 text-center ${i > 0 && parseD(d).getDay() === 1 ? "ml-2" : ""}
+                <span key={d} title={hs.get(d) || undefined} data-today-head={d === today ? "" : undefined} style={d === today && isLight() && !hs.has(d) ? TODAY_CHIP : undefined} className={`w-[22px] shrink-0 text-center ${i > 0 && parseD(d).getDay() === 1 ? "ml-2" : ""}
                   ${hs.has(d) ? "rounded-[3px] bg-slate-300 text-slate-900" : d === today ? "text-slate-100" : parseD(d).getDay() === 0 ? "text-slate-700" : "text-slate-600"}`}>{+d.slice(8)}</span>
               ))}
             </div>
@@ -4236,8 +4254,8 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
                 {days.map((d, i) => {
                   const x = dayInfo(e.id, d);
                   return (
-                    <span key={d} {...dayHandlers(e.id, d)} style={d === today && isLight() ? todayBand(dayStyleSm(x.st)) : dayStyleSm(x.st)}
-                      className={`relative h-[22px] w-[22px] shrink-0 rounded ${d > today || readOnly ? "cursor-default" : "cursor-pointer hover:brightness-150"} ${i > 0 && parseD(d).getDay() === 1 ? "ml-2" : ""} ${d === today && !isLight() ? "outline outline-1 outline-offset-2 outline-slate-100/40" : ""}`}>
+                    <span key={d} {...dayHandlers(e.id, d)} style={dayStyleSm(x.st)}
+                      className={`relative h-[22px] w-[22px] shrink-0 rounded ${d > today || readOnly ? "cursor-default" : "cell-hov cursor-pointer"} ${i > 0 && parseD(d).getDay() === 1 ? "ml-2" : ""} ${d === today && !isLight() ? "outline outline-1 outline-offset-2 outline-slate-100/40" : ""}`}>
                       {x.ot + (x.st === "hol" ? x.done : 0) > 0 && <i className="absolute right-0.5 top-0.5 h-[5px] w-[5px] rounded-full bg-teal-400" />}
                     </span>
                   );
@@ -4344,7 +4362,10 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
 
       {Legend()}
       {emps.length === 0 ? <p className="px-4 py-6 text-sm text-slate-500">Không có nhân sự nào khớp bộ lọc.</p> : (
-        <div className="overflow-x-auto pb-1">{mode === "week" ? WeekView() : MonthView()}</div>
+        <div ref={mWrapRef} className="relative overflow-x-auto pb-1" data-band={bandTick}>
+          {mode === "month" && band && isLight() && <div aria-hidden className="pointer-events-none absolute rounded-lg" style={{ ...band, background: TODAY_BAND, zIndex: 0 }} />}
+          {mode === "week" ? WeekView() : MonthView()}
+        </div>
       )}
       {!pop && !drawer && tipBox}
 
@@ -4784,7 +4805,7 @@ function MonthCalendar({ cfg, empId, ym, setYm, loading, onOpenWeek }) {
           return (
             <button key={d} type="button" disabled={!can} onClick={() => onOpenWeek(fmt(mondayOf(parseD(d))))} style={dayStyle(x.st)}
               title={`${DOWS[(parseD(d).getDay() + 6) % 7]} ${dLabel(d)}${hs.has(d) ? ` · ${hs.get(d)}` : ""}${x.tot || x.draft ? ` · chuẩn ${fh(x.sd)}${x.idle ? ` · chờ việc ${fh(x.idle)}` : ""} · OT ${fh(x.ot)} · cố gắng ${fh(x.ef)} · tổng ${fh(x.tot)} h${x.draft ? ` · nháp ${fh(x.draft)} h` : ""}` : ""}${can ? " — bấm để mở Chấm công tuần này" : ""}`}
-              className={`relative flex h-14 flex-col items-center justify-center rounded-md md:h-[60px] ${can ? "cursor-pointer hover:brightness-125" : "cursor-default"} ${x.st === "hol" ? "text-[13px] font-medium" : "font-mono text-[13px] font-semibold"} ${d === today ? "outline outline-2 outline-offset-1 outline-teal-400" : ""}`}>
+              className={`relative flex h-14 flex-col items-center justify-center rounded-md md:h-[60px] ${can ? "cell-hov cursor-pointer" : "cursor-default"} ${x.st === "hol" ? "text-[13px] font-medium" : "font-mono text-[13px] font-semibold"} ${d === today ? "outline outline-2 outline-offset-1 outline-teal-400" : ""}`}>
               <span className="absolute left-1.5 top-0.5 font-sans text-[10px] font-normal text-slate-500">{parseD(d).getDate()}</span>
               <span className="leading-none">{txt}</span>
               {split && (
