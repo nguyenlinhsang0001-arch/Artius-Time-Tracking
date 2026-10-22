@@ -1,4 +1,16 @@
-# ARTIUS — Quản lý giờ công · v7.7 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v7.8 (bản webapp cho Vercel)
+
+## Mới ở v7.8 — Giao diện Sáng / Tối
+
+- Nút giao diện 3 lựa chọn **Tối · Sáng · Theo máy** (Theo máy = tự sáng/tối theo cài đặt của Windows, macOS hoặc điện thoại) ở góc phải thanh trên cùng (cạnh tên tài khoản), có trên mọi màn kể cả màn đăng nhập. Lựa chọn **nhớ riêng từng máy**
+  (trình duyệt); lần đầu mở app mặc định là **Tối** như trước. Giao diện Tối không đổi.
+- Giao diện Sáng: nền xám nhạt, thẻ trắng, chữ đậm, màu nhấn (teal / vàng / đỏ) đậm hơn để đọc rõ trên nền sáng; logo đổi sang bản chữ tối.
+- Nhãn và thanh trạng thái ở giao diện Sáng dùng **bảng màu riêng**, đặc và đậm hơn (không bê nguyên bản tối): Bình thường / Đã nộp = xanh lá, Sắp vượt / Thiếu giờ / Còn nháp = cam, Vượt / Quá tải / Chưa nộp = đỏ; thanh tiến độ cũng đậm hơn.
+- Ở giao diện Sáng: ô "Bỏ trống" ở bảng Tháng là nền hồng nhạt không viền (đỡ rối); chấm "Nộp từng tuần", màu dự án và giai đoạn dùng bản đậm; dải tên phòng ban ở Nhân sự / Tác vụ cùng kiểu với Bảng công.
+- **BOD chỉ xem:** ẩn hẳn các nút và ô Thêm / Sửa / Xoá / Lưu ở Dự án, Nhân sự, Tác vụ, Thiết lập; nút trạng thái (Đang mở, Đang chấm công, công tắc nhắc) chỉ hiển thị, không bấm được.
+- File mới cần có khi cập nhật: `src/lightTheme.js` (CSS giao diện Sáng, sinh tự động từ App.jsx — không sửa tay) và `public/logo-artius-time-light.svg`.
+  Cứ kéo cả folder lên GitHub như các bản trước là đủ.
+- Chỉ đổi giao diện: **không cần chạy lại schema.sql**, không đổi `api/push.js`. Thêm màu mới ở App.jsx sau này thì cần sinh lại `lightTheme.js`.
 
 ## Mới ở v7.7 — Chuông nhắc bấm lại được, BOD xem mọi mục quản lý
 
@@ -7,6 +19,9 @@
   Nút **Nhắc tất cả** bỏ qua người còn trong 30 phút. Đổi khoảng cách: hằng số `NUDGE_GAP_MIN` trong `src/App.jsx`.
 - **BOD:** thêm các mục Dự án, Nhân sự, Tác vụ, Thiết lập ở chế độ **chỉ xem** (có dải thông báo, ô nhập không thao tác, mọi lệnh lưu bị chặn;
   không hiện danh sách tài khoản đăng nhập/mật khẩu). Quyền nhắc vẫn như cũ: chỉ Admin và Trưởng phòng (cùng phòng) bấm chuông.
+- **Kéo thả dự án:** giữ biểu tượng ⋮⋮ ở đầu dòng dự án (Dashboard → Tiến độ dự án, và tab Dự án) rồi kéo để đổi vị trí. Thứ tự lưu **riêng từng máy**
+  (trình duyệt), dùng chung giữa hai màn; đổi máy hoặc xoá dữ liệu trình duyệt thì về thứ tự mặc định. Nút **Xếp tự động** ở Dashboard bỏ thứ tự đã kéo.
+  Dự án Urgent vẫn ghim đầu bảng Dashboard. Chỉ kéo được bằng chuột (máy tính), chưa hỗ trợ cảm ứng điện thoại.
 - Chỉ đổi `src/App.jsx`: **không cần chạy lại schema.sql**, không đổi `api/push.js`.
 
 ## CÁCH CẬP NHẬT — từ v3.0 trở đi chỉ 2 bước
@@ -17,7 +32,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Trên máy tính ghi `v7.7` (nhân viên: cạnh tên ở thanh trên cùng; quản lý: cuối menu dọc).
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Trên máy tính ghi `v7.8` (nhân viên: cạnh tên ở thanh trên cùng; quản lý: cuối menu dọc).
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.

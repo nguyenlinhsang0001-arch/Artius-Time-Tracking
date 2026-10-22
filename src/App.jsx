@@ -7,18 +7,27 @@ import {
   Clock, Users, FolderKanban, LayoutDashboard, Download, Plus, Trash2, Save,
   AlertTriangle, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, LogOut, Settings,
   CheckCircle2, Loader2, ListChecks, Lock, RotateCcw, Pencil, Check, X, CalendarDays,
-  Copy, Unlock, Search, Flag, Zap, Eraser, ClipboardList, MoreHorizontal, Grid3x3, User, Eye, EyeOff, Bell, Send, Printer, QrCode, Share, GripVertical,
+  Copy, Unlock, Search, Flag, Zap, Eraser, ClipboardList, MoreHorizontal, Grid3x3, User, Eye, EyeOff, Bell, Send, Printer, QrCode, Share, GripVertical, Sun, Moon, Monitor,
 } from "lucide-react";
 import { fetchConfig, saveConfig, fetchTs, fetchTsChanges, fetchTsStamps, saveTs, deleteAllTs, fetchUsage, fetchPhaseDetail, purgeTasks, fetchOrphanTasks } from "./data.js";
 import { mergeConfig } from "./merge.js";
+import { LIGHT_CSS } from "./lightTheme.js";
 import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus, sendNudge, fetchNudgeLog, fetchNudgeLogRange } from "./push.js";
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v7.8 — Giao diện Sáng (Light) bên cạnh giao diện Tối (Dark): nút "Sáng / Tối" ở góc phải thanh trên cùng (mọi màn, kể cả đăng nhập);
+   lựa chọn nhớ riêng từng máy, mặc định Tối. CSS Sáng nằm ở src/lightTheme.js (sinh tự động từ class Tailwind), logo Sáng ở public/logo-artius-time-light.svg.
+   Nhãn / thanh trạng thái ở giao diện Sáng dùng màu riêng, đặc và đậm hơn (xanh lá Bình thường, cam Sắp vượt, đỏ Vượt…) cho dễ nhìn trên nền sáng.
+   Nút giao diện 3 lựa chọn: Tối · Sáng · Theo máy (tự đổi theo cài đặt sáng/tối của máy). Ở Sáng: ô "Bỏ trống" bảng Tháng là nền hồng nhạt
+   không viền; chấm "Nộp từng tuần" và màu dự án / giai đoạn bản đậm; dải tên phòng ban thống nhất. BOD chỉ xem: ẩn hẳn nút / ô thêm-sửa-xoá-lưu.
+   Giao diện Tối giữ nguyên như v7.7.
    Mới ở v7.7 — Chuông nhắc ở Bảng công bấm lại được nhiều lần (tuần và tháng), cách nhau tối thiểu 30 phút cho mỗi người: trong 30 phút chuông mờ đi,
    rê chuột hiện "nhắc lại được lúc …"; chuông có dấu ✓ nhỏ nếu người đó đã được nhắc; "Nhắc tất cả" bỏ qua người đang trong 30 phút.
    BOD xem được mọi mục quản lý (Dự án, Nhân sự, Tác vụ, Thiết lập) ở chế độ chỉ xem; nhãn "Chế độ chỉ xem" ở header cạnh tên tài khoản (mọi mục quản lý) — không lưu được thay đổi, không xem tài khoản/mật khẩu.
+   Kéo thả dự án đổi vị trí: giữ biểu tượng ⋮⋮ đầu dòng dự án ở Dashboard (Tiến độ dự án) và tab Dự án; thứ tự lưu riêng từng máy (trình duyệt),
+   dùng chung giữa hai màn; nút "Xếp tự động" ở Dashboard để bỏ thứ tự đã kéo. Dự án Urgent vẫn ghim đầu bảng Dashboard. Chỉ dùng được bằng chuột (máy tính).
    Chỉ đổi giao diện (src/App.jsx); không đổi database hay api/push.js.
    Mới ở v7.6 — Bỏ giới hạn 1520px của v7.5: mọi tài khoản hiển thị full màn hình. Quản lý (Admin, BOD, Trưởng phòng) trên máy tính:
    menu dọc dạng thẻ bám mép trái khung nội dung (dính khi cuộn), có Thoát + phiên bản; header chỉ còn tiêu đề trang · logo · tên.
@@ -227,7 +236,56 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    · Dashboard quản lý: lọc bộ phận / dự án / tên + biểu đồ theo hạng mục
    ============================================================ */
 
-const APP_VERSION = "v7.7";
+/* v7.8 — Giao diện: Tối / Sáng / Theo máy — lưu riêng từng máy (localStorage "artius:theme"), mặc định Tối.
+   "Theo máy" đi theo cài đặt sáng/tối của Windows, macOS hoặc điện thoại (tự đổi khi máy đổi).
+   Sáng = CSS đảo màu đặt dưới html[data-theme="light"] (LIGHT_CSS, sinh từ class Tailwind); Tối = giao diện cũ, không đổi. */
+const THEME_KEY = "artius:theme";
+const readPref = () => { try { const v = localStorage.getItem(THEME_KEY); return v === "light" || v === "system" ? v : "dark"; } catch { return "dark"; } };
+const sysLight = () => { try { return window.matchMedia("(prefers-color-scheme: light)").matches; } catch { return false; } };
+const effTheme = (pref) => (pref === "system" ? (sysLight() ? "light" : "dark") : pref);
+const applyTheme = (t) => {
+  try {
+    document.documentElement.dataset.theme = t;
+    document.querySelector('meta[name="color-scheme"]')?.setAttribute("content", t);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", t === "light" ? "#f1f5f9" : "#020617");
+  } catch { /* bỏ qua */ }
+};
+applyTheme(effTheme(readPref()));
+try {   // máy đổi sáng/tối khi đang chọn "Theo máy" → đổi theo ngay
+  window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+    if (readPref() === "system") { applyTheme(effTheme("system")); window.dispatchEvent(new Event("artius:theme")); }
+  });
+} catch { /* trình duyệt cũ: bỏ qua */ }
+const isLight = () => { try { return document.documentElement.dataset.theme === "light"; } catch { return false; } };   // đọc lúc vẽ: App vẽ lại khi đổi giao diện
+function useTheme() {
+  const [pref, setPrefState] = useState(readPref);
+  const [, bump] = useState(0);
+  useEffect(() => { const f = () => { setPrefState(readPref()); bump((n) => n + 1); }; window.addEventListener("artius:theme", f); return () => window.removeEventListener("artius:theme", f); }, []);
+  const setPref = (p) => { try { localStorage.setItem(THEME_KEY, p); } catch { /* không lưu được: chỉ đổi cho phiên này */ } applyTheme(effTheme(p)); setPrefState(p); window.dispatchEvent(new Event("artius:theme")); };
+  return [effTheme(pref), setPref, pref];
+}
+function BrandLogo({ className }) {
+  const [theme] = useTheme();
+  return <img src={theme === "light" ? "/logo-artius-time-light.svg" : "/logo-artius-time.svg"} alt="ARTIUS Time Tracking" className={className} />;
+}
+/* nút chọn giao diện: 3 ô Tối · Sáng · Theo máy */
+function ThemeToggle() {
+  const [, setPref, pref] = useTheme();
+  const opts = [["dark", Moon, "Tối"], ["light", Sun, "Sáng"], ["system", Monitor, "Theo máy"]];
+  return (
+    <div role="radiogroup" aria-label="Giao diện" className="ml-3 inline-flex h-9 shrink-0 items-center gap-0.5 rounded-lg border border-slate-700 p-0.5">
+      {opts.map(([k, Icon, l]) => (
+        <button key={k} role="radio" aria-checked={pref === k} onClick={() => setPref(k)}
+          title={k === "system" ? "Theo máy — tự sáng / tối theo cài đặt của máy tính hoặc điện thoại" : `Giao diện ${l}`}
+          className={`inline-flex h-7 w-8 items-center justify-center rounded-md transition-colors ${pref === k ? "bg-teal-500/15 text-teal-300" : "text-slate-500 hover:bg-slate-800 hover:text-slate-200"}`}>
+          <Icon size={15} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const APP_VERSION = "v7.8";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -950,6 +1008,11 @@ const PROJECT_COLORS = ["#2dd4bf", "#f59e0b", "#a78bfa", "#f472b6", "#60a5fa", "
    Mã P1, P2… cố định theo thứ tự tạo; màu suy từ số trong mã. Giai đoạn "ngừng dùng" (active = false) không chọn được
    khi chấm công nhưng vẫn hiện trong báo cáo. PHASES là bản sống: App chép cfg.phases vào đây ở mỗi lần render. */
 const PHASE_COLORS = ["#f59e0b", "#2dd4bf", "#38bdf8", "#a78bfa", "#f472b6", "#a3e635", "#fb923c", "#22d3ee"];
+/* v7.8 — màu dự án / giai đoạn bản đậm cho giao diện Sáng (màu sáng của bản Tối bị nhạt trên nền trắng) */
+const TONE_L = { "#2dd4bf": "#0d9488", "#f59e0b": "#d97706", "#a78bfa": "#7c3aed", "#f472b6": "#db2777", "#60a5fa": "#2563eb", "#facc15": "#ca8a04",
+  "#34d399": "#059669", "#fb7185": "#e11d48", "#38bdf8": "#0284c7", "#c084fc": "#9333ea", "#a3e635": "#65a30d", "#fb923c": "#ea580c",
+  "#22d3ee": "#0891b2", "#4ade80": "#16a34a", "#f87171": "#dc2626" };
+const tone = (hex) => (hex && isLight() ? TONE_L[String(hex).toLowerCase()] || hex : hex);
 const phaseColor = (id) => PHASE_COLORS[((parseInt(String(id).replace(/\D/g, ""), 10) || 1) - 1) % PHASE_COLORS.length];
 const DEFAULT_PHASES = [
   { id: "P1", name: "Đấu thầu", desc: "Khảo sát sơ bộ, nghiên cứu, concept đấu thầu, báo giá, hồ sơ proposal", active: true },
@@ -1068,7 +1131,7 @@ const inputCls = `${CTRL} w-full rounded-md border border-slate-700 bg-slate-900
 const selectCls = inputCls;
 const btnBase = `${CTRL} inline-flex items-center justify-center gap-1.5 rounded-md px-4 text-sm font-medium`;
 const btnPrimary = `${btnBase} bg-teal-600 text-white hover:bg-teal-500`;
-const btnGhost = `${btnBase} border border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white`;
+const btnGhost = `${btnBase} border border-slate-700 text-slate-300 hover:border-slate-500 hover:text-slate-50`;
 const btnDanger = `${btnBase} border border-rose-900 bg-rose-950 text-rose-300 hover:bg-rose-900`;
 const iconBtn = "flex h-9 w-9 items-center justify-center rounded-md border border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-100";
 const GUT = 36; // bằng đúng bề rộng iconBtn — giữ ô Dự án và ô Hạng mục thẳng hàng nhau
@@ -1440,6 +1503,7 @@ class AppErrorBoundary extends React.Component {
   }
 }
 export default function App() {
+  useTheme();   // v7.8: vẽ lại toàn app khi đổi Sáng / Tối (các màu ghi thẳng trong code đọc isLight())
   return <AppErrorBoundary><AppMain /></AppErrorBoundary>;
 }
 function AppMain() {
@@ -1679,7 +1743,22 @@ function AppMain() {
         input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
-      `}</style>
+        /* v7.8 — nền chung cho giao diện Sáng (phần còn lại do LIGHT_CSS đảo màu các class Tailwind) */
+        html[data-theme="light"] body { background: #f1f5f9; color: #0f172a; }
+
+        /* v7.8 — BOD chỉ xem: ẩn hẳn nút / ô thêm-sửa-xoá-lưu; nút trạng thái (Đang mở, Đang chấm công, công tắc) chỉ hiển thị, không bấm được */
+        .artius-ro button:has(> svg.lucide-pencil), .artius-ro button:has(> svg.lucide-trash2), .artius-ro button:has(> svg.lucide-trash-2),
+        .artius-ro button:has(> svg.lucide-plus), .artius-ro button:has(> svg.lucide-x), .artius-ro button:has(> svg.lucide-eye-off),
+        .artius-ro button:has(> svg.lucide-eye), .artius-ro button:has(> svg.lucide-save), .artius-ro button:has(> svg.lucide-send),
+        .artius-ro button:has(> svg.lucide-rotate-ccw), .artius-ro .ro-hide,
+        .artius-ro div:has(> input[placeholder="Mã DA"]), .artius-ro div:has(> input[placeholder$="rồi Enter"]),
+        .artius-ro div:has(> input[placeholder^="Mã, ví dụ"]), .artius-ro div:has(> input[placeholder^="Quốc khánh"]),
+        .artius-ro div:has(> input[placeholder^="Gõ XOA"]), .artius-ro div:has(> textarea),
+        .artius-ro div:has(> label > input[type="checkbox"]) { display: none !important; }
+        .artius-ro button:has(> svg.lucide-lock), .artius-ro button:has(> svg.lucide-lock-open), .artius-ro button.appearance-none.rounded-full,
+        .artius-ro .ro-static { pointer-events: none; }
+        html[data-theme="light"] ::selection { background: #99f6e4; color: #0f172a; }
+      `}{LIGHT_CSS}</style>
       {/* v7.5: bỏ thanh menu dọc bên trái trên máy tính — tab chuyển lên header (tab ngang) */}
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -1704,9 +1783,10 @@ function AppMain() {
               <span className={`truncate text-xs text-slate-500 ${me && !isMgr ? "md:hidden" : ""}`}>{me ? pageTitle : "Quản lý giờ công dự án"}</span>
             </div>
             {/* logo chữ ở giữa header = giữa cửa sổ trình duyệt */}
-            {me && <img src="/logo-artius-time.svg" alt="ARTIUS Time Tracking" className="pointer-events-none absolute left-1/2 top-1/2 hidden h-9 w-auto -translate-x-1/2 -translate-y-1/2 md:block" />}
+            {me && <BrandLogo className="pointer-events-none absolute left-1/2 top-1/2 hidden h-9 w-auto -translate-x-1/2 -translate-y-1/2 md:block" />}
             <div className="flex min-w-0 items-center">
               <InstallButton />
+              <ThemeToggle />
               {me?.type === "bod" && ["dash", "sheet", "proj", "emp", "task", "set"].includes(tab) && (
                 <span className="ml-3 inline-flex shrink-0 items-center gap-1.5 rounded-md border border-violet-900 bg-violet-950/60 px-2 py-1 text-[11px] text-violet-200" title="Tài khoản BOD xem được mục này nhưng không chỉnh sửa được">
                   <Eye size={12} /> Chế độ chỉ xem
@@ -1872,7 +1952,7 @@ const NUDGE_GAP_MIN = 30;   // v7.7: khoảng cách tối thiểu giữa hai l�
 function ReadOnlyView({ children }) {
   return (
     <div>
-      <div className="[&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none">{children}</div>
+      <div className="artius-ro [&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none">{children}</div>
     </div>
   );
 }
@@ -1964,7 +2044,7 @@ function SignIn({ onSignedIn, flash }) {
   return (
     <div className="mx-auto mt-6 max-w-md md:mt-10">
       {/* v7.4: logo lớn trên màn đăng nhập (máy tính) */}
-      <img src="/logo-artius-time.svg" alt="ARTIUS Time Tracking" className="mx-auto mb-8 hidden h-24 w-auto md:block" />
+      <BrandLogo className="mx-auto mb-8 hidden h-24 w-auto md:block" />
       <div className="rounded-xl border border-slate-800 bg-slate-900 p-5 md:p-6">
         <h1 className="text-lg font-semibold text-slate-50">{mode === "setup" ? "Tạo tài khoản quản lý" : "Đăng nhập"}</h1>
         {mode === null ? (
@@ -3612,6 +3692,29 @@ const DAY_ST = {
   off: { color: "#334155" },
   fut: { color: "#334155", boxShadow: "inset 0 0 0 1px #1e293b80" },
 };
+/* v7.8 — bộ màu ô cho giao diện Sáng (chữ đậm trên nền nhạt) */
+const DAY_ST_L = {
+  full: { background: "#3b82f61f", color: "#1d4ed8" },
+  part: { background: "#f59e0b1f", color: "#b45309", boxShadow: "inset 0 0 0 1px #d9770666" },
+  draft: { color: "#64748b", fontWeight: 500, border: "1.5px dashed #94a3b8" },
+  none: { background: "#f43f5e12", color: "#e11d48", boxShadow: "inset 0 0 0 1px #e11d4850" },
+  leave: { background: "#f973161f", color: "#c2410c", boxShadow: "inset 0 0 0 1px #ea580c55" },
+  hol: { background: "repeating-linear-gradient(45deg,#64748b22 0 4px,transparent 4px 8px)", color: "#64748b", boxShadow: "inset 0 0 0 1px #64748b40" },
+  off: { color: "#cbd5e1" },
+  fut: { color: "#cbd5e1", boxShadow: "inset 0 0 0 1px #e2e8f0" },
+};
+const DAY_ST_SM_L = {
+  full: { background: "#3b82f633" },
+  part: { background: "#f59e0b2e", boxShadow: "inset 0 0 0 1px #d9770670" },
+  draft: { border: "1.5px dashed #94a3b8" },
+  none: { background: "#fecdd380" },   // bỏ trống: nền hồng nhạt, không viền — đỡ rối khi cả tháng
+  leave: { background: "#f9731640", boxShadow: "inset 0 0 0 1px #ea580c66" },
+  hol: { background: "repeating-linear-gradient(45deg,#64748b30 0 3px,transparent 3px 6px)" },
+  off: { background: "#e2e8f080" },
+  fut: { boxShadow: "inset 0 0 0 1px #e2e8f0" },
+};
+const dayStyle = (k) => (isLight() ? DAY_ST_L : DAY_ST)[k];
+const dayStyleSm = (k) => (isLight() ? DAY_ST_SM_L : DAY_ST_SM)[k];
 /* ô nhỏ của chế độ Tháng: cùng bộ màu, đậm hơn một chút để thấy rõ ở kích thước 22px */
 const DAY_ST_SM = {
   full: { background: "#60a5fa38" },
@@ -3623,6 +3726,9 @@ const DAY_ST_SM = {
   off: { background: "#1e293b33" },
   fut: { boxShadow: "inset 0 0 0 1px #1e293b80" },
 };
+/* v7.8 — chấm "Nộp từng tuần" ở giao diện Sáng: cùng bộ màu đặc với nhãn trạng thái */
+const WEEK_DOT_L = { ok: "#059669", dr: "#f59e0b", gap: "#f59e0b", no: "#e11d48", fut: "#e2e8f0" };
+const weekDot = (ws) => (isLight() ? WEEK_DOT_L[ws] : WEEK_ST[ws][2]);
 const WEEK_ST = {
   ok: ["Đã nộp", "border-teal-900 bg-teal-950 text-teal-300", "#2dd4bf"],
   dr: ["Còn nháp", "border-amber-900 bg-amber-950/70 text-amber-300", "#fbbf24"],
@@ -3986,7 +4092,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
   const Legend = () => (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-800 px-3 py-2 text-xs text-slate-400 md:px-4">
       {[["full", "Đủ giờ chuẩn"], ["part", "Thiếu giờ"], ["draft", "Nháp chưa gửi"], ["none", "Bỏ trống"], ["leave", "Nghỉ phép"], ["hol", "Ngày lễ"], ["fut", "CN / chưa tới"]].map(([k, l]) => (
-        <span key={k} className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded-[3px]" style={DAY_ST_SM[k]} />{l}</span>
+        <span key={k} className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded-[3px]" style={dayStyleSm(k)} />{l}</span>
       ))}
       <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full bg-teal-400" />Tăng ca (ô tuần ghi <span className="font-mono text-teal-400">+h</span>)</span>
       <span className="flex items-center gap-1.5 text-slate-500">Thanh tổng:
@@ -4048,7 +4154,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
                 const plus = x.st === "hol" ? x.done + x.ot : x.ot;
                 return (
                   <td key={d} className="border-b border-slate-800/70 px-1 py-1.5">
-                    <div {...dayHandlers(e.id, d)} style={DAY_ST[x.st]}
+                    <div {...dayHandlers(e.id, d)} style={dayStyle(x.st)}
                       className={`mx-auto flex h-11 min-w-[54px] max-w-[110px] ${d > today || readOnly ? "cursor-default" : "cursor-pointer hover:brightness-125"} flex-col items-center justify-center rounded-md ${x.st === "hol" ? "text-[13px] font-medium" : "font-mono text-[13px] font-semibold"}`}>
                       {txt}
                       {plus > 0 && <small className="font-mono text-[10px] font-medium leading-none text-teal-400">+{fmtH(plus)}</small>}
@@ -4123,7 +4229,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
                 {days.map((d, i) => {
                   const x = dayInfo(e.id, d);
                   return (
-                    <span key={d} {...dayHandlers(e.id, d)} style={DAY_ST_SM[x.st]}
+                    <span key={d} {...dayHandlers(e.id, d)} style={dayStyleSm(x.st)}
                       className={`relative h-[22px] w-[22px] shrink-0 rounded ${d > today || readOnly ? "cursor-default" : "cursor-pointer hover:brightness-150"} ${i > 0 && parseD(d).getDay() === 1 ? "ml-2" : ""} ${d === today ? "outline outline-1 outline-offset-2 outline-slate-100/40" : ""}`}>
                       {x.ot + (x.st === "hol" ? x.done : 0) > 0 && <i className="absolute right-0.5 top-0.5 h-[5px] w-[5px] rounded-full bg-teal-400" />}
                     </span>
@@ -4138,7 +4244,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
                   const ws = weekState(e.id, m);
                   return (
                     <button key={m} onClick={() => { setMonday(m); setMode("week"); }} title={`Tuần ${dLabel(m)} — ${WEEK_ST[ws][0] === "—" ? "chưa tới" : WEEK_ST[ws][0]} · bấm để mở tuần`}
-                      className="h-3 w-3 rounded-full transition-transform hover:scale-125" style={{ background: ws === "dr" && m >= fmt(mondayOf(new Date())) ? "#475569" : WEEK_ST[ws][2] }} />
+                      className="h-3 w-3 rounded-full transition-transform hover:scale-125" style={{ background: ws === "dr" && m >= fmt(mondayOf(new Date())) ? (isLight() ? "#94a3b8" : "#475569") : (ws === "fut" && isLight() ? "#e2e8f0" : weekDot(ws)) }} />
                   );
                 })}
               </span>
@@ -4373,8 +4479,8 @@ function DeadlineBanner({ cfg, empId }) {
         Còn <b>{state.missing.length}</b> tuần chưa gửi: {state.missing.map(dLabel).join(", ")}.
       </div>
       <div className="flex shrink-0 items-center gap-3">
-        <button onClick={hideForever} className="text-xs text-slate-300 underline decoration-slate-500 underline-offset-2 hover:text-white">Tắt vĩnh viễn</button>
-        <button onClick={() => setDismissed(true)} title="Ẩn tạm" className="rounded p-0.5 text-slate-300 hover:bg-black/20 hover:text-white"><X size={14} /></button>
+        <button onClick={hideForever} className="text-xs text-slate-300 underline decoration-slate-500 underline-offset-2 hover:text-slate-50">Tắt vĩnh viễn</button>
+        <button onClick={() => setDismissed(true)} title="Ẩn tạm" className="rounded p-0.5 text-slate-300 hover:bg-black/20 hover:text-slate-50"><X size={14} /></button>
       </div>
     </div>
   );
@@ -4669,7 +4775,7 @@ function MonthCalendar({ cfg, empId, ym, setYm, loading, onOpenWeek }) {
           const split = x.st !== "draft" && (x.ot > 0 || x.ef > 0 || x.idle > 0);
           const can = d <= today && !!onOpenWeek;
           return (
-            <button key={d} type="button" disabled={!can} onClick={() => onOpenWeek(fmt(mondayOf(parseD(d))))} style={DAY_ST[x.st]}
+            <button key={d} type="button" disabled={!can} onClick={() => onOpenWeek(fmt(mondayOf(parseD(d))))} style={dayStyle(x.st)}
               title={`${DOWS[(parseD(d).getDay() + 6) % 7]} ${dLabel(d)}${hs.has(d) ? ` · ${hs.get(d)}` : ""}${x.tot || x.draft ? ` · chuẩn ${fh(x.sd)}${x.idle ? ` · chờ việc ${fh(x.idle)}` : ""} · OT ${fh(x.ot)} · cố gắng ${fh(x.ef)} · tổng ${fh(x.tot)} h${x.draft ? ` · nháp ${fh(x.draft)} h` : ""}` : ""}${can ? " — bấm để mở Chấm công tuần này" : ""}`}
               className={`relative flex h-14 flex-col items-center justify-center rounded-md md:h-[60px] ${can ? "cursor-pointer hover:brightness-125" : "cursor-default"} ${x.st === "hol" ? "text-[13px] font-medium" : "font-mono text-[13px] font-semibold"} ${d === today ? "outline outline-2 outline-offset-1 outline-teal-400" : ""}`}>
               <span className="absolute left-1.5 top-0.5 font-sans text-[10px] font-normal text-slate-500">{parseD(d).getDate()}</span>
@@ -4688,7 +4794,7 @@ function MonthCalendar({ cfg, empId, ym, setYm, loading, onOpenWeek }) {
       </div>
       <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-800 pt-2.5 text-[11px] text-slate-400">
         {[["full", "Đủ giờ chuẩn"], ["part", "Thiếu giờ"], ["draft", "Nháp chưa gửi"], ["none", "Bỏ trống"], ["leave", "Nghỉ phép"], ["hol", "Ngày lễ"], ["fut", "CN / chưa tới"]].map(([k, l]) => (
-          <span key={k} className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded-[3px]" style={DAY_ST_SM[k]} />{l}</span>
+          <span key={k} className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded-[3px]" style={dayStyleSm(k)} />{l}</span>
         ))}
         <span className="flex w-full items-center gap-2 pt-0.5"><span className="text-slate-500">Số to = tổng giờ ·</span>
           <span className="font-mono text-blue-400">chuẩn</span><span className="font-mono text-slate-400">+chờ việc</span><span className="font-mono text-teal-400">+OT</span><span className="font-mono text-violet-400">+cố gắng</span></span>
@@ -4844,8 +4950,8 @@ function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
                   {[...view.weeks].reverse().map((w) => {
                     const extra = w.ot + w.ef;
                     const pill = w.target === 0 && w.tot === 0 ? ["Nghỉ", "border-slate-700 text-slate-500"]
-                      : w.miss.length === 0 ? [`Đủ${extra > 0 ? ` · +${fmtH(extra)}` : ""}`, "border-teal-800 bg-teal-950 text-teal-300"]
-                      : w.isCur ? [`Đang chấm · thiếu ${w.miss.length} ngày`, "border-amber-800 bg-amber-950 text-amber-300"]
+                      : w.miss.length === 0 ? [`Đủ${extra > 0 ? ` · +${fmtH(extra)}` : ""}`, "border-teal-900 bg-teal-950 text-teal-300"]
+                      : w.isCur ? [`Đang chấm · thiếu ${w.miss.length} ngày`, "border-amber-900 bg-amber-950/70 text-amber-300"]
                       : w.tot === 0 ? ["Chưa chấm", "border-rose-900 bg-rose-950 text-rose-300"]
                       : [`Thiếu ${w.miss.length} ngày`, "border-rose-900 bg-rose-950 text-rose-300"];
                     const p = (v) => (v / view.scale) * 100;
@@ -5263,6 +5369,8 @@ function Dashboard({ cfg, saveCfg, flash }) {
    v4.6 — Dashboard quản lý: Tiến độ dự án + Phân bổ giờ công theo nhân sự
    ============================================================ */
 const PG_COLOR = { ok: "#14b8a6", warn: "#f59e0b", over: "#f43f5e" };
+const PG_COLOR_L = { ok: "#059669", warn: "#d97706", over: "#e11d48" };   // v7.8: bản đậm hơn cho nền sáng
+const pgColor = (L) => (isLight() ? PG_COLOR_L : PG_COLOR)[L];
 const pgLevel = (pct) => (pct == null ? "none" : pct > 100 ? "over" : pct >= 80 ? "warn" : "ok");
 const ProgressLegend = () => (
   <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
@@ -5430,8 +5538,8 @@ const WeeklyChart = ({ cell, info }) => {
         <rect x={x} y={y} width={Math.max(2, bw - 6)} height={h} rx="3" fill={col} opacity={cell.open ? 1 : 0.6}>
           <title>{`Tuần ${ddmm(w.mon)}: ${fmtH(w.h)} h · lũy kế ${fmtH(cum)}${cell.b ? ` / ${fmtH(cell.b)}` : ""} h`}</title>
         </rect>
-        {w.h > 0 && <text x={cx} y={y - 4} fill="#94a3b8" fontSize="10" textAnchor="middle" fontFamily="Consolas,monospace">{fmtH(w.h)}</text>}
-        {(n <= 16 || i % 2 === 0) && <text x={cx} y={H + 18} fill="#64748b" fontSize="10" textAnchor="middle">{ddmm(w.mon)}</text>}
+        {w.h > 0 && <text x={cx} y={y - 4} fill={isLight() ? "#475569" : "#94a3b8"} fontSize="10" textAnchor="middle" fontFamily="Consolas,monospace">{fmtH(w.h)}</text>}
+        {(n <= 16 || i % 2 === 0) && <text x={cx} y={H + 18} fill={isLight() ? "#64748b" : "#64748b"} fontSize="10" textAnchor="middle">{ddmm(w.mon)}</text>}
       </g>
     );
   });
@@ -5625,6 +5733,63 @@ const PhaseHoverCard = ({ cell, info, canOpen }) => {
   );
 };
 
+/* v7.7 — Thứ tự dự án do người dùng kéo thả, lưu riêng từng máy (localStorage), dùng chung cho Dashboard (Tiến độ dự án) và tab Dự án. */
+const PROJ_ORDER_KEY = "artius:projOrder";
+const readProjOrder = () => { try { const a = JSON.parse(localStorage.getItem(PROJ_ORDER_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } };
+function useProjOrder() {
+  const [order, setOrder] = useState(readProjOrder);
+  useEffect(() => { const f = () => setOrder(readProjOrder()); window.addEventListener("artius:projorder", f); return () => window.removeEventListener("artius:projorder", f); }, []);
+  const save = useCallback((a) => {
+    setOrder(a);
+    try { if (a.length) localStorage.setItem(PROJ_ORDER_KEY, JSON.stringify(a)); else localStorage.removeItem(PROJ_ORDER_KEY); window.dispatchEvent(new Event("artius:projorder")); } catch { /* trình duyệt chặn lưu: thứ tự chỉ giữ tới khi tải lại trang */ }
+  }, []);
+  return [order, save];
+}
+/* sắp theo thứ tự đã kéo; id chưa có trong danh sách (dự án mới) đứng sau, giữ nguyên thứ tự cũ */
+const sortByProjOrder = (list, order, idOf) => {
+  if (!order.length) return list;
+  const ix = new Map(order.map((id, i) => [id, i]));
+  return list.map((x, i) => [x, i]).sort((a, b) => (ix.get(idOf(a[0])) ?? 1e9 + a[1]) - (ix.get(idOf(b[0])) ?? 1e9 + b[1])).map((x) => x[0]);
+};
+/* đặt fromId vào trước / sau toId trong dãy ids (đang hiển thị), phần còn lại giữ nguyên */
+const moveInList = (ids, fromId, toId, after) => {
+  const a = ids.filter((x) => x !== fromId); let i = a.indexOf(toId); if (i < 0) return ids;
+  a.splice(after ? i + 1 : i, 0, fromId); return a;
+};
+/* kéo thả hàng: tay nắm (handleProps) chỉ ở biểu tượng ⋮⋮ nên không vướng ô nhập / bôi chọn chữ */
+function useRowDrag(onMove) {
+  const [dragId, setDragId] = useState(null); const [dropAt, setDropAt] = useState(null);
+  const end = () => { setDragId(null); setDropAt(null); };
+  const handleProps = (id) => ({
+    draggable: true,
+    onDragStart: (e) => {
+      setDragId(id); e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", id); const row = e.currentTarget.closest("tbody") || e.currentTarget.closest("tr"); if (row) e.dataTransfer.setDragImage(row, 20, 20); } catch { /* bỏ qua */ }
+    },
+    onDragEnd: end,
+  });
+  const rowProps = (id) => ({
+    onDragOver: (e) => {
+      if (!dragId) return; e.preventDefault();
+      const b = e.currentTarget.getBoundingClientRect(), after = e.clientY > b.top + b.height / 2;
+      if (dropAt?.id !== id || dropAt?.after !== after) setDropAt({ id, after });
+    },
+    onDrop: (e) => { e.preventDefault(); const d = dropAt, f = dragId; end(); if (d && f && f !== d.id) onMove(f, d.id, d.after); },
+  });
+  // vạch teal báo vị trí sẽ thả (đặt trên các ô <td> của hàng đầu)
+  const mark = (id, kind) => (dragId && dragId !== id && dropAt?.id === id
+    ? (kind === "tbody"
+      ? (dropAt.after ? "[&>tr:first-child>td]:shadow-[inset_0_-2px_0_#2dd4bf]" : "[&>tr:first-child>td]:shadow-[inset_0_2px_0_#2dd4bf]")
+      : (dropAt.after ? "[&>td]:shadow-[inset_0_-2px_0_#2dd4bf]" : "[&>td]:shadow-[inset_0_2px_0_#2dd4bf]"))
+    : "") + (dragId === id ? " opacity-40" : "");
+  const grip = (id, disabled) => disabled ? null : (
+    <span key="grip" {...handleProps(id)} title="Giữ và kéo để đổi vị trí dự án" className="mr-1 inline-flex h-6 w-4 shrink-0 cursor-grab items-center justify-center align-[-5px] text-slate-600 hover:text-slate-300 active:cursor-grabbing">
+      <GripVertical size={14} />
+    </span>
+  );
+  return { rowProps, mark, grip };
+}
+
 /* Tiến độ dự án: giờ HIỆN TẠI = tổng giờ đã gửi từ trước tới nay (không theo kỳ đang lọc) so với giờ dự kiến từng giai đoạn.
    · Giai đoạn đang mở: thanh màu theo mức (xanh < 80%, cam 80–100%, đỏ > 100%) + nhãn "mở".
    · Giai đoạn đã đóng: chìm xuống (thanh xám, chữ xám, % nhạt) — không cảnh báo nữa.
@@ -5640,6 +5805,7 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
   const usage = useUsage();
   const detailRaw = usePhaseDetail();
   const [showIdle, setShowIdle] = useState(false);
+  const [projOrder, setProjOrder] = useProjOrder();
   const [sel, setSel] = useState(null);       // "<projectId>|<phaseId>" đang mở chi tiết
   const [hover, setHover] = useState(null);   // "<projectId>|<phaseId>" đang rê chuột
   const cardRef = useRef(null);
@@ -5698,16 +5864,27 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
   const kw = norm(pq.trim());
   const rows = allRows.filter((r) => (pf === "all" || r.st === pf) && (!kw || norm(`${r.p.code || ""} ${r.p.name} ${r.p.client || ""}`).includes(kw)));
   const byUrgent = (a, b) => (b.p.urgent ? 1 : 0) - (a.p.urgent ? 1 : 0);
-  const active = rows.filter((r) => r.ut > 0).sort((a, b) => byUrgent(a, b) || (b.worst ?? -1) - (a.worst ?? -1) || b.ut - a.ut);
+  const ordIx = new Map(projOrder.map((id, i) => [id, i]));
+  const active = rows.filter((r) => r.ut > 0).sort((a, b) => byUrgent(a, b)
+    || (projOrder.length ? (ordIx.get(a.p.id) ?? 1e9) - (ordIx.get(b.p.id) ?? 1e9) : 0)   // v7.7: đã kéo thả thì theo thứ tự đó, chưa thì tự xếp theo mức vượt
+    || (b.worst ?? -1) - (a.worst ?? -1) || b.ut - a.ut);
   // v4.8: dự án Urgent chưa có giờ vẫn hiện ở đầu bảng (không bị gom vào dòng "chưa có giờ")
-  const idle = rows.filter((r) => r.ut === 0 && !r.p.urgent);
-  const urgentIdle = rows.filter((r) => r.ut === 0 && r.p.urgent);
+  const idle = sortByProjOrder(rows.filter((r) => r.ut === 0 && !r.p.urgent), projOrder, (r) => r.p.id);
+  const urgentIdle = sortByProjOrder(rows.filter((r) => r.ut === 0 && r.p.urgent), projOrder, (r) => r.p.id);
   const toggleUrgent = async (p) => {
     if (!saveCfg) return;
     const on = !p.urgent;
     const ok = await saveCfg({ ...cfg, projects: cfg.projects.map((x) => (x.id === p.id ? { ...x, urgent: on } : x)) });
     if (ok && flash) flash(on ? `Đã đánh dấu Urgent: ${p.code ? p.code + " · " : ""}${p.name}` : `Đã bỏ Urgent: ${p.code ? p.code + " · " : ""}${p.name}`);
   };
+  // v7.7: kéo thả dự án — thứ tự đang thấy trên bảng (Urgent trước, rồi các dự án có giờ) được chốt làm thứ tự riêng của máy này
+  const shownIds = [...active.filter((r) => r.p.urgent), ...urgentIdle, ...active.filter((r) => !r.p.urgent), ...idle].map((r) => r.p.id);
+  const dragMove = (from, to, after) => {
+    const moved = moveInList(shownIds, from, to, after);
+    const rest = sortByProjOrder(cfg.projects.map((x) => x.id), projOrder, (x) => x).filter((id) => !moved.includes(id));
+    setProjOrder([...moved, ...rest]);
+  };
+  const drag = useRowDrag(dragMove);
   const findCell = (key) => { for (const r of rows) for (const c of r.cells) if (c.key === key) return c; return null; };
   const selCell = sel ? findCell(sel) : null;
   const selProj = selCell ? sel.split("|")[0] : null;
@@ -5737,13 +5914,13 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
   const cell = (r, c) => {
     if (!c.b && !c.h) return <td key={c.ph.id} className="px-2.5 py-2.5"><span className="text-xs text-slate-700">—</span></td>;
     const L = c.h ? pgLevel(c.pct) : "none";
-    const bar = !c.h ? "transparent" : c.open ? PG_COLOR[L] : "#334155";
+    const bar = !c.h ? "transparent" : c.open ? pgColor(L) : (isLight() ? "#cbd5e1" : "#334155");
     const isSel = sel === c.key;
-    const col = c.ph.color || phaseColor(c.ph.id);
+    const col = tone(c.ph.color || phaseColor(c.ph.id));
     // v4.8: giai đoạn đang mở = nền màu giai đoạn (~11%) + vạch trái; đang chọn thì thêm viền
     const shadows = [c.open ? `inset 3px 0 0 ${col}` : "", isSel ? "inset 0 0 0 1px #0f766e" : ""].filter(Boolean).join(", ");
     return (
-      <td key={c.ph.id} style={{ background: c.open ? `${col}1c` : isSel ? "#16213a" : undefined, boxShadow: shadows || undefined }}
+      <td key={c.ph.id} style={{ background: c.open ? `${col}1c` : isSel ? (isLight() ? "#e2e8f0" : "#16213a") : undefined, boxShadow: shadows || undefined }}
         onMouseEnter={(e) => { setHover(c.key); placeCard(e); }}
         onMouseMove={placeCard}
         onMouseLeave={() => setHover((h) => (h === c.key ? null : h))}
@@ -5752,7 +5929,7 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
         <div className={`flex items-baseline gap-1 font-mono text-xs ${c.open ? "text-slate-100" : "text-slate-600"}`}>
           <span className={c.open ? "text-[13px] font-bold" : ""}>{fmtH(c.h)}</span><span className={c.open ? "text-slate-400" : "text-slate-700"}>/ {c.b ? fmtH(c.b) : "—"} h</span>
           {c.open && <span className="ml-1 rounded border border-teal-900 px-1 font-sans text-[10px] leading-4 text-teal-400">mở</span>}
-          {c.pct != null && c.h > 0 && <span className="ml-auto" style={{ color: PG_COLOR[L], opacity: c.open ? 1 : 0.45 }}>{Math.round(c.pct)}%</span>}
+          {c.pct != null && c.h > 0 && <span className="ml-auto" style={{ color: pgColor(L), opacity: c.open ? 1 : 0.45 }}>{Math.round(c.pct)}%</span>}
         </div>
         <div className={`mt-1 h-[5px] overflow-hidden rounded-full ${c.open ? "bg-slate-950/60" : "bg-slate-800/50"}`}>
           <div className="h-full rounded-full" style={{ width: `${Math.min(100, c.pct || 0)}%`, background: bar, opacity: c.open ? 1 : 0.55 }} />
@@ -5766,6 +5943,7 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
       <tr key={r.p.id} className={`group border-b border-slate-800 ${dim ? "opacity-25 hover:opacity-60" : ""} ${focus ? "bg-[#0f1a30]" : r.p.urgent ? "bg-rose-500/[.035]" : ""}`}>
         <td className="relative whitespace-nowrap py-2.5 pl-2 pr-2.5 text-sm text-slate-100">
           {r.p.urgent && <span className="absolute bottom-1.5 left-0 top-1.5 w-[3px] rounded-sm bg-rose-500" />}
+          {drag.grip(r.p.id, rows.length < 2)}
           <button onClick={() => toggleUrgent(r.p)} title={r.p.urgent ? "Bỏ đánh dấu Urgent" : "Đánh dấu Urgent — đưa dự án lên đầu"}
             className={`mr-1.5 rounded p-1 align-[-3px] transition-opacity hover:bg-slate-800 ${r.p.urgent ? "text-rose-500 opacity-100" : "text-slate-600 opacity-0 hover:text-rose-400 group-hover:opacity-100"}`}>
             <Flag size={14} fill={r.p.urgent ? "currentColor" : "none"} />
@@ -5800,7 +5978,7 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
     }
     /* v5.6 — mỗi dự án một <tbody>; dự án đang mở chi tiết có viền teal mảnh bo góc bao trọn dòng dự án + khung chi tiết */
     return (
-      <tbody key={r.p.id} className={focus ? "rounded-[10px] outline outline-1 -outline-offset-1 outline-teal-700" : undefined}>
+      <tbody key={r.p.id} {...drag.rowProps(r.p.id)} className={`${focus ? "rounded-[10px] outline outline-1 -outline-offset-1 outline-teal-700" : ""} ${drag.mark(r.p.id, "tbody")}`}>
         {out}
       </tbody>
     );
@@ -5833,6 +6011,12 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input value={pq} onChange={(e) => setPq(e.target.value)} placeholder="Tìm dự án" className={`pl-9 ${inputCls}`} />
         </div>
+        {projOrder.length > 0 && (
+          <button onClick={() => setProjOrder([])} title="Bỏ thứ tự đã kéo, xếp lại tự động theo mức vượt dự kiến"
+            className={`${CTRL} whitespace-nowrap rounded-md border border-slate-700 px-3 text-[13px] text-slate-400 hover:text-slate-200`}>
+            <RotateCcw size={13} className="mr-1.5 inline align-[-2px]" />Xếp tự động
+          </button>
+        )}
         <div className="sm:ml-auto"><ProgressLegend /></div>
       </div>
       <div className="p-3 md:p-4">
@@ -5844,7 +6028,7 @@ function ProjectProgress({ cfg, weekPeople, dataTick, saveCfg, flash }) {
               <th className="px-2.5 py-2 font-normal">Dự án</th>
               {phases.map((ph) => (
                 <th key={ph.id} className="px-2.5 py-2 font-normal" style={{ width: "15.2%" }}>
-                  <span className="mr-1.5 inline-block h-2 w-2 rounded-sm align-middle" style={{ background: ph.color }} />{ph.id} · {ph.name}
+                  <span className="mr-1.5 inline-block h-2 w-2 rounded-sm align-middle" style={{ background: tone(ph.color) }} />{ph.id} · {ph.name}
                 </th>
               ))}
               <th className="whitespace-nowrap px-2.5 py-2 text-center font-normal" style={{ width: "12%" }}>Giờ hiện tại / dự kiến</th>
@@ -6165,7 +6349,7 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, idleByEmp = new Map(), 
                   <th className="sticky left-0 z-10 min-w-[170px] bg-slate-900 px-3 py-2 text-left font-medium md:px-4">Nhân sự</th>
                   {cols.map((k) => (
                     <th key={k} className="min-w-[76px] px-1.5 py-2 text-center font-medium" title={name(k)}>
-                      <span style={{ color: color.get(k) }}>■</span> {code(k)}
+                      <span style={{ color: tone(color.get(k)) }}>■</span> {code(k)}
                       <div className="mx-auto max-w-[110px] truncate font-normal text-slate-600">{k === NO_PROJECT ? "chung, vắng" : name(k)}</div>
                     </th>
                   ))}
@@ -6224,7 +6408,7 @@ const ProjectPhaseBars = ({ rows }) => {
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-400">
-        {PHASES.map((ph) => <span key={ph.id} className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm" style={{ background: ph.color }} />{ph.id} · {ph.name}</span>)}
+        {PHASES.map((ph) => <span key={ph.id} className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm" style={{ background: tone(ph.color) }} />{ph.id} · {ph.name}</span>)}
         <span className="flex items-center gap-1.5"><span className="h-3 w-0.5 bg-slate-100" />Mốc dự kiến</span>
         {rows.length > 10 && (
           <span className="ml-auto flex items-center gap-1.5">
@@ -6255,7 +6439,7 @@ const ProjectPhaseBars = ({ rows }) => {
                     <div key={ph.id} className="grid grid-cols-[28px_minmax(0,1fr)_104px] items-center gap-2.5 text-xs md:grid-cols-[28px_minmax(0,1fr)_150px]">
                       <span className="font-mono text-slate-400" title={ph.name}>{ph.id}</span>
                       <div className="relative h-2.5 rounded-sm bg-slate-800">
-                        <div className="absolute inset-y-0 left-0 rounded-sm" style={{ width: `${(u / max) * 100}%`, background: ph.color }} />
+                        <div className="absolute inset-y-0 left-0 rounded-sm" style={{ width: `${(u / max) * 100}%`, background: tone(ph.color) }} />
                         {b > 0 && <div className="absolute w-0.5 bg-slate-100" style={{ left: `calc(${(b / max) * 100}% - 1px)`, top: -3, bottom: -3 }} />}
                       </div>
                       <span className={`whitespace-nowrap text-right font-mono ${over ? "text-rose-400" : "text-slate-300"}`}>{fmtH(u)} / {b > 0 ? `${fmtH(b)} h` : "—"}{b > 0 && <span className="hidden md:inline"> · {Math.round((u / b) * 100)}%</span>}</span>
@@ -6279,7 +6463,7 @@ const ChartBar = ({ data, color }) => {
   return (
     <ResponsiveContainer width="100%" height={Math.max(160, data.length * (isMobile ? 28 : 32))}>
       <BarChart data={data.map((d) => ({ ...d, name: trim(d.name) }))} layout="vertical" margin={{ left: 4, right: 16 }}>
-        <CartesianGrid strokeDasharray="2 4" horizontal={false} stroke="#1e293b" />
+        <CartesianGrid strokeDasharray="2 4" horizontal={false} stroke={isLight() ? "#e2e8f0" : "#1e293b"} />
         <XAxis type="number" tick={{ fontSize: 10, fill: "#64748b" }} axisLine={{ stroke: "#1e293b" }} tickLine={false} />
         <YAxis type="category" dataKey="name" width={w} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
         <Tooltip
@@ -6437,13 +6621,19 @@ function Projects({ cfg, saveCfg, flash }) {
     return (
       <div>
         <div className={`whitespace-nowrap font-mono text-[13px] ${over ? "text-rose-400" : "text-slate-300"}`}>{fmtH(u)}<span className={over ? "" : "text-slate-500"}> / {b > 0 ? `${fmtH(b)} h` : "—"}</span></div>
-        {b > 0 && <div className="mt-1 h-1 overflow-hidden rounded bg-slate-800"><div className="h-full rounded" style={{ width: `${Math.min(100, (u / b) * 100)}%`, background: over ? "#fb7185" : ph.color }} /></div>}
+        {b > 0 && <div className="mt-1 h-1 overflow-hidden rounded bg-slate-800"><div className="h-full rounded" style={{ width: `${Math.min(100, (u / b) * 100)}%`, background: tone(over ? "#fb7185" : ph.color) }} /></div>}
         <PhaseToggle p={p} ph={ph} />
       </div>
     );
   };
-  const phHead = (ph) => <span className="flex items-center gap-1.5 whitespace-nowrap"><span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: ph.color }} />{ph.id} · {ph.name}</span>;
+  const phHead = (ph) => <span className="flex items-center gap-1.5 whitespace-nowrap"><span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: tone(ph.color) }} />{ph.id} · {ph.name}</span>;
   const toggle = (id) => saveCfg({ ...cfg, projects: cfg.projects.map((p) => (p.id === id ? { ...p, active: !p.active } : p)) });
+  const [projOrder, setProjOrder] = useProjOrder();
+  const projList = sortByProjOrder(cfg.projects, projOrder, (x) => x.id);   // v7.7: thứ tự kéo thả (riêng từng máy)
+  const projDrag = useRowDrag((from, to, after) => {
+    const moved = moveInList(projList.map((x) => x.id), from, to, after);
+    setProjOrder(moved);
+  });
   const [pendingDel, setPendingDel] = useState(null); // dự án chờ xác nhận xoá
   const del = (id) => setPendingDel(cfg.projects.find((p) => p.id === id) || null);
   const confirmDel = async () => {
@@ -6455,7 +6645,7 @@ function Projects({ cfg, saveCfg, flash }) {
 
   const StatusBtn = ({ p, full }) => (
     <button onClick={() => toggle(p.id)}
-      className={`h-9 rounded-md border px-3 text-xs font-medium ${full ? "w-full" : ""} ${p.active ? "border-teal-800 bg-teal-950 text-teal-300" : "border-slate-700 bg-slate-950 text-slate-500"}`}>
+      className={`ro-static h-9 rounded-md border px-3 text-xs font-medium ${full ? "w-full" : ""} ${p.active ? "border-teal-900 bg-teal-950 text-teal-300" : "border-slate-700 bg-slate-950 text-slate-500"}`}>
       {p.active ? "Đang chấm công" : "Đã đóng"}
     </button>
   );
@@ -6464,7 +6654,7 @@ function Projects({ cfg, saveCfg, flash }) {
     <Panel title="Dự án — sửa thông tin & bật/tắt chấm công">
       {teamPop}
       {/* bọc trong div để class width không bị w-full của inputCls ghi đè */}
-      <div className="mb-5 grid gap-2 md:flex md:flex-wrap md:items-end">
+      <div className="ro-hide mb-5 grid gap-2 md:flex md:flex-wrap md:items-end">
         <div className="md:w-28">
           <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Mã DA" className={`font-mono ${inputCls}`} />
         </div>
@@ -6477,7 +6667,7 @@ function Projects({ cfg, saveCfg, flash }) {
         <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(PHASES.length, 4)}, minmax(0, 1fr))`, width: isWide ? `${PHASES.length * 5.75}rem` : undefined }}>
           {PHASES.map((ph) => (
             <label key={ph.id} className="min-w-0">
-              <span className="mb-1 flex items-center gap-1 truncate text-[11px] text-slate-500"><span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: ph.color }} />{ph.id}<span className="hidden truncate md:inline"> · {ph.name}</span></span>
+              <span className="mb-1 flex items-center gap-1 truncate text-[11px] text-slate-500"><span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: tone(ph.color) }} />{ph.id}<span className="hidden truncate md:inline"> · {ph.name}</span></span>
               {phInput(budgets[ph.id], (v) => setBudgets({ ...budgets, [ph.id]: v }), ph, false)}
             </label>
           ))}
@@ -6501,11 +6691,11 @@ function Projects({ cfg, saveCfg, flash }) {
                 </tr>
               </thead>
               <tbody>
-                {cfg.projects.map((p) => {
+                {projList.map((p) => {
                   const editing = editId === p.id;
                   return (
-                    <tr key={p.id} className="border-b border-slate-800 align-top hover:bg-slate-800">
-                      <td className="px-3 py-2">{editing ? <input value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} className={`font-mono ${inputCls}`} /> : <span className="font-mono text-base font-bold leading-6 text-white">{p.code || "—"}</span>}</td>
+                    <tr key={p.id} {...projDrag.rowProps(p.id)} className={`border-b border-slate-800 align-top hover:bg-slate-800 ${projDrag.mark(p.id, "tr")}`}>
+                      <td className="whitespace-nowrap px-3 py-2">{projDrag.grip(p.id, editing || projList.length < 2)}{editing ? <input value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} className={`font-mono ${inputCls}`} /> : <span className="font-mono text-base font-bold leading-6 text-white">{p.code || "—"}</span>}</td>
                       <td className="px-3 py-2">{editing ? <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && commit()} className={inputCls} /> : <><div className="text-[15px] leading-6 text-slate-100">{p.name}</div>{teamBlock(p)}</>}</td>
                       <td className="px-3 py-2">{editing ? <input value={draft.client} onChange={(e) => setDraft({ ...draft, client: e.target.value })} onKeyDown={(e) => e.key === "Enter" && commit()} className={inputCls} /> : <span className="leading-6 text-slate-400">{p.client || "—"}</span>}</td>
                       {PHASES.map((ph) => (
@@ -6536,7 +6726,7 @@ function Projects({ cfg, saveCfg, flash }) {
           </div>
 
           <div className="space-y-2 md:hidden">
-            {cfg.projects.map((p) => {
+            {projList.map((p) => {
               const editing = editId === p.id;
               return (
                 <div key={p.id} className="rounded-lg border border-slate-800 bg-slate-950 p-3">
@@ -6557,7 +6747,7 @@ function Projects({ cfg, saveCfg, flash }) {
                     <>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          {p.code && <div className="font-mono text-sm font-bold text-white">{p.code}</div>}
+                          {p.code && <div className="font-mono text-sm font-bold text-slate-50">{p.code}</div>}
                           <div className="text-sm font-medium text-slate-100">{p.name}</div>
                           <div className="text-xs text-slate-500">{p.client || "—"}</div>
                           {teamBlock(p)}
@@ -6884,7 +7074,7 @@ function Employees({ cfg, saveCfg, flash, readOnly = false }) {
                 className="flex h-7 w-7 items-center justify-center rounded text-teal-400 hover:bg-rose-950 hover:text-rose-300"><X size={13} /></button>
             </span>
           ); })}
-        <button onClick={(ev) => openPp(ev, "add", e.id)} className="h-8 rounded-md border border-dashed border-slate-700 px-2.5 text-xs text-slate-400 hover:border-teal-600 hover:text-teal-300">+ Dự án</button>
+        <button onClick={(ev) => openPp(ev, "add", e.id)} className="ro-hide h-8 rounded-md border border-dashed border-slate-700 px-2.5 text-xs text-slate-400 hover:border-teal-600 hover:text-teal-300">+ Dự án</button>
       </>
     );
     const btns = (
@@ -7073,7 +7263,7 @@ function Employees({ cfg, saveCfg, flash, readOnly = false }) {
       <div className="inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-1">
         {[["emp", "Nhân sự", cfg.employees.length], ["admin", "Tài khoản BOD / Admin", loose.length]].map(([k, l, n]) => (
           <button key={k} onClick={() => setSub(k)}
-            className={`h-9 whitespace-nowrap rounded-md px-4 text-sm ${sub === k ? "bg-slate-800 font-medium text-white" : "text-slate-400 hover:text-slate-200"}`}>
+            className={`h-9 whitespace-nowrap rounded-md px-4 text-sm ${sub === k ? "bg-slate-800 font-medium text-slate-50" : "text-slate-400 hover:text-slate-200"}`}>
             {l}<span className="ml-1.5 font-mono text-xs text-slate-500">{n}</span>
           </button>
         ))}
@@ -7739,7 +7929,7 @@ function Tasks({ cfg, saveCfg, flash }) {
       <div className="inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-1">
         {[["task", "Tác vụ"], ["org", "Phòng ban & vai trò"], ["leave", "Vắng mặt"]].map(([k, l]) => (
           <button key={k} onClick={() => { setSub(k); setEdit(null); setEditId(null); setLeaveEditId(null); }}
-            className={`h-9 whitespace-nowrap rounded-md px-4 text-sm ${sub === k ? "bg-slate-800 font-medium text-white" : "text-slate-400 hover:text-slate-200"}`}>{l}</button>
+            className={`h-9 whitespace-nowrap rounded-md px-4 text-sm ${sub === k ? "bg-slate-800 font-medium text-slate-50" : "text-slate-400 hover:text-slate-200"}`}>{l}</button>
         ))}
       </div>
 
@@ -7867,7 +8057,7 @@ function PhasePanel({ cfg, saveCfg, flash }) {
       <p className="text-sm text-slate-400">Mỗi dòng chấm công phải chọn một giai đoạn. Bấm vào tên hoặc mô tả để sửa.</p>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {list.map((x) => {
-          const c = phaseColor(x.id), off = x.active === false, hrs = hoursBy.get(x.id) || 0;
+          const c = tone(phaseColor(x.id)), off = x.active === false, hrs = hoursBy.get(x.id) || 0;
           const isEd = (f) => editing?.id === x.id && editing.field === f;
           return (
             <div key={x.id} data-phase-card={x.id} className={`relative min-w-0 rounded-lg border border-slate-800 bg-slate-950 py-3 pl-3 pr-14 ${off ? "opacity-60" : ""}`}>
@@ -8343,7 +8533,7 @@ function SettingsTab({ cfg, saveCfg, flash }) {
       <AccessPanel flash={flash} />
 
       <Panel title={`Ngày lễ, ngày nghỉ chung (${holidays.length})`}>
-        <div className="grid gap-2 md:flex md:items-end md:gap-3">
+        <div className="ro-hide grid gap-2 md:flex md:items-end md:gap-3">
           <DateField label="Ngày" value={holDate} onChange={setHolDate} className="md:w-44" />
           <div className="md:flex-1">
             <label className="mb-1 block text-xs text-slate-500">Tên ngày lễ</label>
@@ -8402,7 +8592,7 @@ function SettingsTab({ cfg, saveCfg, flash }) {
             <label className="mb-1 block text-xs text-slate-500">Hạn chốt công hàng tháng (ngày)</label>
             <input type="number" inputMode="numeric" min="1" max="28" value={day} onChange={(e) => setDay(Number(e.target.value))} className={`font-mono md:w-32 ${inputCls}`} />
           </div>
-          <button onClick={async () => { await saveCfg({ ...cfg, deadlineDay: day }); flash("Đã lưu thiết lập."); }} className={btnPrimary}>Lưu thiết lập</button>
+          <button onClick={async () => { await saveCfg({ ...cfg, deadlineDay: day }); flash("Đã lưu thiết lập."); }} className={`ro-hide ${btnPrimary}`}>Lưu thiết lập</button>
         </div>
         <p className="mt-3 text-xs text-slate-500">
           Nhân sự thấy cảnh báo vàng về bảng công tháng trước từ đầu tháng, chuyển đỏ “quá hạn” sau ngày {pad(day)}.
