@@ -17,12 +17,14 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
-   Mới ở v8.2 — Hoàn thiện màn Chấm công (cả Sáng và Tối): ô giờ trống viền xám trung tính (thiếu giờ chỉ báo ở đầu cột ngày và dòng Tổng),
-   ô đã có giờ nền xanh nhạt, ô trống hiện "–"; cột Dự án · Hạng mục hẹp lại (34%), ô Dự án / Giai đoạn trải ngang dòng đầu khối;
-   đầu cột Hôm nay là nhãn xanh đặc; chú thích dưới hạng mục đậm hơn; thanh Tiến độ tuần dày hơn;
-   dòng Tổng theo ngày hiện "giờ đã chấm / giờ chuẩn" ở ngày còn thiếu; thanh nút (Thêm tác vụ · Lưu nháp · Gửi) dính đáy màn hình máy tính, nút Gửi kèm tổng giờ tuần.
-   Banner "Còn x tuần chưa gửi": mỗi tuần là chip bấm được để mở thẳng tuần đó; "Tắt vĩnh viễn" đổi thành "Ẩn đến tuần sau"
-   (tắt hẳn vẫn làm ở Cài đặt); Sáng: nền vàng nhạt khi còn trong hạn, hồng/đỏ khi đã quá hạn chốt công.
+   Mới ở v8.2 — Màn Chấm công (máy tính) dựng lại theo mockup đã duyệt, cả Sáng và Tối; logic gửi / khoá / lưu nháp / tăng ca giữ nguyên:
+   thẻ chọn tuần (‹ tuần › · Tuần này) và thẻ tổng giờ (Chuẩn · Phát sinh với chip OT/CG · Tổng · thanh Tiến độ tuần) nằm cạnh nhau, chú thích màu dưới hai thẻ;
+   bảng: cột tên 400px + cột nút riêng (⚡ điền giờ chuẩn, xoá giờ); dòng dự án nền riêng với ▾ thu gọn (tạm lưu) / ▸ mở để sửa thay cho ✓ / bút chì;
+   ô giờ trống viền xám có "–", ô có giờ nền xanh nhạt, rê/nhập dòng nào thì cả dòng sáng lên; cột Hôm nay nhãn xanh đặc + nền xanh nhạt cả cột;
+   T7 luôn hiện, CN thu gọn ("+ CN" để mở; tự mở khi tuần có giờ CN); không hiện tổng từng hạng mục (giữ như v3.5);
+   dòng Tổng theo ngày ghi "đã chấm / giờ chuẩn" ở ngày còn thiếu; thanh nút dính đáy: Thêm tác vụ · trạng thái (Có giờ chưa gửi / Đã lưu nháp lúc …)
+   · gợi ý phím · Lưu nháp · Gửi giờ công kèm tổng giờ. Banner "Còn x tuần chưa gửi": chip tuần bấm để mở tuần đó, "Ẩn đến tuần sau"
+   (tắt hẳn vẫn ở Cài đặt); Sáng: nền vàng khi còn hạn, hồng/đỏ khi quá hạn chốt công.
    Mới ở v8.1 — Chấm công: "Thêm tác vụ" thêm được khối mới kể cả khi khối đang mở chưa nhập giờ (khối đó vẫn mở nguyên);
    nút "Lưu nháp" cạnh "Gửi giờ công": ghi giờ đang nhập lên server nhưng chưa gửi (quản lý thấy ô Nháp, chưa tính báo cáo).
    Cài đặt của nhân viên bỏ mục "Kiểm tra lưu trữ" (vẫn còn ở Thiết lập của Admin).
@@ -1778,13 +1780,43 @@ function AppMain() {
         .artius-ro .ro-static { pointer-events: none; }
         html[data-theme="light"] ::selection { background: #99f6e4; color: #0f172a; }
 
-        /* v8.2 — màn Chấm công */
+        /* v8.2 — màn Chấm công (theo mockup đã duyệt) */
         .ts-cell::placeholder { color: #475569; opacity: 1; }
         html[data-theme="light"] .ts-cell::placeholder { color: #cbd5e1; }
-        .ts-cell.ts-has { background: rgba(20,184,166,.10); border-color: #115e59; }
-        html[data-theme="light"] .ts-cell.ts-has { background: #e7f5f2; border-color: #a7dcd2; color: #0f766e; }
-        .ts-today-pill { background: #0d9488; color: #fff; border-radius: 9999px; padding: 1px 9px; }
-        .ts-chip { border: 1px solid rgba(251,191,36,.45); color: #fcd34d; border-radius: 9999px; padding: 1px 9px; font-size: 12px; line-height: 20px; }
+        .ts-cell:hover:not(:disabled):not(:focus) { border-color: #64748b; }
+        html[data-theme="light"] .ts-cell:hover:not(:disabled):not(:focus) { border-color: #c9d1dc; }
+        .ts-cell:focus { box-shadow: 0 0 0 3px rgba(20,184,166,.25); }
+        html[data-theme="light"] .ts-cell:focus { box-shadow: 0 0 0 3px #cdebe5; border-color: #0f8c7e; }
+        .ts-cell.ts-has { background: rgba(20,184,166,.10); border-color: #115e59; color: #5eead4; }
+        html[data-theme="light"] .ts-cell.ts-has { background: #e7f5f2; border-color: #cdebe5; color: #0f8c7e; }
+        html[data-theme="light"] table input.ts-cell { background: #fff; border-color: #e3e7ee; }
+        html[data-theme="light"] table input.ts-cell.ts-has { background: #e7f5f2; border-color: #cdebe5; color: #0f8c7e; }
+        html[data-theme="light"] table input.ts-cell:focus { border-color: #0f8c7e; }
+        .ts-thisweek { background: rgba(20,184,166,.12); color: #5eead4; }
+        .ts-thisweek:hover { background: rgba(20,184,166,.2); }
+        html[data-theme="light"] .ts-thisweek { background: #e7f5f2; color: #0f8c7e; }
+        html[data-theme="light"] .ts-thisweek:hover { background: #cdebe5; }
+        .ts-row:hover > td, .ts-row:focus-within > td { background: rgba(148,163,184,.06); }
+        html[data-theme="light"] .ts-row:hover > td, html[data-theme="light"] .ts-row:focus-within > td { background: #f7fafc; }
+        html[data-theme="light"] table .ts-row:hover > td.bg-slate-800\\/70, html[data-theme="light"] table .ts-row:focus-within > td.bg-slate-800\\/70 { background: #e9f6f3; }
+        html[data-theme="light"] table td.bg-slate-800\\/70, html[data-theme="light"] table th.bg-slate-800\\/70 { background: #f2faf8; }
+        .ts-projrow > td { background: rgba(15,23,42,.35); }
+        html[data-theme="light"] .ts-projrow > td { background: #fbfcfd; }
+        .ts-today-pill { display: inline-block; background: #0d9488; color: #fff; border-radius: 9999px; padding: 2px 10px; }
+        html[data-theme="light"] .ts-today-pill { background: #0f8c7e; }
+        .ts-sq { display: inline-block; width: 12px; height: 12px; border-radius: 3px; background: rgba(20,184,166,.18); border: 1px solid #115e59; }
+        html[data-theme="light"] .ts-sq { background: #e7f5f2; border-color: #cdebe5; }
+        .ts-pill { display: inline-block; border-radius: 6px; padding: 0 6px; }
+        .ts-pill-ot { background: rgba(45,212,191,.12); color: #2dd4bf; }
+        .ts-pill-hot { background: rgba(248,113,113,.14); color: #f87171; }
+        .ts-pill-cg { background: rgba(167,139,250,.14); color: #a78bfa; }
+        html[data-theme="light"] .ts-pill-ot { background: #e7f5f2; color: #0f766e; }
+        html[data-theme="light"] .ts-pill-hot { background: #fdeee8; color: #c2410c; }
+        html[data-theme="light"] .ts-pill-cg { background: #f1ebfe; color: #7c3aed; }
+        .ts-kbd b { font-weight: 400; border: 1px solid #334155; border-radius: 4px; padding: 0 5px; }
+        html[data-theme="light"] .ts-kbd { color: #9ca3af; }
+        html[data-theme="light"] .ts-kbd b { border-color: #e3e7ee; background: #fff; }
+        .ts-chip { border: 1px solid rgba(251,191,36,.45); color: #fcd34d; border-radius: 9999px; padding: 0 10px; height: 28px; font-size: 12px; }
         .ts-chip:hover { background: #d97706; border-color: #d97706; color: #fff; }
         .wk-late .ts-chip { border-color: rgba(251,113,133,.5); color: #fda4af; }
         .wk-late .ts-chip:hover { background: #e11d48; border-color: #e11d48; color: #fff; }
@@ -1792,12 +1824,13 @@ function AppMain() {
         html[data-theme="light"] .ts-chip:hover { background: #b45309; border-color: #b45309; color: #fff; }
         html[data-theme="light"] .wk-late .ts-chip { border-color: #fecdd3; color: #e11d48; }
         html[data-theme="light"] .wk-late .ts-chip:hover { background: #e11d48; border-color: #e11d48; color: #fff; }
-        html[data-theme="light"] .wk-banner:not(.wk-late) { background-color: #fff7e8; border-color: #f6d9a6; }
+        html[data-theme="light"] .wk-banner:not(.wk-late) { background-color: #fff7e8; border-color: #f6d9a6; color: #7c4a06; }
         html[data-theme="light"] .wk-banner:not(.wk-late) > svg:first-child { color: #b45309; }
         @media (min-width: 768px) {
-          .ts-actionbar { position: sticky; bottom: 0; z-index: 15; background: #0b1220f2; backdrop-filter: blur(6px);
-            border-top: 1px solid #1e293b; margin: 0 -4px; padding: 10px 4px; }
-          html[data-theme="light"] .ts-actionbar { background: rgba(255,255,255,.96); border-top-color: #dfe6ee; }
+          /* dính đáy khung nội dung (không đè menu dọc của quản lý / ngăn kéo Bảng công) */
+          .ts-actionbar { position: sticky; bottom: 0; z-index: 30; margin: 0; background: rgba(11,18,32,.95); backdrop-filter: blur(6px); border-top: 1px solid #1e293b; }
+          .ts-actionbar-in { padding: 12px 2px; }
+          html[data-theme="light"] .ts-actionbar { background: rgba(255,255,255,.96); border-top-color: #e3e7ee; }
         }
       `}{LIGHT_CSS}</style>
       {/* v7.5: bỏ thanh menu dọc bên trái trên máy tính — tab chuyển lên header (tab ngang) */}
@@ -2145,6 +2178,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   const otSel = useRef({});                     // v4.9: ô "Tăng ca cho tác vụ" của từng dòng tăng ca
   // báo lên App để chặn đổi tab khi còn thay đổi chưa lưu
   const [undoRow, setUndoRow] = useState(null);
+  const [lastDraftAt, setLastDraftAt] = useState("");   // v8.2: "Đã lưu nháp lúc …" ở thanh nút dưới đáy
+  const [showSun, setShowSun] = useState(false);          // v8.2: mở cột CN khi đang thu gọn
   const [showSplit, setShowSplit] = useState(false); // v3.7: chân bảng — mở/thu gọn 3 hàng Giờ chuẩn · OT · Giờ cố gắng // khối/dòng vừa xoá { rows, at, label }, giữ lại để hoàn tác
   /* v3.2 — khối đang MỞ (đang nhập giờ): hiện toàn bộ hạng mục của dự án để gõ giờ thẳng vào, không chọn từ danh sách.
      Bấm ✓ thì khối thu gọn, chỉ giữ hạng mục có giờ, và giờ được tạm lưu trên máy (localStorage) tới khi Gửi. */
@@ -2676,6 +2711,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
 
     setBuckets(next); setSaving(false); setDirty(false); setSaveFailed(false); setSavedTick((t) => t + 1);
     if (!admin && (submitMode === "submit" || submitMode === "draft")) { try { localStorage.removeItem(draftKeyOf(monday)); } catch { /* bỏ qua */ } }
+    if (submitMode === "draft") { const t = new Date(); setLastDraftAt(`${pad(t.getHours())}:${pad(t.getMinutes())}`); }
     if (submitMode && submitMode !== "draft") setReloadKey((k) => k + 1);   // nạp lại để màn hình khớp đúng bản vừa ghi (lưu nháp: giữ nguyên màn hình đang nhập)
     const sentLabel = newly.sort().map(dayName).join(", ");
     if (!silent) flash(
@@ -2945,6 +2981,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   const stdTotal = Math.max(0, weekTotal - extraTotal);
   const stdHrs = (d) => Math.max(0, dayTotal(d) - otHrs(d) - effortHrs(d));
   const targetPct = weekTarget > 0 ? Math.min(100, (stdTotal / weekTarget) * 100) : 0;
+  // v8.2 — CN thu gọn mặc định; tự mở khi tuần có giờ chấm vào CN, hoặc khi bấm "+ CN"
+  const sunOpen = showSun || rows.some((r) => (r.days[days[6]] || 0) > 0);
   const projOptions = (r) => (
     <>
       {r.projectId === "" && <option value="" disabled>— Chọn dự án —</option>}
@@ -3001,68 +3039,56 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   return (
     <div className="space-y-3 md:space-y-4">
       {!admin && <DeadlineBanner cfg={cfg} empId={empId} />}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-0.5 text-xs text-slate-500">
+      {/* v8.2 — theo mockup: thẻ chọn tuần + thẻ tổng giờ (Chuẩn · Phát sinh · Tổng · Tiến độ tuần) nằm cạnh nhau */}
+      <div className="grid gap-3 md:grid-cols-[auto_1fr] md:gap-4">
+        <div className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 p-2.5 md:gap-2 md:p-3">
+          <button onClick={() => goWeek(fmt(addDays(parseD(monday), -7)))} className={`${iconBtn} md:h-11 md:w-11`}><ChevronLeft size={16} /></button>
+          <WeekPicker monday={monday} onChange={goWeek} empId={empId} hoursCfg={hoursCfg} holidaySet={holidaySet} refreshKey={savedTick} />
+          <button onClick={() => goWeek(fmt(addDays(parseD(monday), 7)))} className={`${iconBtn} md:h-11 md:w-11`}><ChevronRight size={16} /></button>
+          <button onClick={() => goWeek(fmt(mondayOf(new Date())))} className="ts-thisweek h-9 whitespace-nowrap rounded-md px-3 text-xs md:h-11 md:text-sm">Tuần này</button>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-slate-800 bg-slate-900 px-4 py-2.5 md:px-5 md:py-3">
+          <div title="Giờ công chuẩn = tổng − OT − giờ cố gắng">
+            <div className="text-[11px] uppercase tracking-wider text-slate-500">Chuẩn</div>
+            <div className="font-mono text-xl font-semibold text-blue-400">{stdTotal.toFixed(1)}{weekTarget > 0 && <span className="ml-1 text-[13px] font-normal text-slate-500">/ {weekTarget.toFixed(1)}</span>}</div>
+          </div>
+          <div title="Giờ phát sinh = OT (hạng mục Tăng ca) + giờ cố gắng (không tính chi phí dự án)">
+            <div className="text-[11px] uppercase tracking-wider text-slate-500">Phát sinh</div>
+            <div className="font-mono text-xl font-semibold text-slate-100">{extraTotal.toFixed(1)}</div>
+            <div className="mt-0.5 flex gap-1 whitespace-nowrap font-mono text-[11px]">
+              <span className={`ts-pill ${anyOtHigh ? "ts-pill-hot" : "ts-pill-ot"}`}>OT {otTotal.toFixed(1)}</span>
+              <span className="ts-pill ts-pill-cg">CG {effortTotal.toFixed(1)}</span>
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-slate-500">Tổng</div>
+            <div className="font-mono text-xl font-semibold text-slate-50">{weekTotal.toFixed(1)}<span className="ml-1 text-[13px] font-normal text-slate-500">giờ</span></div>
+          </div>
+          {/* Tiến độ so với target tuần — target đã trừ ngày lễ và ngày nghỉ phép */}
+          {weekTarget > 0 && (
+            <div className="min-w-[220px] flex-1">
+              <div className="mb-1.5 flex items-baseline justify-between text-xs">
+                <span className="text-slate-500">Tiến độ tuần</span>
+                <span className={stdTotal >= weekTarget ? "text-teal-400" : "text-amber-400"}>
+                  {stdTotal >= weekTarget ? "Đã đủ giờ chuẩn ✓" : `Còn thiếu ${(weekTarget - stdTotal).toFixed(1)} giờ`}
+                </span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+                <div className={`h-full rounded-full transition-all ${stdTotal >= weekTarget ? "bg-teal-500" : "bg-amber-500"}`} style={{ width: `${targetPct}%` }} />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-[18px] gap-y-1 px-0.5 text-xs text-slate-500">
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Thiếu giờ công</span>
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-teal-400" /> Tăng ca</span>
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-red-400" /> OT trên {OT_ALERT} giờ/ngày</span>
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-violet-400" /> Giờ cố gắng</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-full border-2 border-red-500" /> Ngày lễ</span>
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-sky-400" /> Nghỉ phép</span>
-        <span className="flex items-center gap-1.5"><span className="ts-today-pill text-[10px] leading-4">T</span> Hôm nay</span>
-      </div>
-
-      <div className="rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-2.5 md:px-3">
-        {/* v2.4: màn hẹp thì nhóm "đã gửi + tổng giờ" tự xuống dòng, căn phải, thay vì tràn khỏi thẻ */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 md:gap-2">
-            <button onClick={() => goWeek(fmt(addDays(parseD(monday), -7)))} className={iconBtn}><ChevronLeft size={16} /></button>
-            <WeekPicker monday={monday} onChange={goWeek} empId={empId} hoursCfg={hoursCfg} holidaySet={holidaySet} refreshKey={savedTick} />
-            <button onClick={() => goWeek(fmt(addDays(parseD(monday), 7)))} className={iconBtn}><ChevronRight size={16} /></button>
-            <button onClick={() => goWeek(fmt(mondayOf(new Date())))} className="whitespace-nowrap text-xs text-teal-400 hover:text-teal-300">Tuần này</button>
-          </div>
-          <div className="ml-auto flex items-center gap-2 md:gap-4">
-            {/* v3.7 — bỏ nhãn "Đã gửi đủ tuần" (nút dưới bảng đã báo "Đã gửi giờ công"); tổng giờ tách 3 ô: Chuẩn · Phát sinh · Tổng */}
-            <div className="flex overflow-hidden rounded-lg border border-slate-700 text-right">
-              <div className="px-2.5 py-1 md:px-3.5" title="Giờ công chuẩn = tổng − OT − giờ cố gắng">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">Chuẩn</div>
-                <div className="font-mono text-base font-semibold text-blue-400 md:text-lg">{stdTotal.toFixed(1)}</div>
-                <div className="font-mono text-[10px] text-slate-500">{weekTarget > 0 ? `/ ${weekTarget.toFixed(1)}` : "giờ"}</div>
-              </div>
-              <div className="border-l border-slate-700 px-2.5 py-1 md:px-3.5" title="Giờ phát sinh = OT (hạng mục Tăng ca) + giờ cố gắng (không tính chi phí dự án)">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">Phát sinh</div>
-                <div className="font-mono text-base font-semibold text-slate-100 md:text-lg">{extraTotal.toFixed(1)}</div>
-                <div className="whitespace-nowrap font-mono text-[10px]">
-                  <span className={anyOtHigh ? "text-red-400" : "text-teal-400"}>OT {otTotal.toFixed(1)}</span>
-                  <span className="text-slate-600"> · </span>
-                  <span className="cg-num text-violet-400">CG {effortTotal.toFixed(1)}</span>
-                </div>
-              </div>
-              <div className="border-l border-slate-700 px-2.5 py-1 md:px-3.5">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">Tổng</div>
-                <div className="font-mono text-base font-semibold text-slate-50 md:text-lg">{weekTotal.toFixed(1)}</div>
-                <div className="text-[10px] text-slate-500">giờ</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Tiến độ so với target tuần — target đã trừ ngày lễ và ngày nghỉ phép nên luôn phản ánh đúng thực tế */}
-        {weekTarget > 0 && (
-          <div className="mt-2.5 border-t border-slate-800 pt-2.5">
-            <div className="mb-1 flex items-baseline justify-between text-[11px]">
-              <span className="text-slate-500">Tiến độ tuần</span>
-              <span className="font-mono text-slate-400">
-                {stdTotal.toFixed(1)} / {weekTarget.toFixed(1)} giờ chuẩn
-                <span className={`ml-2 ${stdTotal >= weekTarget ? "text-blue-400" : "text-amber-400"}`}>
-                  {stdTotal >= weekTarget ? "đủ target" : `còn thiếu ${(weekTarget - stdTotal).toFixed(1)}`}
-                </span>
-              </span>
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
-              <div className={`h-full rounded-full transition-all ${stdTotal >= weekTarget ? "bg-blue-400" : "bg-amber-500"}`} style={{ width: `${targetPct}%` }} />
-            </div>
-          </div>
-        )}
+        <span className="flex items-center gap-1.5"><span className="ts-sq" /> Hôm nay</span>
       </div>
 
 
@@ -3086,11 +3112,22 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
           {/* DESKTOP */}
           <div className="hidden overflow-x-auto rounded-xl border border-slate-800 bg-slate-900 md:block">
             <table className="w-full table-fixed border-collapse text-sm" style={{ minWidth: 1100 }}>
+              {/* v8.2 — cột theo mockup: tên 400px · nút 56px · các ngày · (CN thu gọn 72px) · Tổng 96px */}
+              <colgroup>
+                <col style={{ width: 400 }} /><col style={{ width: 84 }} />
+                {days.map((d, k) => <col key={d} style={k === 6 && !sunOpen ? { width: 72 } : undefined} />)}
+                <col style={{ width: 96 }} />
+              </colgroup>
               <thead>
                 <tr className="border-b border-slate-800 text-left text-xs uppercase tracking-wider text-slate-500">
                   {/* Ba trường gộp về một cột: hàng trên Dự án + Giai đoạn, hàng dưới Hạng mục nằm ngang hàng với giờ công */}
-                  <th className="px-4 py-3 font-medium" style={{ width: "34%" }}>Dự án · Giai đoạn · Hạng mục</th>
+                  <th className="px-5 py-3 font-medium" colSpan={2}>Dự án · Giai đoạn · Hạng mục</th>
                   {days.map((d, i) => {
+                    if (i === 6 && !sunOpen) return (
+                      <th key={d} className="px-1 py-1.5 text-center font-medium normal-case">
+                        <button onClick={() => setShowSun(true)} title={`Mở cột Chủ nhật ${dLabel(d)}`} className="text-[11px] text-slate-500 underline decoration-slate-600 underline-offset-2 hover:text-teal-300">+ CN</button>
+                      </th>
+                    );
                     const hol = holidayMap.has(d); const lv = leaveInfo(leaveMap[d]);
                     return (
                       <th key={d} className={`px-1 py-1.5 text-center font-medium ${dayCol(d)} ${hol ? "text-slate-100" : lv ? "text-sky-400" : isIncomplete(d) ? "text-amber-400" : i === 6 ? "text-slate-600" : ""}`}
@@ -3102,17 +3139,17 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                             {isSent(d) && <Lock size={10} className="text-teal-500" />}
                             {hol ? null : lv ? <span className="text-[9px]">{lv.short}</span> : isIncomplete(d) ? <span className="h-1.5 w-1.5 rounded-full bg-amber-400" title="Chưa đủ giờ chuẩn" /> : null}
                           </div>
-                          <div className={`font-mono text-xs font-normal normal-case ${i === 6 ? "text-slate-600" : "text-slate-100"}`}>{dLabel(d)}</div>
+                          <div className={`font-mono text-[13px] font-normal normal-case ${d === todayKey ? "text-teal-300" : i === 6 ? "text-slate-600" : "text-slate-100"}`}>{dLabel(d)}</div>
                         </div>
                       </th>
                     );
                   })}
-                  <th className="px-2 py-2 text-center font-medium" style={{ width: "7%" }}>Tổng</th>
+                  <th className="px-2 py-2 text-center font-medium">Tổng</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 && (
-                  <tr><td colSpan={9} className="px-4 py-12 text-center text-sm text-slate-500">
+                  <tr><td colSpan={10} className="px-4 py-12 text-center text-sm text-slate-500">
                     Tuần này chưa có tác vụ nào. Bấm <b className="text-slate-300">Thêm tác vụ</b> để bắt đầu.
                   </td></tr>
                 )}
@@ -3130,26 +3167,26 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                 const gt = g.items.reduce((s, { r }) => s + days.reduce((a, d) => a + (r.days[d] || 0), 0), 0);
                 const secs = blank ? [] : sectionsOf(g, open);
                 return (
-                  <tbody key={g.key} className={`border-b border-slate-800 ${open ? "bg-slate-800/40" : ""}`}>
-                    {/* Đầu khối: nút ✓ / Sửa + dự án + giai đoạn */}
-                    <tr>
-                      <td colSpan={8} className="px-3 pb-1 pt-2.5">
-                        <div className="flex items-center gap-2" style={{ maxWidth: 1000 }}>
-                          <div className="shrink-0" style={{ width: GUT }}>
+                  <tbody key={g.key} className="border-b border-slate-800">
+                    {/* v8.2 — dòng dự án theo mockup: ▾ thu gọn (tạm lưu) / ▸ mở để sửa · Dự án · Giai đoạn · thùng rác */}
+                    <tr className="ts-projrow">
+                      <td colSpan={10} className="px-3 py-3">
+                        <div className="flex items-center gap-2" style={{ paddingLeft: 2 }}>
+                          <div className="shrink-0" style={{ width: 32 }}>
                             {open ? (
-                              <button onClick={() => doneGroup(g.key)} title="Xong — tạm lưu giờ của khối này"
-                                className={`${iconBtn} border-teal-600 bg-teal-600 text-white hover:border-teal-500 hover:bg-teal-500 hover:text-white`}><Check size={16} /></button>
+                              <button onClick={() => doneGroup(g.key)} title="Thu gọn — tạm lưu giờ của dự án này" aria-label="Thu gọn dự án"
+                                className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-slate-100"><ChevronDown size={18} /></button>
                             ) : canEdit ? (
-                              <button onClick={() => editGroup(g.key)} title="Sửa giờ của khối này"
-                                className={`${iconBtn} hover:border-teal-700 hover:text-teal-300`}><Pencil size={14} /></button>
+                              <button onClick={() => editGroup(g.key)} title="Mở để sửa giờ của dự án này" aria-label="Mở dự án"
+                                className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-slate-100"><ChevronRight size={18} /></button>
                             ) : null}
                           </div>
-                          <div className="min-w-0" style={{ flexBasis: "58%", flexGrow: 1 }}>
+                          <div className="min-w-0" style={{ flexBasis: 0, flexGrow: 1.4 }}>
                             <select disabled={gLocked || (!blank && (!open || gHas))} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })}
                               title={!blank && gHas ? "Khối đã có giờ — xoá giờ hoặc xoá khối để đổi dự án" : undefined}
                               className={`disabled:opacity-60 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
                           </div>
-                          <div className="min-w-0" style={{ flexBasis: "42%", flexGrow: 1 }}>
+                          <div className="min-w-0" style={{ flexBasis: 0, flexGrow: 1 }}>
                             {!noProj && (
                               <select disabled={gLocked || blank || !open || phaseFixed(g)} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })}
                                 title={phaseInfo(g.phaseId)?.desc}
@@ -3157,19 +3194,19 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                             )}
                           </div>
                           {/* v3.3: thùng rác xoá cả khối nằm ngay bên phải ô giai đoạn */}
-                          <div className="shrink-0" style={{ width: GUT }}>
+                          <div className="shrink-0" style={{ width: 44 }}>
                             {!gLocked && !locked && (
-                              <button onClick={() => delGroup(g.key)} title="Xoá cả khối dự án này" aria-label="Xoá cả khối dự án này"
-                                className={`${iconBtn} hover:border-rose-800 hover:text-rose-300`}><Trash2 size={16} /></button>
+                              <button onClick={() => delGroup(g.key)} title="Xoá dự án khỏi tuần" aria-label="Xoá dự án khỏi tuần"
+                                className={`${iconBtn} h-11 w-11 text-rose-400 hover:border-rose-800 hover:text-rose-300`}><Trash2 size={16} /></button>
                             )}
                           </div>
+                          <div style={{ flexGrow: 1.2, flexBasis: 0 }} />
                         </div>
                       </td>
-                      <td className="px-2 pb-1 pt-2.5" />{/* v8.2: ô Dự án / Giai đoạn trải qua các cột ngày · v3.5: bỏ số tổng của khối dự án — tổng chỉ còn ở hàng cuối bảng */}
                     </tr>
 
                     {blank && (
-                      <tr><td colSpan={9} className="px-3 pb-3 pt-1">
+                      <tr><td colSpan={10} className="px-3 pb-3 pt-1">
 
                       </td></tr>
                     )}
@@ -3178,7 +3215,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                       <React.Fragment key={sec.label}>
                         {/* v5.0: nhóm Tăng ca chưa có dòng nào = đang ẩn, chỉ hiện nút "+ Tăng ca" */}
                         {open && sec.ot && sec.items.length === 0 && (
-                          <tr><td colSpan={9} className="px-3 pb-2.5 pt-2">
+                          <tr><td colSpan={10} className="px-3 pb-2.5 pt-2">
                             <div style={{ paddingLeft: GUT + 8 }}>
                               <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r)}
                                 className={`${btnBase} border border-teal-900 text-teal-300 hover:border-teal-700 disabled:opacity-40`}><Zap size={14} /> Tăng ca</button>
@@ -3187,7 +3224,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                         )}
                         {/* v6.2: nhóm Công việc chung / Vắng mặt = nhãn màu bo tròn + đường kẻ mảnh, tách khỏi tác vụ bên dưới */}
                         {open && sec.chip && (
-                          <tr><td colSpan={9} className="px-3 pb-1 pt-3.5">
+                          <tr><td colSpan={10} className="px-3 pb-1 pt-3.5">
                             <div className="flex items-center gap-2.5" style={{ paddingLeft: GUT + 8 }}>
                               <span className="whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ background: `${sec.chip}2e`, color: sec.chip }}>{sec.label}</span>
                               <i className="h-px flex-1 bg-slate-700" />
@@ -3195,7 +3232,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                           </td></tr>
                         )}
                         {open && !sec.chip && !sec.noHead && !(sec.ot && sec.items.length === 0) && (
-                          <tr><td colSpan={9} className="px-3 pb-0.5 pt-2.5">
+                          <tr><td colSpan={10} className="px-3 pb-0.5 pt-2.5">
                             <div className={`flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider ${sec.ot ? "text-teal-400" : "text-slate-500"}`} style={{ paddingLeft: GUT + 8 }}>
                               {sec.ot && <Zap size={11} />}{sec.label}
                               {sec.ot && sec.items.length > 0 && <span className="ml-2 normal-case tracking-normal text-slate-500">Tác vụ · Khung giờ</span>}
@@ -3208,21 +3245,24 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                           const pb = last ? "pb-2.5" : "pb-0";
                           const ot = isOtTask(taskById.get(r.taskId));
                           return (
-                            <tr key={i} className="group/row">
-                              <td className={`px-3 ${open ? "pt-1" : "pt-0.5"} ${pb}`}>
+                            <tr key={i} className="ts-row group/row">
+                              <td className={`px-3 ${open ? "pt-1.5" : "pt-0.5"} ${pb}`}>
                                 <div className="flex items-center gap-2">
-                                  <div className="shrink-0" style={{ width: GUT }} />
+                                  <div className="shrink-0" style={{ width: 34 }} />
                                   {open && ot ? otPickers(r, i) : (
                                   <div className="min-w-0 flex-1">
                                     <div className={`truncate text-sm transition-colors ${ot && !open ? "text-teal-300" : "text-slate-100"} group-hover/row:text-teal-200 group-focus-within/row:text-teal-200 group-hover/row:font-semibold group-focus-within/row:font-semibold`} title={rowLabel(r, open)}>
                                       {rowLabel(r, open)}
                                     </div>
-                                    {open && rowDesc(r) && <div className="truncate text-[11px] leading-tight text-slate-500 group-hover/row:text-slate-400 group-focus-within/row:text-slate-400" title={rowDesc(r)}>{rowDesc(r)}</div>}
+                                    {open && rowDesc(r) && <div className="truncate text-xs leading-tight text-slate-500" title={rowDesc(r)}>{rowDesc(r)}</div>}
                                   </div>
                                   )}
-                                  <div className="flex shrink-0 items-center gap-1">
+                                </div>
+                              </td>
+                              <td className={`px-1 ${open ? "pt-1.5" : "pt-0.5"} ${pb}`}>
+                                  <div className="flex items-center justify-center gap-1">
                                     {open && !ot && !isLeaveTask(r.taskId) && (
-                                      <button disabled={locked || projClosed(r) || !rowReady(r)} onClick={() => fillStandard(i)} title="Điền giờ chuẩn cho cả tuần vào các ô còn trống"
+                                      <button disabled={locked || projClosed(r) || !rowReady(r)} onClick={() => fillStandard(i)} title="Điền giờ chuẩn cho cả tuần vào các ô còn trống" aria-label="Điền giờ chuẩn cả tuần"
                                         className={`${iconBtn} disabled:opacity-40`}><Zap size={14} /></button>
                                     )}
                                     {/* v5.0: dòng tăng ca xoá được cả dòng, kể cả khi chưa nhập giờ (dòng có giờ của ngày đã gửi thì không) */}
@@ -3236,10 +3276,9 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                                         className={`${iconBtn} hover:border-rose-800 hover:text-rose-300`}><Eraser size={14} /></button>
                                     )}
                                   </div>
-                                </div>
                               </td>
-                              {days.map((d, k) => (
-                                <td key={d} className={`px-1 ${open ? "pt-1" : "pt-0.5"} ${pb} ${dayCol(d)}`}>
+                              {days.map((d, k) => (k === 6 && !sunOpen) ? <td key={d} className={pb} /> : (
+                                <td key={d} className={`px-1.5 ${open ? "pt-1.5" : "pt-0.5"} ${pb} ${dayCol(d)}`}>
                                   {open ? (
                                     <input ref={(el) => { gridInputs.current[`${i}:${k}`] = el; }}
                                       type="number" min="0" max="24" step="0.5" value={r.days[d] ?? ""} placeholder={dayLocked(d) || projClosed(r) || futureBlocked(r, d) || !rowReady(r) ? "" : "–"} disabled={dayLocked(d) || projClosed(r) || futureBlocked(r, d) || !rowReady(r)}
@@ -3253,12 +3292,12 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                                   )}
                                 </td>
                               ))}
-                              <td className={`px-2 ${open ? "pt-1" : "pt-0.5"} ${pb}`} />{/* v3.5: bỏ số tổng từng hạng mục */}
+                              <td className={`px-2 ${open ? "pt-1.5" : "pt-0.5"} ${pb}`} />{/* v3.5: bỏ số tổng từng hạng mục */}
                             </tr>
                           );
                         })}
                         {open && sec.ot && sec.items.length > 0 && (
-                          <tr><td colSpan={9} className="px-3 pb-2.5 pt-1.5">
+                          <tr><td colSpan={10} className="px-3 pb-2.5 pt-1.5">
                             <div style={{ paddingLeft: GUT + 8 }}>
                               <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r)}
                                 className={`${btnBase} border border-teal-900 text-teal-300 hover:border-teal-700 disabled:opacity-40`}><Plus size={14} /> Thêm dòng tăng ca</button>
@@ -3275,9 +3314,9 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
               <tfoot>
                 {showSplit && extraTotal > 0 && (<>
                   <tr className="border-t border-slate-700 font-mono text-xs">
-                    <td className="px-4 py-2 font-sans text-xs text-slate-400" title="Tổng theo ngày trừ OT và giờ cố gắng">
+                    <td colSpan={2} className="px-5 py-2 font-sans text-xs text-slate-400" title="Tổng theo ngày trừ OT và giờ cố gắng">
                       <span className="mr-2 inline-block h-2 w-2 rounded-sm bg-blue-400" />Giờ chuẩn</td>
-                    {days.map((d) => {
+                    {days.map((d, k) => { if (k === 6 && !sunOpen) return <td key={d} />;
                       const st = stdHrs(d);
                       return <td key={d} className={`px-1 py-2 text-center ${dayCol(d)} ${isIncomplete(d) ? "text-amber-400" : st ? "text-blue-400" : "text-slate-700"}`}>{st ? st.toFixed(1) : "·"}</td>;
                     })}
@@ -3285,9 +3324,9 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                   </tr>
                   {otTotal > 0 && (
                     <tr className="border-t border-slate-800 font-mono text-xs">
-                      <td className="px-4 py-2 font-sans text-xs text-slate-400">
+                      <td colSpan={2} className="px-5 py-2 font-sans text-xs text-slate-400">
                         <span className="mr-2 inline-block h-2 w-2 rounded-sm bg-teal-400" />+ OT<span className="ml-1.5 text-[11px] text-slate-600">hạng mục Tăng ca</span></td>
-                      {days.map((d) => {
+                      {days.map((d, k) => { if (k === 6 && !sunOpen) return <td key={d} />;
                         const ot = otHrs(d);
                         const hot = ot > OT_ALERT; // vượt ngưỡng thì đổi đỏ, khỏi phải nhẩm
                         return <td key={d} title={hot ? `OT vượt ${OT_ALERT} giờ` : undefined}
@@ -3298,9 +3337,9 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                   )}
                   {effortTotal > 0 && (
                     <tr className="border-t border-slate-800 font-mono text-xs">
-                      <td className="px-4 py-2 font-sans text-xs text-slate-400" title="Giờ làm việc vượt giờ chuẩn của ngày. Không phải OT, không tính vào chi phí dự án.">
+                      <td colSpan={2} className="px-5 py-2 font-sans text-xs text-slate-400" title="Giờ làm việc vượt giờ chuẩn của ngày. Không phải OT, không tính vào chi phí dự án.">
                         <span className="mr-2 inline-block h-2 w-2 rounded-sm bg-violet-400" />+ Giờ cố gắng<span className="ml-1.5 text-[11px] text-slate-600">vượt giờ chuẩn</span></td>
-                      {days.map((d) => {
+                      {days.map((d, k) => { if (k === 6 && !sunOpen) return <td key={d} />;
                         const ef = effortHrs(d);
                         return <td key={d} className={`px-1 py-2 text-center ${dayCol(d)} ${ef ? "text-violet-400" : "text-slate-700"}`}>{ef ? <span className="cg-num">{ef.toFixed(1)}</span> : "·"}</td>;
                       })}
@@ -3308,8 +3347,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                     </tr>
                   )}
                 </>)}
-                <tr className={`${showSplit && extraTotal > 0 ? "border-t-2 border-slate-600" : "border-t border-slate-700"} bg-slate-900/60 font-mono text-[15px] font-semibold`}>
-                  <td className="px-4 py-3 font-sans text-xs uppercase tracking-wider text-slate-200">
+                <tr className={`${showSplit && extraTotal > 0 ? "border-t-2 border-slate-600" : "border-t border-slate-700"} font-mono text-sm font-medium`}>
+                  <td colSpan={2} className="px-5 py-4 font-sans text-xs uppercase tracking-wider text-slate-500">
                     <span className="flex items-center gap-2">
                       {extraTotal > 0 && (
                         <button onClick={() => setShowSplit((v) => !v)} aria-expanded={showSplit}
@@ -3322,7 +3361,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                       {showSplit && extraTotal > 0 ? "= Tổng theo ngày" : "Tổng theo ngày"}
                     </span>
                   </td>
-                  {days.map((d) => {
+                  {days.map((d, k) => { if (k === 6 && !sunOpen) return <td key={d} />;
                     const t = dayTotal(d);
                     // v8.2: ngày còn thiếu hiện "đã chấm / giờ chuẩn" để biết còn thiếu bao nhiêu
                     const mn = isIncomplete(d) ? minHoursFor(d, hoursCfg, holidaySet) : null;
@@ -3466,8 +3505,18 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
         </>
       )}
 
-      <div className="ts-actionbar grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
+      {/* v8.2 — thanh nút theo mockup: cố định đáy màn hình máy tính, trái: Thêm tác vụ + trạng thái; phải: gợi ý phím · Lưu nháp · Gửi (kèm tổng giờ) */}
+      <div className="ts-actionbar">
+        <div className="ts-actionbar-in grid grid-cols-2 gap-2 md:flex md:items-center md:gap-2.5">
         <button onClick={focusQuick} disabled={locked} className={`${btnGhost} disabled:opacity-40`}><Plus size={15} /> Thêm tác vụ</button>
+        {(atRisk || lastDraftAt) && (
+          <span className={`col-span-2 text-center text-xs md:order-none md:ml-1.5 md:text-left ${atRisk ? "text-amber-400" : "text-slate-500"}`}>
+            {atRisk ? (admin ? "Có thay đổi chưa lưu" : lastDraftAt ? `Có giờ chưa gửi · lưu nháp lúc ${lastDraftAt}` : "Có giờ chưa gửi")
+              : `Đã lưu nháp lúc ${lastDraftAt}`}
+          </span>
+        )}
+        <div className="hidden flex-1 md:block" />
+        <span className="ts-kbd hidden text-[11px] text-slate-600 lg:inline"><b>↑↓←→</b> di chuyển · <b>Enter</b> xuống dòng</span>
         {/* v1.9: quản lý lưu được khi sửa bảng công của người khác · v8.1: nhân sự có lại nút Lưu nháp (ghi lên server, chưa gửi) */}
         {!admin && (
           <button onClick={() => save("draft")} disabled={saving || locked} title="Lưu tạm giờ đang nhập lên hệ thống, chưa gửi — quản lý thấy là Nháp, chưa tính vào báo cáo"
@@ -3493,10 +3542,10 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
           </button>
         ) : (
           <button onClick={() => (admin ? save("submit") : askSubmitWeek())} disabled={saving || locked} className={`col-span-2 w-full md:w-auto ${btnPrimary} disabled:opacity-40`}>
-            {saving && !admin ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} {admin ? "Đánh dấu đã gửi" : "Gửi giờ công"}{!admin && weekTotal > 0 && <span className="font-mono font-normal opacity-80"> · {weekTotal.toFixed(1)}h</span>}
+            {saving && !admin ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} {admin ? "Đánh dấu đã gửi" : "Gửi giờ công"}{!admin && <span className="font-mono font-normal opacity-80"> · {weekTotal.toFixed(1)}h</span>}
           </button>
         )}
-        {atRisk && <span className="col-span-2 text-center text-xs text-amber-400 md:text-left">{admin ? "Có thay đổi chưa lưu" : "Có giờ chưa gửi"}</span>}
+        </div>
       </div>
 
       {saveFailed && (
