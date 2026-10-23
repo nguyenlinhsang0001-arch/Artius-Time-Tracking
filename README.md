@@ -1,4 +1,13 @@
-# ARTIUS — Quản lý giờ công · v8.1 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
+
+## Mới ở v8.3 — Icon app mới
+
+- Icon mới: **vòng tiến độ + ngôi sao AI** trên nền gradient xanh ngọc → tím (phương án B).
+- Thay trong `public/`: `favicon.svg`, `favicon-32.png`, `favicon.ico` (mới), `icon-96.png`, `icon-192.png`, `icon-512.png`,
+  `icon-maskable-512.png`, `icon-maskable-192.png` (mới), `apple-touch-icon.png`, `badge-96.png`, `manifest.webmanifest`.
+- `index.html` và `manifest.webmanifest` gắn `?v=83` vào đường dẫn icon để trình duyệt tải icon mới.
+- **Máy đã cài app** (taskbar, màn hình chính) có thể vẫn giữ icon cũ một thời gian: gỡ app rồi cài lại để thấy ngay, hoặc chờ Chrome tự cập nhật (thường 1–2 ngày).
+- Không đổi giao diện, dữ liệu hay database. Bộ icon gốc + hướng dẫn: `D:\Time-Tracking\Logo\ARTIUS_TIME_icons_B\`.
 
 ## Mới ở v8.1 — Chấm công: Thêm tác vụ linh hoạt hơn, có nút Lưu nháp
 
@@ -57,7 +66,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Trên máy tính ghi `v8.1` (nhân viên: cạnh tên ở thanh trên cùng; quản lý: cuối menu dọc).
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Trên máy tính ghi `v8.3` (nhân viên: cạnh tên ở thanh trên cùng; quản lý: cuối menu dọc).
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.

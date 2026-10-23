@@ -17,10 +17,8 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
-   Mới ở v8.3 — Chấm công: khối đã chốt (đã bấm ✓) ô Dự án chữ đậm, rõ màu (không còn mờ 60%), nền xám nhẹ, ẩn mũi tên, ép opacity 100% (Chrome tự làm mờ select bị khoá 70%) — ô Giai đoạn giữ nguyên;
-               dòng tăng ca khi khối đóng: khung giờ thành nhãn teal "Tăng ca …", tên tác vụ màu chữ thường (cả Sáng và Tối).
-   Mới ở v8.2 — Chấm công (máy tính): ô Giai đoạn thu nhỏ (180px), ô Dự án rộng ra; nút ✓ / Sửa của khối dời từ bên trái dự án sang cạnh thùng rác.
-   Mới ở v8.2 — Giao diện Sáng: ô nhập giờ tăng ca viền teal + nền teal rất nhạt, số giờ teal đậm (trước đó viền gần như trắng, khó nhìn).
+   Mới ở v8.3 — Icon app mới (vòng tiến độ + ngôi sao AI, nền gradient xanh ngọc → tím): favicon, icon cài app (Windows/macOS/Android),
+   iPhone (apple-touch-icon), Android maskable, biểu tượng thông báo — đều trong public/. Không đổi giao diện hay dữ liệu.
    Mới ở v8.1 — Chấm công: "Thêm tác vụ" thêm được khối mới kể cả khi khối đang mở chưa nhập giờ (khối đó vẫn mở nguyên);
    nút "Lưu nháp" cạnh "Gửi giờ công": ghi giờ đang nhập lên server nhưng chưa gửi (quản lý thấy ô Nháp, chưa tính báo cáo).
    Cài đặt của nhân viên bỏ mục "Kiểm tra lưu trữ" (vẫn còn ở Thiết lập của Admin).
@@ -2266,12 +2264,6 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   };
   // v4.4: mô tả ngắn quản lý ghi cho tác vụ — hiện dưới tên hạng mục khi khối đang mở để nhập giờ
   const rowDesc = (r) => (taskById.get(r.taskId)?.desc || "").trim();
-  /* v8.3: dòng tăng ca khi khối đóng — khung giờ thành nhãn teal, tên tác vụ màu chữ thường */
-  const rowLabelNode = (r, open) => {
-    const t = taskById.get(r.taskId);
-    if (!t || !isOtTask(t) || open) return rowLabel(r, open);
-    return <><span className="ot-chip mr-1.5 rounded px-2 py-0.5 text-xs font-medium bg-teal-900/60 text-teal-200">Tăng ca {otText(t)}</span><span className="text-slate-100">{r.otFor ? taskName(r.otFor) : "chưa rõ tác vụ"}</span></>;
-  };
   const rowLabel = (r, open) => {
     const t = taskById.get(r.taskId);
     if (!t) return "(tác vụ đã xoá)";
@@ -3117,20 +3109,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                     <tr>
                       <td className="px-3 pb-1 pt-2.5">
                         <div className="flex items-center gap-2">
-                          <div className="min-w-0 flex-1">{/* v8.2: dự án chiếm phần còn lại; nút ✓ / Sửa dời sang cạnh thùng rác */}
-                            <select disabled={gLocked || (!blank && (!open || gHas))} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })}
-                              title={!blank && gHas ? "Khối đã có giờ — xoá giờ hoặc xoá khối để đổi dự án" : undefined}
-                              className={!blank && !open ? `${CTRL} w-full rounded-md border px-3 text-sm focus:outline-none proj-done appearance-none border-slate-600 bg-slate-800 font-medium text-slate-50 opacity-100 disabled:opacity-100` : `disabled:opacity-60 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
-                          </div>
-                          <div className="min-w-0 shrink-0" style={{ width: 180 }}>{/* v8.2: ô giai đoạn thu nhỏ, vừa "P3 · Thi công" */}
-                            {!noProj && (
-                              <select disabled={gLocked || blank || !open || phaseFixed(g)} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })}
-                                title={phaseInfo(g.phaseId)?.desc}
-                                className={`disabled:opacity-60 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>
-                            )}
-                          </div>
-                          {/* v8.2: nút ✓ (xong) / Sửa nằm ngay bên trái thùng rác */}
-                          <div className="shrink-0 flex justify-end" style={{ width: GUT }}>
+                          <div className="shrink-0" style={{ width: GUT }}>
                             {open ? (
                               <button onClick={() => doneGroup(g.key)} title="Xong — tạm lưu giờ của khối này"
                                 className={`${iconBtn} border-teal-600 bg-teal-600 text-white hover:border-teal-500 hover:bg-teal-500 hover:text-white`}><Check size={16} /></button>
@@ -3138,6 +3117,18 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                               <button onClick={() => editGroup(g.key)} title="Sửa giờ của khối này"
                                 className={`${iconBtn} hover:border-teal-700 hover:text-teal-300`}><Pencil size={14} /></button>
                             ) : null}
+                          </div>
+                          <div className="min-w-0" style={{ flexBasis: "58%", flexGrow: 1 }}>
+                            <select disabled={gLocked || (!blank && (!open || gHas))} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })}
+                              title={!blank && gHas ? "Khối đã có giờ — xoá giờ hoặc xoá khối để đổi dự án" : undefined}
+                              className={`disabled:opacity-60 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
+                          </div>
+                          <div className="min-w-0" style={{ flexBasis: "42%", flexGrow: 1 }}>
+                            {!noProj && (
+                              <select disabled={gLocked || blank || !open || phaseFixed(g)} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })}
+                                title={phaseInfo(g.phaseId)?.desc}
+                                className={`disabled:opacity-60 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>
+                            )}
                           </div>
                           {/* v3.3: thùng rác xoá cả khối nằm ngay bên phải ô giai đoạn */}
                           <div className="shrink-0" style={{ width: GUT }}>
@@ -3201,8 +3192,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                                   <div className="shrink-0" style={{ width: GUT }} />
                                   {open && ot ? otPickers(r, i) : (
                                   <div className="min-w-0 flex-1">
-                                    <div className={`truncate text-sm transition-colors text-slate-100 group-hover/row:text-teal-200 group-focus-within/row:text-teal-200 group-hover/row:font-semibold group-focus-within/row:font-semibold`} title={rowLabel(r, open)}>
-                                      {rowLabelNode(r, open)}
+                                    <div className={`truncate text-sm transition-colors ${ot && !open ? "text-teal-300" : "text-slate-100"} group-hover/row:text-teal-200 group-focus-within/row:text-teal-200 group-hover/row:font-semibold group-focus-within/row:font-semibold`} title={rowLabel(r, open)}>
+                                      {rowLabel(r, open)}
                                     </div>
                                     {open && rowDesc(r) && <div className="truncate text-[11px] leading-tight text-slate-600 group-hover/row:text-slate-400 group-focus-within/row:text-slate-400" title={rowDesc(r)}>{rowDesc(r)}</div>}
                                   </div>
@@ -3234,7 +3225,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                                       onFocus={(e) => e.target.select()}
                                       onKeyDown={(e) => gridKey(e, i, k)}
                                       title={ot ? `Tối đa ${fmtH(otMaxHours(taskById.get(r.taskId)))} giờ` : undefined}
-                                      className={`${CTRL} w-full rounded-md border bg-slate-950 px-1 text-center font-mono text-base font-medium focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[d] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "ot-cell border-teal-900 text-slate-100" : isIncomplete(d) ? "border-amber-700/60 text-slate-100" : k === 6 ? "border-slate-800 text-slate-100" : "border-slate-700 text-slate-100"}`} />
+                                      className={`${CTRL} w-full rounded-md border bg-slate-950 px-1 text-center font-mono text-base font-medium focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[d] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "border-teal-900 text-slate-100" : isIncomplete(d) ? "border-amber-700/60 text-slate-100" : k === 6 ? "border-slate-800 text-slate-100" : "border-slate-700 text-slate-100"}`} />
                                   ) : (
                                     <div className={`py-1.5 text-center font-mono text-sm ${r.days[d] > 0 ? (ot ? "text-teal-300" : "text-slate-200") : "text-slate-700"}`}>{r.days[d] > 0 ? r.days[d] : "·"}</div>
                                   )}
@@ -3391,7 +3382,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                           {open && ot && <div className="mt-3">{otPickers(r, i, true)}</div>}
                           <div className={`flex items-center justify-between gap-2 ${open ? "mt-2" : "mt-2 border-t border-slate-800 pt-2"}`}>
                             <div className="min-w-0">
-                              {!(open && ot) && <div className={`truncate text-sm ${ot && !open ? "text-slate-100" : rt ? "text-slate-100" : "text-slate-400"}`}>{rowLabelNode(r, open)}</div>}
+                              {!(open && ot) && <div className={`truncate text-sm ${ot && !open ? "text-teal-300" : rt ? "text-slate-100" : "text-slate-400"}`}>{rowLabel(r, open)}</div>}
                               {open && rowDesc(r) && <div className="text-[11px] leading-tight text-slate-500">{rowDesc(r)}</div>}
                               <div className="text-[11px] text-slate-600">Cả tuần: <span className="font-mono text-slate-400">{rt.toFixed(1)}</span> giờ</div>
                             </div>
@@ -3408,7 +3399,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                                     const next = mobileInputs.current[i + 1];
                                     if (next) { next.focus(); next.select?.(); } else e.target.blur();
                                   }}
-                                  className={`${CTRL} w-20 rounded-md border bg-slate-950 px-2 text-center font-mono text-lg focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[activeDay] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "ot-cell border-teal-900 text-slate-100" : "border-slate-700 text-slate-100"}`} />
+                                  className={`${CTRL} w-20 rounded-md border bg-slate-950 px-2 text-center font-mono text-lg focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[activeDay] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "border-teal-900 text-slate-100" : "border-slate-700 text-slate-100"}`} />
                               ) : (
                                 <span className={`w-12 text-right font-mono text-base ${r.days[activeDay] > 0 ? "text-slate-100" : "text-slate-700"}`}>{r.days[activeDay] > 0 ? r.days[activeDay] : "·"}</span>
                               )}
