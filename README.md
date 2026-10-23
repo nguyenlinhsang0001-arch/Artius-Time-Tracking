@@ -4,6 +4,7 @@
 
 - **Thêm tác vụ** thêm được khối mới kể cả khi khối đang mở **chưa nhập giờ nào** — khối đó vẫn mở nguyên, khối mới nằm bên dưới. Khối đang mở đã có giờ thì vẫn tự thu gọn + tạm lưu như trước.
 - Nút **Lưu nháp** (cạnh **Gửi giờ công**): ghi giờ đang nhập **lên hệ thống nhưng chưa gửi** — đổi máy / điện thoại vẫn thấy; quản lý thấy ô "Nháp chưa gửi", **chưa tính vào báo cáo** cho tới khi bấm Gửi. Ngày đã gửi, ngày chưa tới (giờ làm việc) vẫn bị chặn như cũ.
+- **Cài đặt của nhân viên** bỏ mục **Kiểm tra lưu trữ** (công cụ chẩn đoán lỗi) — vẫn còn ở **Thiết lập** của Admin.
 - Chỉ đổi `src/App.jsx` — không cần chạy lại schema.sql (database vốn cho nhân sự ghi giờ của ngày chưa gửi).
 
 ## Mới ở v8.0 — Chấm công: mở sẵn khối "Thêm tác vụ"

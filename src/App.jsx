@@ -19,6 +19,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
    ARTIUS — Quản lý giờ công theo dự án · v5.6
    Mới ở v8.1 — Chấm công: "Thêm tác vụ" thêm được khối mới kể cả khi khối đang mở chưa nhập giờ (khối đó vẫn mở nguyên);
    nút "Lưu nháp" cạnh "Gửi giờ công": ghi giờ đang nhập lên server nhưng chưa gửi (quản lý thấy ô Nháp, chưa tính báo cáo).
+   Cài đặt của nhân viên bỏ mục "Kiểm tra lưu trữ" (vẫn còn ở Thiết lập của Admin).
    Mới ở v8.0 — Chấm công: tuần còn trống thì tự mở sẵn một khối trống (Dự án · Giai đoạn · Hạng mục) như vừa bấm "Thêm tác vụ",
    nhân viên chọn và nhập giờ ngay. Rê chuột vào dòng tác vụ: tên tác vụ in đậm (cả Sáng và Tối), dòng chú thích giữ nguyên. Giao diện Sáng: banner "Còn x tuần chưa gửi" nền hồng viền đỏ. Khối trống không làm hiện cảnh báo "chưa lưu"; quản lý sửa hộ (ngăn kéo Bảng công) thì không tự thêm.
    Mới ở v7.9 — Hoàn thiện giao diện Sáng: rê chuột dòng chấm công chữ xanh dương; Giờ chuẩn xanh đậm, Giờ cố gắng giữ tím có nền chip + thanh sọc;
@@ -4745,7 +4746,7 @@ function EmployeeSettings({ cfg, empId }) {
         <PushStatusRow />
       </Panel>
 
-      <StorageDoctor cfg={cfg} />
+      {/* v8.1 — bỏ "Kiểm tra lưu trữ" ở Cài đặt nhân viên (chỉ còn ở Thiết lập của Admin) */}
     </div>
   );
 }
