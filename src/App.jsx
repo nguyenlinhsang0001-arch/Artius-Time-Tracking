@@ -17,6 +17,8 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v8.3 — Chấm công: khối đã chốt (đã bấm ✓) ô Dự án chữ đậm, rõ màu (không còn mờ 60%), nền xám nhẹ, ẩn mũi tên — ô Giai đoạn giữ nguyên;
+               dòng tăng ca khi khối đóng: khung giờ thành nhãn teal "Tăng ca …", tên tác vụ màu chữ thường (cả Sáng và Tối).
    Mới ở v8.2 — Chấm công (máy tính): ô Giai đoạn thu nhỏ (180px), ô Dự án rộng ra; nút ✓ / Sửa của khối dời từ bên trái dự án sang cạnh thùng rác.
    Mới ở v8.2 — Giao diện Sáng: ô nhập giờ tăng ca viền teal + nền teal rất nhạt, số giờ teal đậm (trước đó viền gần như trắng, khó nhìn).
    Mới ở v8.1 — Chấm công: "Thêm tác vụ" thêm được khối mới kể cả khi khối đang mở chưa nhập giờ (khối đó vẫn mở nguyên);
@@ -295,7 +297,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v8.2";
+const APP_VERSION = "v8.3";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -2264,6 +2266,12 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   };
   // v4.4: mô tả ngắn quản lý ghi cho tác vụ — hiện dưới tên hạng mục khi khối đang mở để nhập giờ
   const rowDesc = (r) => (taskById.get(r.taskId)?.desc || "").trim();
+  /* v8.3: dòng tăng ca khi khối đóng — khung giờ thành nhãn teal, tên tác vụ màu chữ thường */
+  const rowLabelNode = (r, open) => {
+    const t = taskById.get(r.taskId);
+    if (!t || !isOtTask(t) || open) return rowLabel(r, open);
+    return <><span className="ot-chip mr-1.5 rounded px-2 py-0.5 text-xs font-medium bg-teal-900/60 text-teal-200">Tăng ca {otText(t)}</span><span className="text-slate-100">{r.otFor ? taskName(r.otFor) : "chưa rõ tác vụ"}</span></>;
+  };
   const rowLabel = (r, open) => {
     const t = taskById.get(r.taskId);
     if (!t) return "(tác vụ đã xoá)";
@@ -3112,7 +3120,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                           <div className="min-w-0 flex-1">{/* v8.2: dự án chiếm phần còn lại; nút ✓ / Sửa dời sang cạnh thùng rác */}
                             <select disabled={gLocked || (!blank && (!open || gHas))} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })}
                               title={!blank && gHas ? "Khối đã có giờ — xoá giờ hoặc xoá khối để đổi dự án" : undefined}
-                              className={`disabled:opacity-60 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
+                              className={!blank && !open ? `${selectCls} proj-done appearance-none border-slate-600 bg-slate-800 font-medium text-slate-50` : `disabled:opacity-60 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
                           </div>
                           <div className="min-w-0 shrink-0" style={{ width: 180 }}>{/* v8.2: ô giai đoạn thu nhỏ, vừa "P3 · Thi công" */}
                             {!noProj && (
@@ -3193,8 +3201,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                                   <div className="shrink-0" style={{ width: GUT }} />
                                   {open && ot ? otPickers(r, i) : (
                                   <div className="min-w-0 flex-1">
-                                    <div className={`truncate text-sm transition-colors ${ot && !open ? "text-teal-300" : "text-slate-100"} group-hover/row:text-teal-200 group-focus-within/row:text-teal-200 group-hover/row:font-semibold group-focus-within/row:font-semibold`} title={rowLabel(r, open)}>
-                                      {rowLabel(r, open)}
+                                    <div className={`truncate text-sm transition-colors text-slate-100 group-hover/row:text-teal-200 group-focus-within/row:text-teal-200 group-hover/row:font-semibold group-focus-within/row:font-semibold`} title={rowLabel(r, open)}>
+                                      {rowLabelNode(r, open)}
                                     </div>
                                     {open && rowDesc(r) && <div className="truncate text-[11px] leading-tight text-slate-600 group-hover/row:text-slate-400 group-focus-within/row:text-slate-400" title={rowDesc(r)}>{rowDesc(r)}</div>}
                                   </div>
@@ -3383,7 +3391,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                           {open && ot && <div className="mt-3">{otPickers(r, i, true)}</div>}
                           <div className={`flex items-center justify-between gap-2 ${open ? "mt-2" : "mt-2 border-t border-slate-800 pt-2"}`}>
                             <div className="min-w-0">
-                              {!(open && ot) && <div className={`truncate text-sm ${ot && !open ? "text-teal-300" : rt ? "text-slate-100" : "text-slate-400"}`}>{rowLabel(r, open)}</div>}
+                              {!(open && ot) && <div className={`truncate text-sm ${ot && !open ? "text-slate-100" : rt ? "text-slate-100" : "text-slate-400"}`}>{rowLabelNode(r, open)}</div>}
                               {open && rowDesc(r) && <div className="text-[11px] leading-tight text-slate-500">{rowDesc(r)}</div>}
                               <div className="text-[11px] text-slate-600">Cả tuần: <span className="font-mono text-slate-400">{rt.toFixed(1)}</span> giờ</div>
                             </div>
