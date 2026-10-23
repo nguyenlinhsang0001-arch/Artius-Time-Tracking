@@ -1,10 +1,17 @@
-# ARTIUS — Quản lý giờ công · v8.0 (bản webapp cho Vercel)
+# ARTIUS — Quản lý giờ công · v8.1 (bản webapp cho Vercel)
+
+## Mới ở v8.1 — Chấm công: Thêm tác vụ linh hoạt hơn, có nút Lưu nháp
+
+- **Thêm tác vụ** thêm được khối mới kể cả khi khối đang mở **chưa nhập giờ nào** — khối đó vẫn mở nguyên, khối mới nằm bên dưới. Khối đang mở đã có giờ thì vẫn tự thu gọn + tạm lưu như trước.
+- Nút **Lưu nháp** (cạnh **Gửi giờ công**): ghi giờ đang nhập **lên hệ thống nhưng chưa gửi** — đổi máy / điện thoại vẫn thấy; quản lý thấy ô "Nháp chưa gửi", **chưa tính vào báo cáo** cho tới khi bấm Gửi. Ngày đã gửi, ngày chưa tới (giờ làm việc) vẫn bị chặn như cũ.
+- Chỉ đổi `src/App.jsx` — không cần chạy lại schema.sql (database vốn cho nhân sự ghi giờ của ngày chưa gửi).
 
 ## Mới ở v8.0 — Chấm công: mở sẵn khối "Thêm tác vụ"
 
 - Nhân viên mở một tuần còn trống (ví dụ đầu tuần mới) → app **tự mở sẵn một khối trống** với 3 ô Dự án · Giai đoạn · Hạng mục, như vừa bấm **Thêm tác vụ** — chọn và nhập giờ ngay, bớt một lần bấm.
 - Khối trống **không** làm hiện cảnh báo "rời đi khi chưa lưu" và không được gửi nếu chưa nhập giờ.
 - Rê chuột vào một dòng tác vụ ở bảng chấm công tuần: **tên tác vụ in đậm** (và đổi màu như trước), dòng chú thích bên dưới giữ nguyên — cả giao diện Sáng và Tối.
+- Giao diện Sáng: banner cảnh báo **"Còn x tuần chưa gửi"** ở trang Chấm công đổi sang **nền hồng, viền đỏ** (giao diện Tối giữ nguyên).
 - Tuần đã có dữ liệu giữ nguyên như cũ. Quản lý sửa hộ trong ngăn kéo Bảng công thì không tự thêm khối.
 - Chỉ đổi `src/App.jsx` — không cần chạy lại schema.sql.
 
@@ -49,7 +56,7 @@ Folder này **giống hệt cấu trúc repo trên GitHub**. Không cần nhặt
    (chạy lại nhiều lần không mất dữ liệu; bản nào có đổi database thì bước này bắt buộc).
 2. **GitHub → repo → Add file → Upload files:** kéo **toàn bộ nội dung** folder này (mọi file và thư mục con,
    kể cả file bắt đầu bằng dấu chấm) vào ô upload → **Commit changes**. File trùng tên tự được ghi đè.
-   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Trên máy tính ghi `v8.0` (nhân viên: cạnh tên ở thanh trên cùng; quản lý: cuối menu dọc).
+   Vercel tự build lại; vào Vercel → Deployments chờ **Ready**, rồi mở app bấm Ctrl+F5. Trên máy tính ghi `v8.1` (nhân viên: cạnh tên ở thanh trên cùng; quản lý: cuối menu dọc).
 
 Ghi chú:
 - Từ v3.0 file ứng dụng chính có **tên cố định `src/App.jsx`** — các bản sau ghi đè đúng file này, không phải xoá file cũ.

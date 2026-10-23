@@ -17,8 +17,10 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v8.1 — Chấm công: "Thêm tác vụ" thêm được khối mới kể cả khi khối đang mở chưa nhập giờ (khối đó vẫn mở nguyên);
+   nút "Lưu nháp" cạnh "Gửi giờ công": ghi giờ đang nhập lên server nhưng chưa gửi (quản lý thấy ô Nháp, chưa tính báo cáo).
    Mới ở v8.0 — Chấm công: tuần còn trống thì tự mở sẵn một khối trống (Dự án · Giai đoạn · Hạng mục) như vừa bấm "Thêm tác vụ",
-   nhân viên chọn và nhập giờ ngay. Rê chuột vào dòng tác vụ: tên tác vụ in đậm (cả Sáng và Tối), dòng chú thích giữ nguyên. Khối trống không làm hiện cảnh báo "chưa lưu"; quản lý sửa hộ (ngăn kéo Bảng công) thì không tự thêm.
+   nhân viên chọn và nhập giờ ngay. Rê chuột vào dòng tác vụ: tên tác vụ in đậm (cả Sáng và Tối), dòng chú thích giữ nguyên. Giao diện Sáng: banner "Còn x tuần chưa gửi" nền hồng viền đỏ. Khối trống không làm hiện cảnh báo "chưa lưu"; quản lý sửa hộ (ngăn kéo Bảng công) thì không tự thêm.
    Mới ở v7.9 — Hoàn thiện giao diện Sáng: rê chuột dòng chấm công chữ xanh dương; Giờ chuẩn xanh đậm, Giờ cố gắng giữ tím có nền chip + thanh sọc;
    phần thiếu ở thanh tổng Bảng công là dải cam nhạt đặc (bỏ sọc), ô "Bỏ trống" nhạt hơn; bảng Tháng: Thiếu giờ vàng đậm, Nghỉ phép xám xanh, Giờ cố gắng tím đặc,
    hôm nay = dải xám liền một khối dọc cả cột + số ngày trong chip đen. Rê chuột vào ô ngày: viền xanh lá nhạt (cả Sáng và Tối).
@@ -290,7 +292,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v8.0";
+const APP_VERSION = "v8.1";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -2416,9 +2418,11 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   const focusQuick = () => {
     if (rows.some((r) => r.projectId === "")) { flash("Chọn dự án cho khối đang trống trước đã.", "err"); return; }
     // v3.2: khối đang mở thì tự bấm ✓ giúp (thu gọn + tạm lưu) trước khi tạo khối mới
-    const base = openKeys.size ? collapseIn(rows, openKeys) : rows;
-    if (openKeys.size) writeDraft(base);
-    setOpenKeys(new Set());
+    // v8.1: chỉ thu gọn khối đang mở ĐÃ có giờ; khối đang mở chưa nhập giờ nào thì giữ nguyên (vẫn mở) và thêm khối mới bên dưới
+    const withHrs = new Set([...openKeys].filter((k) => rows.some((r) => groupKey(r) === k && rowHasHours(r))));
+    const base = withHrs.size ? collapseIn(rows, withHrs) : rows;
+    if (withHrs.size) writeDraft(base);
+    setOpenKeys(new Set([...openKeys].filter((k) => !withHrs.has(k))));
     gridInputs.current = {}; mobileInputs.current = [];
     setRows([...base, { projectId: "", phaseId: NO_PHASE, taskId: "", note: "", days: {} }]); setDirty(true);
   };
@@ -2554,7 +2558,11 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
     return null;
   };
   const save = async (submitMode = null, silent = false) => {
-    if (!admin && submitMode !== "submit") return false;   // v1.9: nhân sự chỉ có một cách ghi là Gửi; lưu thường và mở khoá là việc của quản lý
+    if (!admin && submitMode !== "submit" && submitMode !== "draft") return false;   // v1.9: nhân sự ghi bằng Gửi; v8.1 thêm Lưu nháp (ghi giờ lên server, chưa gửi)
+    if (submitMode === "draft" && !dirty && !rows.some((r) => rowReady(r) && days.some((d) => !isSent(d) && !futureBlocked(r, d) && r.days[d] > 0))) {
+      flash("Chưa có giờ nào để lưu nháp.", "err");
+      return false;
+    }
     const seen = new Set();
     for (const r of rows) {
       const k = rowKey(r);
@@ -2613,7 +2621,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
       if (admin) for (const d of daysInYm) if (sent[d] && tot(d) === 0) delete sent[d];   // ngày không còn giờ thì không giữ dấu đã gửi
       next[ym] = { rows: cleaned, weeks, sent };
     }
-    if (!admin && newly.length === 0) {
+    if (!admin && submitMode === "submit" && newly.length === 0) {
       // các ngày định gửi đã được gửi/khoá từ máy khác trong lúc đang nhập
       setSaving(false); setDirty(false); setReloadKey((k) => k + 1);
       flash("Không có giờ mới nào được ghi: ngày đã gửi trước đó hoặc dự án đã đóng. Màn hình vừa được tải lại.", "err");
@@ -2638,11 +2646,12 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
     }
 
     setBuckets(next); setSaving(false); setDirty(false); setSaveFailed(false); setSavedTick((t) => t + 1);
-    if (!admin && submitMode === "submit") { try { localStorage.removeItem(draftKeyOf(monday)); } catch { /* bỏ qua */ } }
-    if (submitMode) setReloadKey((k) => k + 1);   // nạp lại để màn hình khớp đúng bản vừa ghi
+    if (!admin && (submitMode === "submit" || submitMode === "draft")) { try { localStorage.removeItem(draftKeyOf(monday)); } catch { /* bỏ qua */ } }
+    if (submitMode && submitMode !== "draft") setReloadKey((k) => k + 1);   // nạp lại để màn hình khớp đúng bản vừa ghi (lưu nháp: giữ nguyên màn hình đang nhập)
     const sentLabel = newly.sort().map(dayName).join(", ");
     if (!silent) flash(
-      submitMode === "submit" ? (newly.length === 0 ? "Không có ngày nào mới để đánh dấu." : admin ? `Đã đánh dấu đã gửi: ${sentLabel}.` : `Đã gửi ${sentLabel}. Các ngày này đã khoá.`)
+      submitMode === "draft" ? "Đã lưu nháp lên hệ thống — chưa gửi. Mở trên máy khác vẫn thấy; xong hết thì bấm Gửi giờ công."
+        : submitMode === "submit" ? (newly.length === 0 ? "Không có ngày nào mới để đánh dấu." : admin ? `Đã đánh dấu đã gửi: ${sentLabel}.` : `Đã gửi ${sentLabel}. Các ngày này đã khoá.`)
         : submitMode === "unsubmit" ? "Đã mở khoá cả tuần — nhân sự sửa lại được, giờ tuần này tạm chưa tính cho tới khi gửi lại."
         : "Đã lưu thay đổi."
     );
@@ -3431,7 +3440,13 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
 
       <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
         <button onClick={focusQuick} disabled={locked} className={`${btnGhost} disabled:opacity-40`}><Plus size={15} /> Thêm tác vụ</button>
-        {/* v1.9: nhân sự không còn nút Lưu nháp; quản lý vẫn lưu được khi sửa bảng công của người khác */}
+        {/* v1.9: quản lý lưu được khi sửa bảng công của người khác · v8.1: nhân sự có lại nút Lưu nháp (ghi lên server, chưa gửi) */}
+        {!admin && (
+          <button onClick={() => save("draft")} disabled={saving || locked} title="Lưu tạm giờ đang nhập lên hệ thống, chưa gửi — quản lý thấy là Nháp, chưa tính vào báo cáo"
+            className={`${btnGhost} disabled:opacity-40`}>
+            {saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Lưu nháp
+          </button>
+        )}
         {admin && (
           <button onClick={() => save(null)} disabled={saving} className={`${btnGhost} disabled:opacity-40`}>
             {saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Lưu thay đổi
@@ -4506,7 +4521,7 @@ function DeadlineBanner({ cfg, empId }) {
   if (!state || state.missing.length === 0 || dismissed || hiddenForever) return null;
   const late = today.getDate() > dl && state.target === prevYm(state.thisYm);
   return (
-    <div className={`flex items-start gap-2.5 rounded-xl border p-3 md:gap-3 md:p-3.5 ${late ? "border-rose-900 bg-rose-950" : "border-amber-900 bg-amber-950"}`}>
+    <div className={`wk-banner flex items-start gap-2.5 rounded-xl border p-3 md:gap-3 md:p-3.5 ${late ? "border-rose-900 bg-rose-950" : "border-amber-900 bg-amber-950"}`}>
       <AlertTriangle size={18} className={`mt-0.5 shrink-0 ${late ? "text-rose-400" : "text-amber-400"}`} />
       <div className="min-w-0 flex-1 text-sm text-slate-100">
         Còn <b>{state.missing.length}</b> tuần chưa gửi: {state.missing.map(dLabel).join(", ")}.
