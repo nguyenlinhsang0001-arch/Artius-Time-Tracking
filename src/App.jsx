@@ -17,6 +17,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v8.2 — Giao diện Sáng: ô nhập giờ tăng ca viền teal + nền teal rất nhạt, số giờ teal đậm (trước đó viền gần như trắng, khó nhìn).
    Mới ở v8.1 — Chấm công: "Thêm tác vụ" thêm được khối mới kể cả khi khối đang mở chưa nhập giờ (khối đó vẫn mở nguyên);
    nút "Lưu nháp" cạnh "Gửi giờ công": ghi giờ đang nhập lên server nhưng chưa gửi (quản lý thấy ô Nháp, chưa tính báo cáo).
    Cài đặt của nhân viên bỏ mục "Kiểm tra lưu trữ" (vẫn còn ở Thiết lập của Admin).
@@ -293,7 +294,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v8.1";
+const APP_VERSION = "v8.2";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -3223,7 +3224,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                                       onFocus={(e) => e.target.select()}
                                       onKeyDown={(e) => gridKey(e, i, k)}
                                       title={ot ? `Tối đa ${fmtH(otMaxHours(taskById.get(r.taskId)))} giờ` : undefined}
-                                      className={`${CTRL} w-full rounded-md border bg-slate-950 px-1 text-center font-mono text-base font-medium focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[d] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "border-teal-900 text-slate-100" : isIncomplete(d) ? "border-amber-700/60 text-slate-100" : k === 6 ? "border-slate-800 text-slate-100" : "border-slate-700 text-slate-100"}`} />
+                                      className={`${CTRL} w-full rounded-md border bg-slate-950 px-1 text-center font-mono text-base font-medium focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[d] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "ot-cell border-teal-900 text-slate-100" : isIncomplete(d) ? "border-amber-700/60 text-slate-100" : k === 6 ? "border-slate-800 text-slate-100" : "border-slate-700 text-slate-100"}`} />
                                   ) : (
                                     <div className={`py-1.5 text-center font-mono text-sm ${r.days[d] > 0 ? (ot ? "text-teal-300" : "text-slate-200") : "text-slate-700"}`}>{r.days[d] > 0 ? r.days[d] : "·"}</div>
                                   )}
@@ -3397,7 +3398,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                                     const next = mobileInputs.current[i + 1];
                                     if (next) { next.focus(); next.select?.(); } else e.target.blur();
                                   }}
-                                  className={`${CTRL} w-20 rounded-md border bg-slate-950 px-2 text-center font-mono text-lg focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[activeDay] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "border-teal-900 text-slate-100" : "border-slate-700 text-slate-100"}`} />
+                                  className={`${CTRL} w-20 rounded-md border bg-slate-950 px-2 text-center font-mono text-lg focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[activeDay] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "ot-cell border-teal-900 text-slate-100" : "border-slate-700 text-slate-100"}`} />
                               ) : (
                                 <span className={`w-12 text-right font-mono text-base ${r.days[activeDay] > 0 ? "text-slate-100" : "text-slate-700"}`}>{r.days[activeDay] > 0 ? r.days[activeDay] : "·"}</span>
                               )}
