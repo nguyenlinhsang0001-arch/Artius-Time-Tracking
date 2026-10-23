@@ -17,7 +17,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
-   Mới ở v8.3 — Chấm công: khối đã chốt (đã bấm ✓) ô Dự án chữ đậm, rõ màu (không còn mờ 60%), nền xám nhẹ, ẩn mũi tên — ô Giai đoạn giữ nguyên;
+   Mới ở v8.3 — Chấm công: khối đã chốt (đã bấm ✓) ô Dự án chữ đậm, rõ màu (không còn mờ 60%), nền xám nhẹ, ẩn mũi tên, ép opacity 100% (Chrome tự làm mờ select bị khoá 70%) — ô Giai đoạn giữ nguyên;
                dòng tăng ca khi khối đóng: khung giờ thành nhãn teal "Tăng ca …", tên tác vụ màu chữ thường (cả Sáng và Tối).
    Mới ở v8.2 — Chấm công (máy tính): ô Giai đoạn thu nhỏ (180px), ô Dự án rộng ra; nút ✓ / Sửa của khối dời từ bên trái dự án sang cạnh thùng rác.
    Mới ở v8.2 — Giao diện Sáng: ô nhập giờ tăng ca viền teal + nền teal rất nhạt, số giờ teal đậm (trước đó viền gần như trắng, khó nhìn).
@@ -3120,7 +3120,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                           <div className="min-w-0 flex-1">{/* v8.2: dự án chiếm phần còn lại; nút ✓ / Sửa dời sang cạnh thùng rác */}
                             <select disabled={gLocked || (!blank && (!open || gHas))} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })}
                               title={!blank && gHas ? "Khối đã có giờ — xoá giờ hoặc xoá khối để đổi dự án" : undefined}
-                              className={!blank && !open ? `${selectCls} proj-done appearance-none border-slate-600 bg-slate-800 font-medium text-slate-50` : `disabled:opacity-60 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
+                              className={!blank && !open ? `${CTRL} w-full rounded-md border px-3 text-sm focus:outline-none proj-done appearance-none border-slate-600 bg-slate-800 font-medium text-slate-50 opacity-100 disabled:opacity-100` : `disabled:opacity-60 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
                           </div>
                           <div className="min-w-0 shrink-0" style={{ width: 180 }}>{/* v8.2: ô giai đoạn thu nhỏ, vừa "P3 · Thi công" */}
                             {!noProj && (
