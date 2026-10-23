@@ -17,6 +17,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v8.2 — Chấm công (máy tính): ô Giai đoạn thu nhỏ (180px), ô Dự án rộng ra; nút ✓ / Sửa của khối dời từ bên trái dự án sang cạnh thùng rác.
    Mới ở v8.2 — Giao diện Sáng: ô nhập giờ tăng ca viền teal + nền teal rất nhạt, số giờ teal đậm (trước đó viền gần như trắng, khó nhìn).
    Mới ở v8.1 — Chấm công: "Thêm tác vụ" thêm được khối mới kể cả khi khối đang mở chưa nhập giờ (khối đó vẫn mở nguyên);
    nút "Lưu nháp" cạnh "Gửi giờ công": ghi giờ đang nhập lên server nhưng chưa gửi (quản lý thấy ô Nháp, chưa tính báo cáo).
@@ -3108,7 +3109,20 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                     <tr>
                       <td className="px-3 pb-1 pt-2.5">
                         <div className="flex items-center gap-2">
-                          <div className="shrink-0" style={{ width: GUT }}>
+                          <div className="min-w-0 flex-1">{/* v8.2: dự án chiếm phần còn lại; nút ✓ / Sửa dời sang cạnh thùng rác */}
+                            <select disabled={gLocked || (!blank && (!open || gHas))} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })}
+                              title={!blank && gHas ? "Khối đã có giờ — xoá giờ hoặc xoá khối để đổi dự án" : undefined}
+                              className={`disabled:opacity-60 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
+                          </div>
+                          <div className="min-w-0 shrink-0" style={{ width: 180 }}>{/* v8.2: ô giai đoạn thu nhỏ, vừa "P3 · Thi công" */}
+                            {!noProj && (
+                              <select disabled={gLocked || blank || !open || phaseFixed(g)} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })}
+                                title={phaseInfo(g.phaseId)?.desc}
+                                className={`disabled:opacity-60 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>
+                            )}
+                          </div>
+                          {/* v8.2: nút ✓ (xong) / Sửa nằm ngay bên trái thùng rác */}
+                          <div className="shrink-0 flex justify-end" style={{ width: GUT }}>
                             {open ? (
                               <button onClick={() => doneGroup(g.key)} title="Xong — tạm lưu giờ của khối này"
                                 className={`${iconBtn} border-teal-600 bg-teal-600 text-white hover:border-teal-500 hover:bg-teal-500 hover:text-white`}><Check size={16} /></button>
@@ -3116,18 +3130,6 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                               <button onClick={() => editGroup(g.key)} title="Sửa giờ của khối này"
                                 className={`${iconBtn} hover:border-teal-700 hover:text-teal-300`}><Pencil size={14} /></button>
                             ) : null}
-                          </div>
-                          <div className="min-w-0" style={{ flexBasis: "58%", flexGrow: 1 }}>
-                            <select disabled={gLocked || (!blank && (!open || gHas))} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })}
-                              title={!blank && gHas ? "Khối đã có giờ — xoá giờ hoặc xoá khối để đổi dự án" : undefined}
-                              className={`disabled:opacity-60 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
-                          </div>
-                          <div className="min-w-0" style={{ flexBasis: "42%", flexGrow: 1 }}>
-                            {!noProj && (
-                              <select disabled={gLocked || blank || !open || phaseFixed(g)} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })}
-                                title={phaseInfo(g.phaseId)?.desc}
-                                className={`disabled:opacity-60 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>
-                            )}
                           </div>
                           {/* v3.3: thùng rác xoá cả khối nằm ngay bên phải ô giai đoạn */}
                           <div className="shrink-0" style={{ width: GUT }}>
