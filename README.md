@@ -1,5 +1,17 @@
 # ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
 
+## Mới ở v8.4 — Chấm công trên điện thoại gọn, dễ dùng hơn
+Chỉ đổi giao diện điện thoại; máy tính giữ nguyên.
+- Header: logo + vòng tròn chữ cái tên (bấm để mở Tài khoản).
+- Banner cảnh báo 1 dòng: "N tuần chưa gửi · cũ nhất dd/mm · Xem ›" — bấm Xem nhảy tới tuần cũ nhất.
+- Ẩn dải chú thích màu. Thẻ tuần: ‹ tuần › ở giữa, Chuẩn · Cố gắng · Tổng cùng hàng, thanh tiến độ "còn thiếu".
+- Dải 7 ngày: ngày đang xem tô đặc xanh ngọc, chấm màu góc báo trạng thái, giờ không còn ".0".
+- Tiêu đề ngày: "Thứ Sáu 23/10 — 12 giờ · chuẩn 8 · +4 cố gắng".
+- Khối dự án 1 dòng (mã · tên · giai đoạn · ⋯). Mỗi tác vụ có nút − / + (bước 0.5 giờ), chạm vào số để gõ. "+ Tác vụ khác trong dự án này".
+- "Thêm dự án / tác vụ" mở bảng trượt: chọn dự án → giai đoạn → tích nhiều tác vụ → Thêm.
+- Lưu nháp + Gửi giờ công (kèm số ngày sẽ gửi) cố định ở đáy màn. Lưu nháp không còn icon (cả máy tính).
+- Menu đáy: Chấm công · Dashboard · Tài khoản. Sáng/Tối/Theo máy, Phiên bản và Đăng xuất nằm trong Tài khoản.
+
 ## Mới ở v8.3 — Icon app mới
 
 - Icon mới: **vòng tiến độ + ngôi sao AI** trên nền gradient xanh ngọc → tím (phương án B).

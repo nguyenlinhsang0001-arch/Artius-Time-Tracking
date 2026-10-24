@@ -7,7 +7,7 @@ import {
   Clock, Users, FolderKanban, LayoutDashboard, Download, Plus, Trash2, Save,
   AlertTriangle, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, LogOut, Settings,
   CheckCircle2, Loader2, ListChecks, Lock, RotateCcw, Pencil, Check, X, CalendarDays,
-  Copy, Unlock, Search, Flag, Zap, Eraser, ClipboardList, MoreHorizontal, Grid3x3, User, Eye, EyeOff, Bell, Send, Printer, QrCode, Share, GripVertical, Sun, Moon, Monitor,
+  Copy, Unlock, Search, Flag, Zap, Eraser, ClipboardList, MoreHorizontal, Grid3x3, User, Eye, EyeOff, Bell, Send, Printer, QrCode, Share, GripVertical, Sun, Moon, Monitor, Minus,
 } from "lucide-react";
 import { fetchConfig, saveConfig, fetchTs, fetchTsChanges, fetchTsStamps, saveTs, deleteAllTs, fetchUsage, fetchPhaseDetail, purgeTasks, fetchOrphanTasks } from "./data.js";
 import { mergeConfig } from "./merge.js";
@@ -17,6 +17,11 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v8.4 — Màn Chấm công trên điện thoại gọn lại (máy tính giữ nguyên): header chỉ còn logo + vòng tròn chữ cái tên;
+   banner 1 dòng "N tuần chưa gửi · cũ nhất dd/mm · Xem ›"; ẩn dải chú thích màu; thẻ tuần ‹ › + Chuẩn · Cố gắng · Tổng;
+   dải ngày tô đặc ngày đang xem, chấm màu trạng thái; khối dự án 1 dòng (mã · tên · giai đoạn · ⋯), nhập giờ − / + ngay tại dòng;
+   "Thêm dự án / tác vụ" mở bảng trượt (dự án → giai đoạn → tích nhiều tác vụ); Lưu nháp + Gửi giờ công cố định ở đáy màn;
+   menu đáy Chấm công · Dashboard · Tài khoản (Sáng/Tối, Phiên bản, Đăng xuất nằm trong Tài khoản). Lưu nháp bỏ icon.
    Mới ở v8.3 — Icon app mới (vòng tiến độ + ngôi sao AI, nền gradient xanh ngọc → tím): favicon, icon cài app (Windows/macOS/Android),
    iPhone (apple-touch-icon), Android maskable, biểu tượng thông báo — đều trong public/. Không đổi giao diện hay dữ liệu.
    Mới ở v8.1 — Chấm công: "Thêm tác vụ" thêm được khối mới kể cả khi khối đang mở chưa nhập giờ (khối đó vẫn mở nguyên);
@@ -295,7 +300,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v8.3";
+const APP_VERSION = "v8.4";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1719,6 +1724,11 @@ function AppMain() {
       ? [["ts", "Chấm công", Clock], ["edash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList], ["eset", "Cài đặt", Settings]]
     : me ? [["ts", "Chấm công", Clock], ["edash", "Dashboard", LayoutDashboard], ["eset", "Cài đặt", Settings]] : [];
 
+  /* v8.4 — điện thoại: tài khoản có tab Cài đặt cá nhân → header chỉ còn logo + vòng tròn chữ cái tên (bấm mở Tài khoản);
+     Sáng/Tối và Đăng xuất chuyển vào Tài khoản, menu đáy bỏ nút Thoát */
+  const hasAcct = railItems.some(([k]) => k === "eset");
+  const initials = String(myEmp?.name || who?.username || "?").trim().split(/\s+/).slice(-2).map((w) => w[0] || "").join("").toUpperCase();
+
   // v7.6: Admin · BOD · Trưởng phòng — full màn hình + menu dọc bám khung; nhân viên giữ tab ngang trên header; mọi tài khoản full màn hình
   const isMgr = !!me && ["admin", "bod", "head"].includes(me.type);
 
@@ -1793,21 +1803,27 @@ function AppMain() {
                   ))}
                 </nav>
               )}
-              <span className={`font-mono text-sm tracking-[0.3em] text-slate-100 ${me ? "md:hidden" : ""}`}>ARTIUS</span>
+              {hasAcct && <BrandLogo className="h-8 w-auto md:hidden" />}
+              <span className={`font-mono text-sm tracking-[0.3em] text-slate-100 ${hasAcct ? "hidden" : me ? "md:hidden" : ""}`}>ARTIUS</span>
               {/* máy tính đã đăng nhập: tên trang thể hiện bằng tab đang chọn → ẩn dòng tiêu đề; điện thoại giữ như cũ */}
-              <span className={`truncate text-xs text-slate-500 ${me && !isMgr ? "md:hidden" : ""}`}>{me ? pageTitle : "Quản lý giờ công dự án"}</span>
+              <span className={`truncate text-xs text-slate-500 ${hasAcct ? "hidden" : me && !isMgr ? "md:hidden" : ""}`}>{me ? pageTitle : "Quản lý giờ công dự án"}</span>
             </div>
             {/* logo chữ ở giữa header = giữa cửa sổ trình duyệt */}
             {me && <BrandLogo className="pointer-events-none absolute left-1/2 top-1/2 hidden h-9 w-auto -translate-x-1/2 -translate-y-1/2 md:block" />}
             <div className="flex min-w-0 items-center">
               <InstallButton />
-              <ThemeToggle />
+              <span className={hasAcct ? "hidden md:contents" : "contents"}><ThemeToggle /></span>
               {me?.type === "bod" && ["dash", "sheet", "proj", "emp", "task", "set"].includes(tab) && (
                 <span className="ml-3 inline-flex shrink-0 items-center gap-1.5 rounded-md border border-violet-900 bg-violet-950/60 px-2 py-1 text-[11px] text-violet-200" title="Tài khoản BOD xem được mục này nhưng không chỉnh sửa được">
                   <Eye size={12} /> Chế độ chỉ xem
                 </span>
               )}
-              {me && <span className="ml-3 shrink-0 truncate text-xs text-slate-400">{myEmp?.name || who.username}</span>}
+              {me && <span className={`ml-3 shrink-0 truncate text-xs text-slate-400 ${hasAcct ? "hidden md:inline" : ""}`}>{myEmp?.name || who.username}</span>}
+              {hasAcct && (
+                <button onClick={() => go("eset")} title="Tài khoản" aria-label="Tài khoản"
+                  className="ml-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white md:hidden"
+                  style={{ background: "linear-gradient(135deg,#06b6d4,#4f46e5)" }}>{initials}</button>
+              )}
               {me && !isMgr && <span className="ml-3 hidden select-none font-mono text-[10px] text-slate-600 md:inline">{APP_VERSION}</span>}
               {me && !isMgr && (
                 <button onClick={signOut} title="Thoát khỏi app" className="ml-3 hidden h-9 items-center gap-1.5 rounded-lg border border-rose-900/80 bg-rose-950/50 px-3 text-sm text-rose-300 transition-colors hover:border-rose-600 hover:bg-rose-900/60 hover:text-rose-100 md:flex">
@@ -1870,7 +1886,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
                 {tab === "task" && <ReadOnlyView><Tasks cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
                 {tab === "set" && <ReadOnlyView><SettingsTab cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
                 {tab === "ts" && me.empId && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} />}
-                {tab === "eset" && me.empId && <EmployeeSettings cfg={cfg} empId={me.empId} />}
+                {tab === "eset" && me.empId && <EmployeeSettings cfg={cfg} empId={me.empId} onSignOut={signOut} />}
               </>
             )
             : me.type === "admin" ? (
@@ -1886,7 +1902,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
               <>
                 {tab === "ts" && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} />}
                 {tab === "edash" && <EmployeeDashboard cfg={cfg} empId={me.empId} onGoTimesheet={(mon) => { setTsMonday(mon || null); setTab("ts"); }} />}
-                {tab === "eset" && <EmployeeSettings cfg={cfg} empId={me.empId} />}
+                {tab === "eset" && <EmployeeSettings cfg={cfg} empId={me.empId} onSignOut={signOut} />}
                 {tab === "sheet" && me.type === "head" && headCfg && <AdminTimesheet cfg={headCfg} flash={flash} onDirtyChange={setSheetDirty} oneDept />}
               </>
             )}
@@ -1896,15 +1912,21 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
 
       {me && (
         <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-slate-800 bg-slate-950 md:hidden">
-          {railItems.map(([k, label, Icon]) => (
-            <button key={k} onClick={() => go(k)}
-              className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 ${tab === k ? "text-teal-400" : "text-slate-500"}`}>
-              <Icon size={19} /><span className="text-[10px] leading-none">{label}</span>
+          {railItems.map(([k, label, Icon]) => {
+            const acct = k === "eset";   // v8.4: Cài đặt → "Tài khoản" (có Sáng/Tối, Đăng xuất)
+            const Ic = acct ? User : Icon;
+            return (
+              <button key={k} onClick={() => go(k)}
+                className={`flex h-[52px] flex-1 flex-col items-center justify-center gap-0.5 ${tab === k ? "text-teal-400" : "text-slate-500"}`}>
+                <Ic size={19} /><span className={`text-[10px] leading-none ${tab === k ? "font-semibold" : ""}`}>{acct ? "Tài khoản" : label}</span>
+              </button>
+            );
+          })}
+          {!hasAcct && (
+            <button onClick={signOut} className="flex h-[52px] flex-1 flex-col items-center justify-center gap-0.5 text-rose-400">
+              <LogOut size={19} /><span className="text-[10px] leading-none">Thoát</span>
             </button>
-          ))}
-          <button onClick={signOut} className="flex flex-1 flex-col items-center gap-0.5 py-2.5 text-rose-400">
-            <LogOut size={19} /><span className="text-[10px] leading-none">Thoát</span>
-          </button>
+          )}
         </nav>
       )}
 
@@ -2119,6 +2141,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   const otSel = useRef({});                     // v4.9: ô "Tăng ca cho tác vụ" của từng dòng tăng ca
   // báo lên App để chặn đổi tab khi còn thay đổi chưa lưu
   const [undoRow, setUndoRow] = useState(null);
+  const [addSheet, setAddSheet] = useState(null);   // v8.4 (điện thoại): bảng trượt Thêm dự án / tác vụ { pid, ph, picked: [] }
+  const [menuKey, setMenuKey] = useState(null);     // v8.4 (điện thoại): khối đang mở menu ⋯
   const [showSplit, setShowSplit] = useState(false); // v3.7: chân bảng — mở/thu gọn 3 hàng Giờ chuẩn · OT · Giờ cố gắng // khối/dòng vừa xoá { rows, at, label }, giữ lại để hoàn tác
   /* v3.2 — khối đang MỞ (đang nhập giờ): hiện toàn bộ hạng mục của dự án để gõ giờ thẳng vào, không chọn từ danh sách.
      Bấm ✓ thì khối thu gọn, chỉ giữ hạng mục có giờ, và giờ được tạm lưu trên máy (localStorage) tới khi Gửi. */
@@ -2972,10 +2996,65 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
     );
   };
 
+  /* ---------- v8.4: điện thoại — nhập giờ bằng nút − / + ngay tại dòng, thêm tác vụ bằng bảng trượt ---------- */
+  const DAY_FULL = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ nhật"];
+  // đổi giờ ở điện thoại: ghi luôn bản tạm trên máy (như bấm ✓ ở bản cũ) để lỡ đóng trang không mất giờ
+  const setHourM = (i, d, v) => {
+    const n = v === "" || v === null ? undefined : Math.max(0, Math.min(24, Number(v)));
+    const next = rows.map((x, j) => (j === i ? { ...x, days: { ...x.days, [d]: n || undefined } } : x));
+    setRows(next); setDirty(true); writeDraft(next);
+  };
+  const stepper = (r, i) => {
+    const t = taskById.get(r.taskId);
+    const dis = locked || dayLocked(activeDay) || projClosed(r) || futureBlocked(r, activeDay) || !rowReady(r);
+    const v = r.days[activeDay];
+    const n = Number(v) || 0;
+    const over = isOtTask(t) && n > otMaxHours(t);
+    const step = (dlt) => { const x = Math.max(0, Math.min(24, Math.round((n + dlt) * 2) / 2)); setHourM(i, activeDay, x ? String(x) : ""); };
+    return (
+      <div className={`flex shrink-0 items-center overflow-hidden rounded-lg border ${over ? "border-rose-600" : "border-slate-700"} ${dis ? "opacity-50" : ""}`}>
+        <button type="button" disabled={dis || n <= 0} onClick={() => step(-0.5)} aria-label="Bớt 0.5 giờ"
+          className="flex h-9 w-9 items-center justify-center bg-slate-800 text-slate-300 disabled:text-slate-600"><Minus size={15} /></button>
+        <input ref={(el) => { mobileInputs.current[i] = el; }} type="number" inputMode="decimal" min="0" max="24" step="0.5" placeholder="0"
+          disabled={dis} value={v ?? ""} aria-label="Số giờ"
+          onChange={(e) => setHourM(i, activeDay, e.target.value)} onFocus={(e) => e.target.select()}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            const next = mobileInputs.current.slice(i + 1).find(Boolean);
+            if (next && !next.disabled) { next.focus(); next.select?.(); } else e.target.blur();
+          }}
+          className={`h-9 w-11 border-0 bg-transparent p-0 text-center font-mono text-base focus:outline-none ${n > 0 ? (over ? "text-rose-300" : "text-slate-100") : "text-slate-500"} placeholder:text-slate-500`} />
+        <button type="button" disabled={dis || n >= 24} onClick={() => step(0.5)} aria-label="Thêm 0.5 giờ"
+          className="flex h-9 w-9 items-center justify-center bg-slate-800 text-slate-300 disabled:text-slate-600"><Plus size={15} /></button>
+      </div>
+    );
+  };
+  // bảng trượt: dự án → giai đoạn → tích nhiều tác vụ → Thêm
+  const openAddSheet = () => {
+    setMenuKey(null);
+    const only = activeProjects.length === 0 ? NO_PROJECT : "";
+    setAddSheet({ pid: only, ph: only === NO_PROJECT ? DEFAULT_PHASE : "", picked: [] });
+  };
+  const sheetPick = (pid) => setAddSheet((s) => ({ pid, ph: pid === NO_PROJECT ? DEFAULT_PHASE : (s.pid === pid ? s.ph : (openPhasesOf(pid)[0]?.id || "")), picked: s.pid === pid ? s.picked : [] }));
+  const sheetHas = (pid, ph, tid) => rows.some((r) => r.projectId === pid && (r.phaseId || DEFAULT_PHASE) === ph && r.taskId === tid && !r.otFor);
+  const addPicked = () => {
+    const { pid, ph, picked } = addSheet;
+    if (!pid || !picked.length) return;
+    const base = rows.filter((r) => r.projectId !== "");   // bỏ khối trống mặc định
+    const have = new Set(base.map(rowKey));
+    const add = picked.map((tid) => ({ projectId: pid, phaseId: ph || DEFAULT_PHASE, taskId: tid, note: "", days: {} })).filter((r) => !have.has(rowKey(r)));
+    mobileInputs.current = []; gridInputs.current = {};
+    setRows(sortByGroup([...base, ...add])); setDirty(true);
+    setAddSheet(null);
+    flash(`Đã thêm ${add.length} tác vụ. Bấm − / + hoặc chạm vào số để nhập giờ.`);
+  };
+
   return (
     <div className="space-y-3 md:space-y-4">
-      {!admin && <DeadlineBanner cfg={cfg} empId={empId} />}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-0.5 text-xs text-slate-500">
+      {!admin && <DeadlineBanner cfg={cfg} empId={empId} onGo={(m) => goWeek(fmt(mondayOf(parseD(m))))} />}
+      {/* v8.4 — điện thoại ẩn dải chú thích màu (ý nghĩa màu đã nằm ngay trong số liệu) */}
+      <div className="hidden flex-wrap items-center gap-x-4 gap-y-1 px-0.5 text-xs text-slate-500 md:flex">
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Thiếu giờ công</span>
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-teal-400" /> Tăng ca</span>
         <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-red-400" /> OT trên {OT_ALERT} giờ/ngày</span>
@@ -2985,7 +3064,47 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
         <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-slate-600 bg-slate-700" /> Hôm nay</span>
       </div>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-2.5 md:px-3">
+      {/* v8.4 — điện thoại: thẻ tuần gọn — ‹ tuần › ở giữa, Chuẩn · Cố gắng · Tổng cùng hàng, thanh tiến độ bên dưới */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 px-3 pb-3 pt-2.5 md:hidden">
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => goWeek(fmt(addDays(parseD(monday), -7)))} className={`${iconBtn} shrink-0`} aria-label="Tuần trước"><ChevronLeft size={16} /></button>
+          <div className="flex min-w-0 flex-1 flex-col items-center">
+            <WeekPicker monday={monday} onChange={goWeek} empId={empId} hoursCfg={hoursCfg} holidaySet={holidaySet} refreshKey={savedTick} />
+            {monday === fmt(mondayOf(new Date()))
+              ? <span className="text-[11px] leading-tight text-teal-400">Tuần này</span>
+              : <button onClick={() => goWeek(fmt(mondayOf(new Date())))} className="text-[11px] leading-tight text-teal-400">Về tuần này</button>}
+          </div>
+          <button onClick={() => goWeek(fmt(addDays(parseD(monday), 7)))} className={`${iconBtn} shrink-0`} aria-label="Tuần sau"><ChevronRight size={16} /></button>
+        </div>
+        <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+          <div className="rounded-lg bg-slate-950 px-2 py-1.5" title="Giờ công chuẩn = tổng − OT − giờ cố gắng">
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">Chuẩn</div>
+            <div className="whitespace-nowrap"><span className="font-mono text-[15px] font-medium text-blue-400">{fmtH(stdTotal)}</span>{weekTarget > 0 && <span className="font-mono text-xs text-slate-500"> /{fmtH(weekTarget)}</span>}</div>
+          </div>
+          <div className="rounded-lg bg-slate-950 px-2 py-1.5">
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">Cố gắng</div>
+            <div className="whitespace-nowrap"><span className="cg-num font-mono text-[15px] font-medium text-violet-400">+{fmtH(effortTotal)}</span>
+              {otTotal > 0 && <span className={`font-mono text-xs ${anyOtHigh ? "text-red-400" : "text-teal-400"}`}> · OT {fmtH(otTotal)}</span>}</div>
+          </div>
+          <div className="rounded-lg bg-slate-950 px-2 py-1.5">
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">Tổng</div>
+            <div className="whitespace-nowrap"><span className="font-mono text-[15px] font-medium text-slate-100">{fmtH(weekTotal)}</span><span className="text-xs text-slate-500"> h</span></div>
+          </div>
+        </div>
+        {weekTarget > 0 && (
+          <>
+            <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+              <div className={`h-full rounded-full transition-all ${stdTotal >= weekTarget ? "bg-blue-400" : "bg-amber-500"}`} style={{ width: `${targetPct}%` }} />
+            </div>
+            <div className="mt-1 flex justify-between text-[11.5px]">
+              <span className="text-slate-500">Tiến độ giờ chuẩn</span>
+              <span className={stdTotal >= weekTarget ? "text-blue-400" : "text-amber-400"}>{stdTotal >= weekTarget ? "đủ giờ chuẩn" : `còn thiếu ${fmtH(weekTarget - stdTotal)}`}</span>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="hidden rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-2.5 md:block md:px-3">
         {/* v2.4: màn hẹp thì nhóm "đã gửi + tổng giờ" tự xuống dòng, căn phải, thay vì tràn khỏi thẻ */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 md:gap-2">
@@ -3310,144 +3429,152 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
             </table>
           </div>
 
-          {/* MOBILE */}
-          <div className="space-y-3 md:hidden">
+          {/* MOBILE — v8.4: dải ngày tô đặc ngày đang xem, khối dự án 1 dòng tiêu đề, nhập giờ − / + ngay tại dòng */}
+          <div className="space-y-2.5 md:hidden">
             <div className="grid grid-cols-7 gap-1">
               {days.map((d, i) => {
                 const t = dayTotal(d); const on = d === activeDay; const incomplete = isIncomplete(d);
                 const hol = holidayMap.has(d); const lv = leaveInfo(leaveMap[d]);
+                // chấm màu góc: lễ đỏ · nghỉ phép xanh · vượt ngưỡng đỏ · thiếu giờ cam · có giờ cố gắng tím
+                const dot = hol ? "bg-red-400" : lv ? "bg-sky-400" : isOverDaily(d) ? "bg-red-400" : incomplete ? "bg-amber-400" : effortHrs(d) > 0 ? "bg-violet-400" : "";
                 return (
-                  <button key={d} onClick={() => {
-                      setActiveDay(d);
-                      // mở luôn bàn phím ở ô nhập của dòng đầu, bôi đen sẵn để gõ đè
-                      if (dayLocked(d) || rows.length === 0) return;
-                      requestAnimationFrame(() => {
-                        const el = mobileInputs.current[0];
-                        if (!el) return;
-                        el.focus(); el.select?.();
-                        el.scrollIntoView({ block: "center", behavior: "smooth" });
-                      });
-                    }}
-                    className={`relative flex flex-col items-center rounded-lg border py-1.5 ${on ? "border-teal-500 bg-slate-800" : hol ? "border-rose-900 bg-rose-950/40" : lv ? "border-sky-900 bg-sky-950/40" : incomplete ? `border-amber-700/60 ${d === todayKey ? "bg-slate-700/70" : "bg-slate-900"}` : d === todayKey ? "border-slate-600 bg-slate-700/70" : "border-slate-800 bg-slate-900"} ${!on && d > todayKey ? "opacity-50" : ""}`}>
-                    {isSent(d) && <Lock size={9} className="absolute left-1 top-1 text-teal-500" />}
-                    {hol ? null
-                      : lv ? <span className="absolute right-0.5 top-0.5 text-[8px] text-sky-400">{lv.short}</span>
-                      : incomplete ? <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-400" /> : null}
-                    <span className={`text-[11px] ${on ? "text-teal-300" : i >= 5 ? "text-slate-600" : "text-slate-400"}`}>{DOW[i]}</span>
-                    <span className="font-mono text-[10px] text-slate-500">{pad(parseD(d).getDate())}</span>
-                    <span className={`mt-0.5 font-mono text-[11px] ${isOverDaily(d) ? "text-rose-400" : incomplete ? "text-amber-400" : t ? "text-teal-400" : "text-slate-700"}`}>{t ? t.toFixed(1) : "·"}</span>
+                  <button key={d} onClick={() => setActiveDay(d)}
+                    className={`relative flex flex-col items-center rounded-xl border pb-1.5 pt-1 ${on ? "border-teal-600 bg-teal-600" : d === todayKey ? "border-teal-800 bg-slate-900" : "border-slate-800 bg-slate-900"} ${!on && d > todayKey ? "opacity-50" : ""}`}>
+                    {isSent(d) && <Lock size={9} className={`absolute left-1 top-1 ${on ? "text-white" : "text-teal-500"}`} />}
+                    {dot && <span className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${dot}`} />}
+                    <span className={`text-[11px] ${on ? "text-white" : "text-slate-500"}`}>{DOW[i]}</span>
+                    <span className={`text-[13.5px] font-medium leading-tight ${on ? "text-white" : "text-slate-100"}`}>{parseD(d).getDate()}</span>
+                    <span className={`font-mono text-[10.5px] leading-tight ${on ? "text-white" : isOverDaily(d) ? "text-rose-400" : incomplete ? "text-amber-400" : t ? "text-slate-400" : "text-slate-600"}`}>{t ? fmtH(t) : "–"}</span>
                   </button>
                 );
               })}
             </div>
 
-            <div className="flex items-baseline justify-between px-0.5">
-              <span className="text-sm font-medium text-slate-200">{DOW[days.indexOf(activeDay)]} · {dLabel(activeDay)}</span>
-              <span className="font-mono text-sm text-teal-400">{dayTotal(activeDay).toFixed(1)} giờ</span>
-            </div>
+            {(() => {
+              const d = activeDay; const t = dayTotal(d); const ef = effortHrs(d); const ot = otHrs(d);
+              return (
+                <div className="flex items-baseline justify-between gap-2 px-1 pt-0.5">
+                  <span className="whitespace-nowrap text-[14.5px] font-semibold text-slate-100">{DAY_FULL[days.indexOf(d)]} {dLabel(d)}</span>
+                  <span className="min-w-0 truncate text-right text-[12.5px] text-slate-500">
+                    <span className="font-medium text-slate-100">{fmtH(t)}</span> giờ
+                    {t > 0 && <> · chuẩn {fmtH(stdHrs(d))}</>}
+                    {ef > 0 && <span className="cg-num text-violet-400"> · +{fmtH(ef)} cố gắng</span>}
+                    {ot > 0 && <span className="text-teal-400"> · OT {fmtH(ot)}</span>}
+                  </span>
+                </div>
+              );
+            })()}
 
-            {rows.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-700 px-4 py-10 text-center text-sm text-slate-500">
-                Tuần này chưa có tác vụ nào.<br />Bấm <b className="text-slate-300">Thêm tác vụ</b> để bắt đầu.
-              </div>
-            ) : groups.map((g) => {
+            {groups.map((g) => {
+              if (g.projectId === "") return null;   // khối trống mặc định: điện thoại dùng nút "Thêm dự án / tác vụ" bên dưới
               const noProj = g.projectId === NO_PROJECT;
-              const blank = g.projectId === "";
               const open = openKeys.has(g.key);
               const gLocked = g.items.some(({ r }) => rowLocked(r));
               const gHas = g.items.some(({ r }) => rowHasHours(r));
-              const canEdit = !locked && !blank && !projClosed(g.items[0].r);
-              const secs = blank ? [] : sectionsOf(g, open);
+              const canEdit = !locked && !projClosed(g.items[0].r);
+              const canDel = !gLocked && !locked;
+              const proj = cfg.projects.find((p) => p.id === g.projectId);
+              const secs = sectionsOf(g, open);
               return (
-                <div key={g.key} className={`rounded-xl border p-3 ${open ? "border-teal-800 bg-slate-800/60" : "border-slate-800 bg-slate-900"}`}>
-                  {/* Đầu thẻ: dự án + giai đoạn dùng chung cho mọi hạng mục bên trong */}
-                  <select disabled={gLocked || (!blank && (!open || gHas))} value={g.projectId} onChange={(e) => updGroup(g.key, { projectId: e.target.value })} className={`disabled:opacity-60 ${selectCls}`}>{projOptions(g.items[0].r)}</select>
-                  {!noProj && !blank && <select disabled={gLocked || !open || phaseFixed(g)} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })} className={`mt-2 disabled:opacity-60 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>}
-
+                <div key={g.key} className={`overflow-hidden rounded-2xl border bg-slate-900 ${open ? "border-teal-800" : "border-slate-800"}`}>
+                  <div className="flex items-center gap-2 border-b border-slate-800 py-1.5 pl-3 pr-1.5">
+                    {noProj
+                      ? <span className="shrink-0 rounded-md bg-slate-800 px-1.5 py-px text-[11px] font-semibold text-slate-400">CHUNG</span>
+                      : proj?.code && <span className="shrink-0 rounded-md bg-teal-950 px-1.5 py-px font-mono text-[11px] font-semibold text-teal-400">{proj.code}</span>}
+                    <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-slate-100">{noProj ? "Việc chung · Vắng mặt" : projName(g.projectId)}</span>
+                    {!noProj && <span className="shrink-0 whitespace-nowrap rounded-md border border-slate-700 px-1.5 py-px text-[11px] text-slate-400">{g.phaseId}{phaseInfo(g.phaseId) ? ` ${phaseInfo(g.phaseId).name}` : ""}</span>}
+                    {(canEdit || canDel) && (
+                      <button onClick={() => setMenuKey(menuKey === g.key ? null : g.key)} aria-label="Tuỳ chọn khối" title="Tuỳ chọn khối"
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${menuKey === g.key ? "bg-slate-800 text-slate-100" : "text-slate-400"}`}><MoreHorizontal size={18} /></button>
+                    )}
+                  </div>
+                  {menuKey === g.key && (
+                    <div className="flex flex-wrap gap-2 border-b border-slate-800 bg-slate-950 px-3 py-2">
+                      {canEdit && !open && <button onClick={() => { editGroup(g.key); setMenuKey(null); }} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-700 px-3 text-xs text-slate-200"><Pencil size={13} /> Sửa khối · tăng ca</button>}
+                      {canDel && <button onClick={() => { delGroup(g.key); setMenuKey(null); }} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-900 px-3 text-xs text-rose-300"><Trash2 size={13} /> Xoá khối</button>}
+                    </div>
+                  )}
+                  {/* khối đang mở: đổi giai đoạn (nếu còn chọn được) */}
+                  {open && !noProj && !phaseFixed(g) && (
+                    <div className="px-3 pt-2.5">
+                      <select disabled={gLocked || gHas} value={g.phaseId} onChange={(e) => updGroup(g.key, { phaseId: e.target.value })} className={`disabled:opacity-60 ${selectCls}`}>{phaseOptions(g.phaseId, g.projectId)}</select>
+                    </div>
+                  )}
 
                   {secs.map((sec) => (
                     <div key={sec.label}>
                       {open && sec.chip && (
-                        <div className="mt-3.5 flex items-center gap-2">
+                        <div className="flex items-center gap-2 px-3 pt-3">
                           <span className="whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ background: `${sec.chip}2e`, color: sec.chip }}>{sec.label}</span>
                           <i className="h-px flex-1 bg-slate-700" />
                         </div>
                       )}
-                      {open && !sec.chip && !sec.noHead && !(sec.ot && sec.items.length === 0) && <div className={`mt-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider ${sec.ot ? "text-teal-400" : "text-slate-500"}`}>{sec.ot && <Zap size={11} />}{sec.label}</div>}
-                      {sec.items.map(({ r, i }) => {
-                        const rt = days.reduce((s, d) => s + (r.days[d] || 0), 0);
-                        const ot = isOtTask(taskById.get(r.taskId));
-                        return (
-                          <React.Fragment key={i}>
-                          {open && ot && <div className="mt-3">{otPickers(r, i, true)}</div>}
-                          <div className={`flex items-center justify-between gap-2 ${open ? "mt-2" : "mt-2 border-t border-slate-800 pt-2"}`}>
-                            <div className="min-w-0">
-                              {!(open && ot) && <div className={`truncate text-sm ${ot && !open ? "text-teal-300" : rt ? "text-slate-100" : "text-slate-400"}`}>{rowLabel(r, open)}</div>}
-                              {open && rowDesc(r) && <div className="text-[11px] leading-tight text-slate-500">{rowDesc(r)}</div>}
-                              <div className="text-[11px] text-slate-600">Cả tuần: <span className="font-mono text-slate-400">{rt.toFixed(1)}</span> giờ</div>
+                      {open && !sec.chip && !sec.noHead && !(sec.ot && sec.items.length === 0) && <div className={`flex items-center gap-1.5 px-3 pt-3 text-[11px] font-medium uppercase tracking-wider ${sec.ot ? "text-teal-400" : "text-slate-500"}`}>{sec.ot && <Zap size={11} />}{sec.label}</div>}
+                      <div className="divide-y divide-slate-800">
+                        {sec.items.map(({ r, i }) => {
+                          const rt = days.reduce((s2, d) => s2 + (r.days[d] || 0), 0);
+                          const ot = isOtTask(taskById.get(r.taskId));
+                          return (
+                            <div key={i} className="px-3 py-2">
+                              {open && ot && <div className="mb-2">{otPickers(r, i, true)}</div>}
+                              <div className="flex items-center gap-2">
+                                <div className="min-w-0 flex-1">
+                                  {!(open && ot) && <div className={`text-[13.5px] leading-snug ${ot ? "text-teal-300" : rt ? "text-slate-100" : "text-slate-300"}`}>{rowLabel(r, open)}</div>}
+                                  {open && rowDesc(r) && <div className="text-[11px] leading-tight text-slate-500">{rowDesc(r)}</div>}
+                                  <div className="text-[11px] text-slate-500">Cả tuần {fmtH(rt)} h</div>
+                                </div>
+                                {stepper(r, i)}
+                                {open && ot && (
+                                  <button disabled={locked || rowLocked(r)} onClick={() => delRow(i)} title="Xoá dòng tăng ca này" aria-label="Xoá dòng tăng ca này"
+                                    className={`${iconBtn} shrink-0 disabled:opacity-40`}><Trash2 size={15} /></button>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex shrink-0 items-center gap-2">
-                              {open ? (
-                                <input ref={(el) => { mobileInputs.current[i] = el; }}
-                                  type="number" inputMode="decimal" min="0" max="24" step="0.5" placeholder="" disabled={dayLocked(activeDay) || projClosed(r) || futureBlocked(r, activeDay) || !rowReady(r)}
-                                  value={r.days[activeDay] ?? ""} onChange={(e) => setHour(i, activeDay, e.target.value)}
-                                  onFocus={(e) => e.target.select()}
-                                  onKeyDown={(e) => {
-                                    // Enter nhảy xuống ô của dòng kế tiếp, nhập liền mạch cả ngày
-                                    if (e.key !== "Enter") return;
-                                    e.preventDefault();
-                                    const next = mobileInputs.current[i + 1];
-                                    if (next) { next.focus(); next.select?.(); } else e.target.blur();
-                                  }}
-                                  className={`${CTRL} w-20 rounded-md border bg-slate-950 px-2 text-center font-mono text-lg focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[activeDay] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "border-teal-900 text-slate-100" : "border-slate-700 text-slate-100"}`} />
-                              ) : (
-                                <span className={`w-12 text-right font-mono text-base ${r.days[activeDay] > 0 ? "text-slate-100" : "text-slate-700"}`}>{r.days[activeDay] > 0 ? r.days[activeDay] : "·"}</span>
-                              )}
-                              {open && ot && (
-                                <button disabled={locked || rowLocked(r)} onClick={() => delRow(i)} title="Xoá dòng tăng ca này" aria-label="Xoá dòng tăng ca này"
-                                  className={`${iconBtn} h-11 w-11 disabled:opacity-40`}><Trash2 size={16} /></button>
-                              )}
-                              {open && !ot && canClear(r) && (
-                                <button onClick={() => clearRow(i)} title="Xoá hết giờ của hạng mục này trong tuần" aria-label="Xoá hết giờ của hạng mục này trong tuần"
-                                  className={`${iconBtn} h-11 w-11`}><Eraser size={16} /></button>
-                              )}
-                            </div>
-                          </div>
-                          </React.Fragment>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                       {open && sec.ot && (
-                        <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r)}
-                          className={`${sec.items.length ? "mt-2" : "mt-3"} w-full ${btnBase} border border-teal-900 text-teal-300 hover:border-teal-700 disabled:opacity-40`}>
-                          {sec.items.length ? <><Plus size={14} /> Thêm dòng tăng ca</> : <><Zap size={14} /> Tăng ca</>}</button>
+                        <div className="px-3 pt-1">
+                          <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r)}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-teal-900 px-3 text-xs text-teal-300 disabled:opacity-40">
+                            {sec.items.length ? <><Plus size={13} /> Thêm dòng tăng ca</> : <><Zap size={13} /> Tăng ca</>}</button>
+                        </div>
                       )}
                     </div>
                   ))}
 
-                  <div className="mt-3 flex gap-2">
-                    {open ? (
-                      <button onClick={() => doneGroup(g.key)} className={`flex-1 ${btnPrimary}`}><Check size={15} /> Xong, tạm lưu</button>
-                    ) : canEdit ? (
-                      <button onClick={() => editGroup(g.key)} className={`flex-1 ${btnGhost}`}><Pencil size={14} /> Sửa</button>
-                    ) : <div className="flex-1" />}
-                    {!gLocked && !locked && (
-                      <button onClick={() => delGroup(g.key)} title="Xoá cả khối" className={`${iconBtn} h-11 w-11`}><Trash2 size={16} /></button>
-                    )}
-                  </div>
+                  {open ? (
+                    <div className="px-3 pb-3 pt-2.5">
+                      <button onClick={() => doneGroup(g.key)} className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-teal-600 text-sm font-medium text-white"><Check size={15} /> Xong</button>
+                    </div>
+                  ) : canEdit && (
+                    <button onClick={() => editGroup(g.key)} className="block w-full border-t border-dashed border-slate-800 px-3 py-2.5 text-left text-[12.5px] font-medium text-teal-400">
+                      + {noProj ? "Tác vụ chung / vắng mặt khác" : "Tác vụ khác trong dự án này"}
+                    </button>
+                  )}
                 </div>
               );
             })}
+
+            {!groups.some((g) => g.projectId !== "") && (
+              <p className="px-1 pt-1 text-center text-xs text-slate-500">Tuần này chưa có tác vụ nào.</p>
+            )}
+            <button onClick={openAddSheet} disabled={locked}
+              className="flex w-full items-center justify-center gap-1.5 rounded-2xl border-[1.5px] border-dashed border-slate-600 py-3 text-sm font-medium text-slate-200 disabled:opacity-40">
+              <Plus size={16} /> Thêm dự án / tác vụ
+            </button>
           </div>
         </>
       )}
 
-      <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
-        <button onClick={focusQuick} disabled={locked} className={`${btnGhost} disabled:opacity-40`}><Plus size={15} /> Thêm tác vụ</button>
+      {/* v8.4: điện thoại — nhân sự dùng thanh Lưu nháp / Gửi cố định ở đáy màn (bên dưới); quản lý giữ nút như cũ */}
+      <div className={`${admin ? "grid grid-cols-2" : "hidden"} gap-2 md:flex md:flex-wrap md:items-center`}>
+        <button onClick={focusQuick} disabled={locked} className={`${btnGhost} hidden disabled:opacity-40 md:inline-flex`}><Plus size={15} /> Thêm tác vụ</button>
         {/* v1.9: quản lý lưu được khi sửa bảng công của người khác · v8.1: nhân sự có lại nút Lưu nháp (ghi lên server, chưa gửi) */}
         {!admin && (
           <button onClick={() => save("draft")} disabled={saving || locked} title="Lưu tạm giờ đang nhập lên hệ thống, chưa gửi — quản lý thấy là Nháp, chưa tính vào báo cáo"
             className={`${btnGhost} disabled:opacity-40`}>
-            {saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Lưu nháp
+            {saving && <Loader2 className="animate-spin" size={15} />} Lưu nháp
           </button>
         )}
         {admin && (
@@ -3473,6 +3600,105 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
         )}
         {atRisk && <span className="col-span-2 text-center text-xs text-amber-400 md:text-left">{admin ? "Có thay đổi chưa lưu" : "Có giờ chưa gửi"}</span>}
       </div>
+
+      {/* v8.4 — điện thoại: Lưu nháp + Gửi giờ công cố định ngay trên thanh menu đáy, không phải cuộn */}
+      {!admin && (
+        <>
+          <div className="h-14 md:hidden" />
+          <div className="fixed inset-x-0 bottom-[52px] z-30 flex gap-2 border-t border-slate-800 bg-slate-950/95 px-3 py-2 backdrop-blur md:hidden">
+            <button onClick={() => save("draft")} disabled={saving || locked} title="Lưu tạm lên hệ thống, chưa gửi"
+              className="inline-flex h-11 w-[104px] shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 text-sm font-medium text-slate-200 disabled:opacity-40">
+              {saving && <Loader2 className="animate-spin" size={14} />} Lưu nháp
+            </button>
+            {sentDays.length > 0 && toSend.length === 0 && !saving ? (
+              <button disabled className="inline-flex h-11 flex-1 cursor-default items-center justify-center gap-1.5 rounded-xl border border-teal-800 bg-teal-950 text-sm font-medium text-teal-300">
+                <CheckCircle2 size={15} /> Đã gửi giờ công
+              </button>
+            ) : (
+              <button onClick={askSubmitWeek} disabled={saving || locked}
+                className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-teal-600 text-sm font-semibold text-white disabled:opacity-40">
+                <CheckCircle2 size={15} /> Gửi giờ công
+                {toSend.length > 0 && <span className="rounded-full bg-white/25 px-2 text-xs font-medium">{toSend.length} ngày</span>}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* v8.4 — điện thoại: bảng trượt Thêm dự án / tác vụ */}
+      {addSheet && (() => {
+        const { pid, ph, picked } = addSheet;
+        const khac = pid === NO_PROJECT;
+        const phases = pid && !khac ? openPhasesOf(pid) : [];
+        const lists = !pid ? [] : khac
+          ? [["Công việc chung", commonTasks], ["Vắng mặt", LEAVE_TASKS]]
+          : [["", projTasks.filter((t) => !isOtTask(t))]];
+        const chip = (on) => `rounded-lg border px-2.5 py-1.5 text-[13px] ${on ? "border-teal-600 bg-teal-600 font-medium text-white" : "border-slate-700 bg-slate-900 text-slate-200"}`;
+        const toggle = (tid) => setAddSheet((s) => ({ ...s, picked: s.picked.includes(tid) ? s.picked.filter((x) => x !== tid) : [...s.picked, tid] }));
+        return (
+          <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
+            <div className="absolute inset-0 bg-black/60" onClick={() => setAddSheet(null)} />
+            <div className="absolute inset-x-0 bottom-0 flex max-h-[88vh] flex-col rounded-t-3xl border-t border-slate-700 bg-slate-900 px-4 pb-4 pt-2 shadow-2xl">
+              <div className="mx-auto mb-2.5 h-1.5 w-10 shrink-0 rounded-full bg-slate-700" />
+              <div className="shrink-0">
+                <div className="text-base font-semibold text-slate-100">Thêm tác vụ · {DOW[days.indexOf(activeDay)]} {dLabel(activeDay)}</div>
+                <div className="text-xs text-slate-500">Dự án được giao cho bạn và giai đoạn đang mở</div>
+              </div>
+              <div className="mt-1 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                <div className="mb-1.5 mt-3 text-[11px] uppercase tracking-wider text-slate-500">Dự án</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {activeProjects.map((p) => (
+                    <button key={p.id} onClick={() => sheetPick(p.id)} className={chip(pid === p.id)}>
+                      {p.code ? <>{p.code} <span className="opacity-70">{p.name}</span></> : p.name}
+                    </button>
+                  ))}
+                  <button onClick={() => sheetPick(NO_PROJECT)} className={chip(khac)}>Việc chung · Vắng mặt</button>
+                </div>
+                {pid && !khac && (
+                  <>
+                    <div className="mb-1.5 mt-3 text-[11px] uppercase tracking-wider text-slate-500">Giai đoạn</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {phases.map((x) => (
+                        <button key={x.id} onClick={() => setAddSheet((s) => ({ ...s, ph: x.id, picked: [] }))} className={chip(ph === x.id)}>{x.id} {x.name}</button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {pid && (khac || ph) && (
+                  <>
+                    <div className="mb-0.5 mt-3 text-[11px] uppercase tracking-wider text-slate-500">Tác vụ (chọn nhiều)</div>
+                    {lists.map(([label, list]) => (
+                      <div key={label || "p"}>
+                        {label && <div className="mt-2 text-xs font-medium text-slate-400">{label}</div>}
+                        {list.length === 0 && <div className="py-2 text-xs text-slate-500">Chưa có tác vụ nào.</div>}
+                        {list.map((t) => {
+                          const has = sheetHas(pid, khac ? DEFAULT_PHASE : ph, t.id);
+                          const on = has || picked.includes(t.id);
+                          return (
+                            <button key={t.id} disabled={has} onClick={() => toggle(t.id)}
+                              className="flex w-full items-center gap-2.5 border-b border-slate-800 py-2.5 text-left text-[13.5px] text-slate-100 disabled:text-slate-500">
+                              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-[1.5px] ${on ? "border-teal-600 bg-teal-600 text-white" : "border-slate-600"}`}>{on && <Check size={13} />}</span>
+                              <span className="min-w-0 flex-1">{isLeaveTask(t.id) ? t.name : taskText(t)}</span>
+                              {has && <span className="shrink-0 text-[11px] text-slate-500">đã có</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+              <div className="mt-3 flex shrink-0 gap-2">
+                <button onClick={() => setAddSheet(null)} className="h-11 w-24 shrink-0 rounded-xl border border-slate-700 text-sm font-medium text-slate-200">Huỷ</button>
+                <button onClick={addPicked} disabled={!picked.length}
+                  className="h-11 flex-1 rounded-xl bg-teal-600 text-sm font-semibold text-white disabled:opacity-40">
+                  {picked.length ? `Thêm ${picked.length} tác vụ` : "Chọn tác vụ để thêm"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {saveFailed && (
         <div className="rounded-xl border border-rose-900 bg-rose-950 p-3 text-sm text-rose-100">
@@ -4492,7 +4718,7 @@ function AdminTimesheet({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
 }
 
 /* --------- cảnh báo hạn chốt công (ẩn tạm trong phiên, hoặc tắt vĩnh viễn theo thiết bị) --------- */
-function DeadlineBanner({ cfg, empId }) {
+function DeadlineBanner({ cfg, empId, onGo = null }) {
   const dataTick = useDataTick();
   const [state, setState] = useState(null);
   const [dismissed, setDismissed] = useState(false);    // ẩn tạm — chỉ trong phiên làm việc này
@@ -4523,8 +4749,17 @@ function DeadlineBanner({ cfg, empId }) {
 
   if (!state || state.missing.length === 0 || dismissed || hiddenForever) return null;
   const late = today.getDate() > dl && state.target === prevYm(state.thisYm);
+  const oldest = [...state.missing].sort()[0];
   return (
-    <div className={`wk-banner flex items-start gap-2.5 rounded-xl border p-3 md:gap-3 md:p-3.5 ${late ? "border-rose-900 bg-rose-950" : "border-amber-900 bg-amber-950"}`}>
+    <>
+    {/* v8.4 — điện thoại: banner 1 dòng gọn, bấm "Xem" nhảy tới tuần chưa gửi cũ nhất */}
+    <div className={`wk-banner flex items-center gap-2 rounded-xl border px-3 py-2 text-[12.5px] md:hidden ${late ? "border-rose-900 bg-rose-950" : "border-amber-900 bg-amber-950"}`}>
+      <AlertTriangle size={15} className={`shrink-0 ${late ? "text-rose-400" : "text-amber-400"}`} />
+      <span className="min-w-0 flex-1 truncate text-slate-100"><b>{state.missing.length} tuần</b> chưa gửi · cũ nhất {dLabel(oldest)}</span>
+      {onGo && <button onClick={() => onGo(oldest)} className={`shrink-0 whitespace-nowrap font-semibold ${late ? "text-rose-300" : "text-amber-300"}`}>Xem ›</button>}
+      <button onClick={() => setDismissed(true)} title="Ẩn tạm" aria-label="Ẩn tạm" className="-mr-1 shrink-0 rounded p-1 text-slate-400"><X size={13} /></button>
+    </div>
+    <div className={`wk-banner hidden items-start gap-2.5 rounded-xl border p-3 md:flex md:gap-3 md:p-3.5 ${late ? "border-rose-900 bg-rose-950" : "border-amber-900 bg-amber-950"}`}>
       <AlertTriangle size={18} className={`mt-0.5 shrink-0 ${late ? "text-rose-400" : "text-amber-400"}`} />
       <div className="min-w-0 flex-1 text-sm text-slate-100">
         Còn <b>{state.missing.length}</b> tuần chưa gửi: {state.missing.map(dLabel).join(", ")}.
@@ -4534,6 +4769,7 @@ function DeadlineBanner({ cfg, empId }) {
         <button onClick={() => setDismissed(true)} title="Ẩn tạm" className="rounded p-0.5 text-slate-300 hover:bg-black/20 hover:text-slate-50"><X size={14} /></button>
       </div>
     </div>
+    </>
   );
 }
 
@@ -4697,7 +4933,8 @@ function PushStatusRow() {
   );
 }
 
-function EmployeeSettings({ cfg, empId }) {
+function EmployeeSettings({ cfg, empId, onSignOut = null }) {
+  const [, setThemePref, themePref] = useTheme();
   const emp = cfg.employees.find((e) => e.id === empId);
   const prefKey = `artius:hide-deadline:${empId}`;
   const [hidden, setHidden] = useState(null); // null = đang tải
@@ -4717,8 +4954,26 @@ function EmployeeSettings({ cfg, empId }) {
     setHidden(next); setSaving(false);
   };
 
+  const initials = String(emp?.name || "?").trim().split(/\s+/).slice(-2).map((w) => w[0] || "").join("").toUpperCase();
   return (
     <div className="space-y-3 md:space-y-4">
+      {/* v8.4 — điện thoại: thẻ tài khoản + Giao diện + Phiên bản + Đăng xuất (máy tính vẫn ở header) */}
+      <div className="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-3.5 md:hidden">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-base font-semibold text-white" style={{ background: "linear-gradient(135deg,#06b6d4,#4f46e5)" }}>{initials}</div>
+        <div className="min-w-0">
+          <div className="truncate font-semibold text-slate-100">{emp?.name}</div>
+          <div className="truncate text-xs text-slate-500">{[emp?.code, emp?.dept, roleTitle(emp?.role)].filter(Boolean).join(" · ")}</div>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900 px-3.5 py-3 md:hidden">
+        <span className="text-sm text-slate-200">Giao diện</span>
+        <div role="radiogroup" aria-label="Giao diện" className="flex overflow-hidden rounded-lg border border-slate-700">
+          {[["dark", "Tối"], ["light", "Sáng"], ["system", "Theo máy"]].map(([k, l]) => (
+            <button key={k} role="radio" aria-checked={themePref === k} onClick={() => setThemePref(k)}
+              className={`px-3 py-1.5 text-[13px] ${themePref === k ? "bg-teal-600 font-medium text-white" : "text-slate-400"}`}>{l}</button>
+          ))}
+        </div>
+      </div>
       <Panel title="Thông tin cá nhân">
         <div className="space-y-1.5 text-sm">
           <div><span className="text-slate-500">Họ và tên: </span><span className="text-slate-100">{emp?.name}</span></div>
@@ -4749,6 +5004,14 @@ function EmployeeSettings({ cfg, empId }) {
       </Panel>
 
       {/* v8.1 — bỏ "Kiểm tra lưu trữ" ở Cài đặt nhân viên (chỉ còn ở Thiết lập của Admin) */}
+      <div className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-3.5 py-3 text-sm md:hidden">
+        <span className="text-slate-200">Phiên bản</span><span className="font-mono text-slate-500">ARTIUS TIME {APP_VERSION}</span>
+      </div>
+      {onSignOut && (
+        <button onClick={onSignOut} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-rose-900 bg-rose-950 text-[15px] font-semibold text-rose-300 md:hidden">
+          <LogOut size={16} /> Đăng xuất
+        </button>
+      )}
     </div>
   );
 }
