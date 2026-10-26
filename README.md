@@ -1,5 +1,14 @@
 # ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
 
+## Mới ở v8.7 — Hỗ trợ dự án có thời hạn
+- **Trưởng phòng** (nhân viên phòng mình) hoặc **Admin** (mọi người) mở cho một nhân sự chấm công vào dự án **không được giao**: chọn nhân sự · dự án · giai đoạn (một giai đoạn hoặc mọi giai đoạn đang mở) · thời gian (1 / 2 / 4 tuần, hết tháng, hoặc tự chọn từ ngày → đến hết ngày) · ghi chú.
+- Mở ở: **Bảng công** (khung "Hỗ trợ dự án" ở đầu — trưởng phòng dùng chỗ này), **Nhân sự → Hỗ trợ dự án** (Admin), **Dự án → + Hỗ trợ** ở khối nhân sự tham gia (Admin).
+- Nhân sự thấy dự án trong "Thêm dự án / tác vụ" ở mục **Đang hỗ trợ**; khối dự án viền tím, ghi "Hỗ trợ tới hết dd/mm". Chỉ nhập được **ngày trong thời hạn** (vẫn theo khoá chấm công quá hạn v8.6).
+- **Hết hạn tự ngắt**: dự án biến khỏi danh sách thêm mới, ngày sau hạn bị khoá. Giờ đã chấm giữ nguyên và vẫn tính chi phí dự án.
+- Danh sách đợt: đang mở / sắp bắt đầu / hết hạn trong 30 ngày, kèm số giờ đã chấm; **+1 tuần**, **+2 tuần**, **Kết thúc** (sớm), **Mở lại 1 tuần**.
+- Excel chi tiết (Dashboard, Ma trận giờ) có cột **Loại = Chính / Hỗ trợ**.
+- **Bắt buộc chạy SQL** để trưởng phòng mở được: Supabase → SQL Editor → dán `supabase/v8_7_ho_tro_du_an.sql` → Run (sau file v8_6 nếu chưa chạy). Admin mở được ngay cả khi chưa chạy.
+
 ## Mới ở v8.6 — Khoá chấm công quá hạn
 - Nhân viên chỉ nhập / sửa / gửi được giờ trong **N tuần gần nhất** (mặc định 2 = tuần này + tuần trước, tính từ thứ Hai). Sang thứ Hai mới, tuần cũ nhất tự khoá.
 - Ngày quá hạn bị khoá cả giờ nháp chưa gửi; màn Chấm công báo "đã quá hạn chấm công — nhờ quản lý mở". Banner nhắc tuần chưa gửi bỏ qua tuần đã quá hạn.

@@ -18,6 +18,10 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v8.7 — Hỗ trợ dự án có thời hạn: trưởng phòng (nhân viên phòng mình) / Admin mở cho một nhân sự chấm công vào dự án không được giao,
+   chọn giai đoạn + khoảng ngày (1/2/4 tuần, hết tháng, tự chọn). Nhân sự thấy dự án ở mục "Đang hỗ trợ", chỉ nhập được ngày trong thời hạn;
+   hết hạn tự ngắt, giờ đã chấm giữ nguyên. Danh sách đợt hỗ trợ ở đầu Bảng công, Nhân sự → "Hỗ trợ dự án", Dự án → "+ Hỗ trợ";
+   Gia hạn +1/+2 tuần, Kết thúc sớm. Excel chi tiết có cột "Loại" (Chính / Hỗ trợ). Cần chạy supabase/v8_7_ho_tro_du_an.sql.
    Mới ở v8.6 — Khoá chấm công quá hạn: nhân viên chỉ nhập / sửa được N tuần gần nhất (mặc định 2: tuần này + tuần trước, tính từ thứ Hai);
    ngày cũ hơn bị khoá kể cả giờ nháp, không gửi được. Thiết lập → Khoá chấm công quá hạn: đổi số tuần (0 = tắt), mở chấm bù một tuần cho
    một người tới hạn chọn. Database cũng chặn: chạy supabase/v8_6_khoa_qua_han.sql.
@@ -308,7 +312,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v8.6";
+const APP_VERSION = "v8.7";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1160,6 +1164,14 @@ const pastWeeks = (cfg) => { const n = Number(cfg?.pastLock?.weeks); return Numb
 const pastCut = (cfg, today = fmt(new Date())) => { const w = pastWeeks(cfg); return w > 0 ? fmt(addDays(mondayOf(parseD(today)), -7 * (w - 1))) : ""; };
 const pastOpenUntil = (cfg, empId, d, today = fmt(new Date())) => { const u = cfg?.pastOpen?.[empId]?.[fmt(mondayOf(parseD(d)))] || ""; return u >= today ? u : ""; };
 const pastLocked = (cfg, empId, d, today = fmt(new Date())) => { const c = pastCut(cfg, today); return !!c && d < c && !pastOpenUntil(cfg, empId, d, today); };
+/* v8.7 — Hỗ trợ dự án có thời hạn: cfg.support = [{ id, empId, pid, phase ("" = mọi giai đoạn đang mở), from, until, note, by, at }].
+   Trưởng phòng (nhân viên phòng mình) / Admin (mọi người) mở cho một nhân sự chấm công vào dự án KHÔNG được giao, trong khoảng ngày
+   from → until (tính hết ngày until). Hết hạn là tự ngắt: dự án biến khỏi danh sách thêm mới, ngày ngoài khoảng bị khoá ô nhập;
+   giờ đã chấm giữ nguyên và vẫn tính chi phí dự án. Trưởng phòng ghi qua hàm SQL artius_support_set (supabase/v8_7_ho_tro_du_an.sql). */
+const supportList = (cfg) => (Array.isArray(cfg?.support) ? cfg.support : []);
+const supportOn = (cfg, empId, pid, d, phase = null) => supportList(cfg).find((x) => x.empId === empId && x.pid === pid && x.from <= d && d <= x.until && (phase == null || !x.phase || x.phase === phase)) || null;
+const supportInRange = (cfg, empId, pid, lo, hi) => supportList(cfg).filter((x) => x.empId === empId && x.pid === pid && x.from <= hi && x.until >= lo);
+const supportKind = (cfg, empId, pid, d) => (pid && pid !== NO_PROJECT && supportOn(cfg, empId, pid, d) ? "Hỗ trợ" : "Chính");
 const empNameTag = (e) => (e ? `${e.name}${isResigned(e) ? " (Đã nghỉ)" : ""}` : "(đã xoá)");
 const ResignedBadge = () => <span className="ml-1.5 inline-block rounded border border-slate-700 px-1 align-middle text-[10px] font-normal text-slate-400">Đã nghỉ</span>;
 const NO_PHASE = "?";   // v3.0: dòng mới, giai đoạn chưa chọn (dự án "" = chưa chọn, hạng mục "" = chưa chọn)
@@ -1733,6 +1745,28 @@ function AppMain() {
     ? { ...cfg, employees: cfg.employees.filter((e) => me.dept && e.dept === me.dept && e.id !== me.empId) } : null),
   [cfg, me?.type, me?.dept, me?.empId]); // eslint-disable-line react-hooks/exhaustive-deps
   const bodSave = useCallback(async () => { flash("Tài khoản BOD chỉ xem, không sửa được.", "err"); return false; }, [flash]);
+  /* v8.7 — ghi một đợt hỗ trợ dự án. Admin: lưu thẳng thiết lập. Trưởng phòng: qua hàm SQL artius_support_set (chỉ nhân viên phòng mình). */
+  const supportSave = useCallback(async (item, remove = false) => {
+    const msg = remove ? "Đã huỷ đợt hỗ trợ." : "Đã lưu hỗ trợ dự án.";
+    if (me?.type === "admin") {
+      const list = supportList(cfg).filter((x) => x.id !== item.id);
+      const ok = await saveCfg({ ...cfg, support: remove ? list : [...list, { ...item, by: who?.username || "", at: new Date().toISOString() }] });
+      if (ok !== false) flash(msg);
+      return ok !== false;
+    }
+    if (me?.type !== "head") { flash("Chỉ Admin hoặc trưởng phòng được mở hỗ trợ dự án.", "err"); return false; }
+    try {
+      const { data, error } = await supabase.rpc("artius_support_set", { p_item: item, p_remove: remove });
+      if (error) throw error;
+      setCfg((c) => (c ? { ...c, support: Array.isArray(data) ? data : [] } : c));
+      flash(msg);
+      return true;
+    } catch (e) {
+      const m = String(e?.message || e || "");
+      flash(/artius_support_set|function|schema cache/i.test(m) && !/Trưởng phòng|nhân viên/.test(m) ? "Chưa bật được: Admin cần chạy file supabase/v8_7_ho_tro_du_an.sql trên Supabase." : `Chưa lưu được — ${m}`, "err");
+      return false;
+    }
+  }, [me?.type, cfg, saveCfg, flash, who?.username]);
   const orphan = !!who && !!cfg && !me;   // tài khoản thường nhưng nhân sự gắn kèm đã bị xoá
 
   /* v4.1 — Bấm thông báo nhắc khi app ĐANG MỞ: service worker gửi tin sang đây thay vì tải lại trang.
@@ -1929,10 +1963,10 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
             : me.type === "bod" ? (
               <>
                 {tab === "dash" && <Dashboard cfg={cfg} saveCfg={bodSave} flash={flash} />}
-                {tab === "sheet" && <AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} readOnly />}
+                {tab === "sheet" && <AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} readOnly onSupport={bodSave} />}
                 {/* v7.7 — BOD xem được mọi mục quản lý nhưng không sửa: mọi lệnh lưu cấu hình bị chặn bởi bodSave */}
-                {tab === "proj" && <ReadOnlyView><Projects cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
-                {tab === "emp" && <ReadOnlyView><Employees cfg={cfg} saveCfg={bodSave} flash={flash} readOnly /></ReadOnlyView>}
+                {tab === "proj" && <ReadOnlyView><Projects cfg={cfg} saveCfg={bodSave} flash={flash} onSupport={bodSave} /></ReadOnlyView>}
+                {tab === "emp" && <ReadOnlyView><Employees cfg={cfg} saveCfg={bodSave} flash={flash} readOnly onSupport={bodSave} /></ReadOnlyView>}
                 {tab === "task" && <ReadOnlyView><Tasks cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
                 {tab === "set" && <ReadOnlyView><SettingsTab cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
                 {tab === "ts" && me.empId && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} />}
@@ -1942,9 +1976,9 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
             : me.type === "admin" ? (
               <>
                 {tab === "dash" && <Dashboard cfg={cfg} saveCfg={saveCfg} flash={flash} />}
-                {tab === "sheet" && <AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} />}
-                {tab === "proj" && <Projects cfg={cfg} saveCfg={saveCfg} flash={flash} />}
-                {tab === "emp" && <Employees cfg={cfg} saveCfg={saveCfg} flash={flash} />}
+                {tab === "sheet" && <AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} onSupport={supportSave} />}
+                {tab === "proj" && <Projects cfg={cfg} saveCfg={saveCfg} flash={flash} onSupport={supportSave} />}
+                {tab === "emp" && <Employees cfg={cfg} saveCfg={saveCfg} flash={flash} onSupport={supportSave} />}
                 {tab === "task" && <Tasks cfg={cfg} saveCfg={saveCfg} flash={flash} />}
                 {tab === "set" && <SettingsTab cfg={cfg} saveCfg={saveCfg} flash={flash} />}
               </>
@@ -1953,7 +1987,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
                 {tab === "ts" && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} />}
                 {tab === "edash" && <EmployeeDashboard cfg={cfg} empId={me.empId} onGoTimesheet={(mon) => { setTsMonday(mon || null); setTab("ts"); }} />}
                 {tab === "eset" && <EmployeeSettings cfg={cfg} empId={me.empId} onSignOut={signOut} />}
-                {tab === "sheet" && me.type === "head" && headCfg && <AdminTimesheet cfg={headCfg} flash={flash} onDirtyChange={setSheetDirty} oneDept />}
+                {tab === "sheet" && me.type === "head" && headCfg && <AdminTimesheet cfg={headCfg} flash={flash} onDirtyChange={setSheetDirty} oneDept onSupport={supportSave} />}
               </>
             )}
         </main>
@@ -2216,7 +2250,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   /* v2.3 — Nhân sự không chấm giờ làm việc cho ngày chưa tới (sau hôm nay). Vắng mặt (nghỉ phép…) thì vẫn
      đăng ký trước được. Quản lý không bị giới hạn. Database cũng chặn (artius_ts_guard). */
   const todayKey = fmt(new Date());
-  const futureBlocked = (r, d) => !admin && d > todayKey && !isLeaveTask(r.taskId);
+  const futureBlocked = (r, d) => !admin && ((d > todayKey && !isLeaveTask(r.taskId)) || supBlocked(r, d));   // v8.7: + ngày ngoài thời gian hỗ trợ
   // v2.7 — cột hôm nay nền sáng hơn một chút, ngày tương lai mờ đi; ngày đã qua giữ nguyên
   const dayCol = (d) => (d === todayKey ? "bg-slate-800/70" : d > todayKey ? "opacity-50" : "");
   const sendTotal = (d) => rows.reduce((s, r) => s + (futureBlocked(r, d) ? 0 : (r.days[d] || 0)), 0);
@@ -2227,8 +2261,14 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
      Quản lý không bị giới hạn. Database cũng chặn (artius_ts_guard). */
   const phaseOpen = (pid, ph) => !!phaseInfo(ph)?.active && (admin || projPhaseIsOpen(cfg.projects.find((p) => p.id === pid), ph));
   // giai đoạn quản lý đang mở của dự án (không tính quyền quản lý) — dùng để tự chọn sẵn giai đoạn khi chọn dự án
-  const setOpenPhases = (pid) => activePhases().filter((ph) => projPhaseIsOpen(cfg.projects.find((p) => p.id === pid), ph.id));
-  const openPhasesOf = (pid) => activePhases().filter((ph) => phaseOpen(pid, ph.id));
+  const setOpenPhases = (pid) => activePhases().filter((ph) => projPhaseIsOpen(cfg.projects.find((p) => p.id === pid), ph.id) && supPhaseOk(pid, ph.id));
+  // v8.7: dự án nhân sự đang HỖ TRỢ (không được giao chính thức) trong tuần đang xem
+  const supWeek = (pid) => (admin || !pid || pid === NO_PROJECT || (Array.isArray(emp?.projects) && emp.projects.includes(pid)) ? [] : supportInRange(cfg, empId, pid, days[0], days[6]));
+  const isSupProj = (pid) => supWeek(pid).length > 0;
+  const supUntil = (pid) => supWeek(pid).reduce((m, x) => (x.until > m ? x.until : m), "");
+  const supBlocked = (r, d) => isSupProj(r.projectId) && !supportOn(cfg, empId, r.projectId, d, r.phaseId || DEFAULT_PHASE);   // ngoài thời gian hỗ trợ
+  const supPhaseOk = (pid, ph) => { const w = supWeek(pid); return !w.length || w.some((x) => !x.phase || x.phase === ph); };
+  const openPhasesOf = (pid) => activePhases().filter((ph) => phaseOpen(pid, ph.id) && supPhaseOk(pid, ph.id));
   const fitPhase = (pid, ph) => (pid === NO_PROJECT || phaseOpen(pid, ph) ? ph : openPhasesOf(pid)[0]?.id || ph);
   const projClosed = (r) => !admin && r.projectId !== NO_PROJECT && r.projectId !== ""
     && (!cfg.projects.some((p) => p.id === r.projectId && p.active) || (r.phaseId !== NO_PHASE && !phaseOpen(r.projectId, r.phaseId || DEFAULT_PHASE)));
@@ -2244,7 +2284,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   /* v6.9 — nhân sự chỉ thấy các dự án quản lý đã giao (Nhân sự → "Dự án đang tham gia"). Chưa giao dự án nào = chỉ chấm Việc chung / vắng mặt.
      Quản lý sửa bảng công của người khác thì vẫn thấy mọi dự án. Dòng cũ của dự án không còn được giao vẫn hiện để xem / sửa giờ đã có. */
   const assignedP = new Set(Array.isArray(emp?.projects) ? emp.projects : []);
-  const activeProjects = cfg.projects.filter((p) => p.active && (admin || (openPhasesOf(p.id).length > 0 && assignedP.has(p.id))));
+  const activeProjects = cfg.projects.filter((p) => p.active && (admin || (openPhasesOf(p.id).length > 0 && (assignedP.has(p.id) || isSupProj(p.id)))));
   // Chỉ hiện hạng mục thuộc bộ phận của nhân sự — bớt danh sách dài và tránh chấm nhầm việc của bộ phận khác
   const myTasks = useMemo(() => tasksForDept(cfg.tasks, emp?.dept, emp?.role), [cfg.tasks, emp?.dept, emp?.role]);
   /* v2.9 — "Khác" (projectId = NO_PROJECT, không có giai đoạn) gồm tác vụ chung của công ty (không gắn vai trò) và vắng mặt.
@@ -2675,7 +2715,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
       const writable = admin ? daysInYm : daysInYm.filter((d) => !sent[d] && !pastLocked(cfg, empId, d));   // v8.6: ngày quá hạn giữ nguyên bản server
       const keep = bucket.rows.map((r) => {
         if (projClosed(r)) return r;                       // giờ của dự án đã đóng giữ nguyên bản trên server
-        const dd = { ...r.days }; for (const d of writable) delete dd[d];
+        const dd = { ...r.days }; for (const d of writable) if (!supBlocked(r, d)) delete dd[d];   // v8.7: ngày ngoài thời gian hỗ trợ giữ nguyên
         return { ...r, days: dd };
       });
       const map = new Map(keep.map((r) => [rowKey(r), r]));
@@ -3000,7 +3040,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
     <>
       {r.projectId === "" && <option value="" disabled>— Chọn dự án —</option>}
       <option value={NO_PROJECT}>Khác</option>
-      {activeProjects.map((p) => <option key={p.id} value={p.id}>{p.code ? `[${p.code}] ` : ""}{p.name}</option>)}
+      {activeProjects.map((p) => <option key={p.id} value={p.id}>{p.code ? `[${p.code}] ` : ""}{p.name}{isSupProj(p.id) ? ` — hỗ trợ tới ${dLabel(supUntil(p.id))}` : ""}</option>)}
       {r.projectId !== NO_PROJECT && r.projectId !== "" && !activeProjects.some((p) => p.id === r.projectId) && <option value={r.projectId}>{projName(r.projectId)} ({!cfg.projects.some((p) => p.id === r.projectId && p.active) ? "đã đóng" : openPhasesOf(r.projectId).length === 0 ? "chưa mở giai đoạn" : "không còn được giao"})</option>}
     </>
   );
@@ -3326,6 +3366,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                       </td>
                       <td colSpan={7} className="px-2 pb-1 pt-2.5">
                         <div className="flex items-center justify-end gap-3 text-xs">
+                          {isSupProj(g.projectId) && <span className="sup-tag rounded-md border border-violet-800 bg-violet-950 px-2 py-0.5 text-violet-300">Hỗ trợ tới hết {dLabel(supUntil(g.projectId))}</span>}
                         </div>
                       </td>
                       <td className="px-2 pb-1 pt-2.5" />{/* v3.5: bỏ số tổng của khối dự án — tổng chỉ còn ở hàng cuối bảng */}
@@ -3542,11 +3583,11 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
               const proj = cfg.projects.find((p) => p.id === g.projectId);
               const secs = sectionsOf(g, open);
               return (
-                <div key={g.key} className={`overflow-hidden rounded-2xl border bg-slate-900 ${open ? "border-teal-800" : "border-slate-800"}`}>
+                <div key={g.key} className={`overflow-hidden rounded-2xl border bg-slate-900 ${open ? "border-teal-800" : isSupProj(g.projectId) ? "border-violet-800" : "border-slate-800"}`}>
                   <div className="flex items-center gap-2 border-b border-slate-800 py-1.5 pl-3 pr-1.5">
                     {noProj
                       ? <span className="shrink-0 rounded-md bg-slate-800 px-1.5 py-px text-[11px] font-semibold text-slate-400">CHUNG</span>
-                      : proj?.code && <span className="shrink-0 rounded-md bg-teal-950 px-1.5 py-px font-mono text-[11px] font-semibold text-teal-400">{proj.code}</span>}
+                      : proj?.code && <span className={`shrink-0 rounded-md px-1.5 py-px font-mono text-[11px] font-semibold ${isSupProj(g.projectId) ? "bg-violet-950 text-violet-300" : "bg-teal-950 text-teal-400"}`}>{proj.code}</span>}
                     <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-slate-100">{noProj ? "Việc chung · Vắng mặt" : projName(g.projectId)}</span>
                     {!noProj && <span className="shrink-0 whitespace-nowrap rounded-md border border-slate-700 px-1.5 py-px text-[11px] text-slate-400">{g.phaseId}{phaseInfo(g.phaseId) ? ` ${phaseInfo(g.phaseId).name}` : ""}</span>}
                     {(canEdit || canDel) && (
@@ -3554,6 +3595,9 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                         className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${menuKey === g.key ? "bg-slate-800 text-slate-100" : "text-slate-400"}`}><MoreHorizontal size={18} /></button>
                     )}
                   </div>
+                  {isSupProj(g.projectId) && (
+                    <div className="border-b border-violet-900/60 bg-violet-950/60 px-3 py-1.5 text-[11.5px] text-violet-300">Hỗ trợ tới hết <b>{dLabel(supUntil(g.projectId))}</b> — ngày ngoài thời hạn không nhập được</div>
+                  )}
                   {menuKey === g.key && (
                     <div className="flex flex-wrap gap-2 border-b border-slate-800 bg-slate-950 px-3 py-2">
                       {canEdit && !open && <button onClick={() => { editGroup(g.key); setMenuKey(null); }} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-700 px-3 text-xs text-slate-200"><Pencil size={13} /> Sửa khối · tăng ca</button>}
@@ -3713,13 +3757,26 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
               <div className="mt-1 min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 <div className="mb-1.5 mt-3 text-[11px] uppercase tracking-wider text-slate-500">Dự án</div>
                 <div className="flex flex-wrap gap-1.5">
-                  {activeProjects.map((p) => (
+                  {activeProjects.filter((p) => !isSupProj(p.id)).map((p) => (
                     <button key={p.id} onClick={() => sheetPick(p.id)} className={chip(pid === p.id)}>
                       {p.code ? <>{p.code} <span className="opacity-70">{p.name}</span></> : p.name}
                     </button>
                   ))}
                   <button onClick={() => sheetPick(NO_PROJECT)} className={chip(khac)}>Việc chung · Vắng mặt</button>
                 </div>
+                {activeProjects.some((p) => isSupProj(p.id)) && (
+                  <>
+                    <div className="mb-1.5 mt-3 text-[11px] uppercase tracking-wider text-violet-400">Đang hỗ trợ</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {activeProjects.filter((p) => isSupProj(p.id)).map((p) => (
+                        <button key={p.id} onClick={() => sheetPick(p.id)} className={pid === p.id ? chip(true) : "rounded-lg border border-violet-800 bg-slate-900 px-2.5 py-1.5 text-[13px] text-violet-300"}>
+                          {p.code ? <>{p.code} <span className="opacity-70">{p.name}</span></> : p.name}
+                          <span className="opacity-70"> · tới {dLabel(supUntil(p.id))}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
                 {pid && !khac && (
                   <>
                     <div className="mb-1.5 mt-3 text-[11px] uppercase tracking-wider text-slate-500">Giai đoạn</div>
@@ -3910,7 +3967,7 @@ function HoursMatrix({ cfg, ym, flash, onPickEmp }) {
       .map((d) => {
         const e = empMap.get(d.empId);
         return { "Mã": e?.code || "", "Nhân sự": (e ? empNameTag(e) : "(đã xoá)"), "Bộ phận": e?.dept || "", "Vai trò": roleTitle(e?.role), "Ngày": d.date, "Thứ": DOW[(parseD(d.date).getDay() + 6) % 7],
-          "Dự án": projLabel(d.projectId), "Giai đoạn": d.projectId === NO_PROJECT ? "" : phaseLabel(d.phaseId), "Hạng mục": taskLabel(d.taskId), "Ghi chú": d.note || "", "Giờ": d.hours };
+          "Dự án": projLabel(d.projectId), "Loại": supportKind(cfg, d.empId, d.projectId, d.date), "Giai đoạn": d.projectId === NO_PROJECT ? "" : phaseLabel(d.phaseId), "Hạng mục": taskLabel(d.taskId), "Ghi chú": d.note || "", "Giờ": d.hours };
       });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), "Chi tiết");
     const need = mondaysDue(ym);
@@ -4784,13 +4841,20 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
 
 /* v6.1 — Bảng công (quản lý) chỉ còn Tổng quan bảng công: xem Tuần / Tháng, sửa nhanh từng ô, sửa cả tuần trong ngăn kéo.
    Bỏ tab "Chi tiết nhân viên" (ngăn kéo đã dùng đúng bảng sửa đó). */
-function AdminTimesheet({ cfg, flash, onDirtyChange, readOnly = false, oneDept = false }) {
+function AdminTimesheet({ cfg, flash, onDirtyChange, readOnly = false, oneDept = false, onSupport = null }) {
   if (cfg.employees.length === 0) return (
     <Panel title="Bảng công nhân sự">
       <p className="text-sm text-slate-500">{oneDept ? "Phòng ban của bạn chưa có nhân viên nào khác." : "Chưa có nhân sự nào. Thêm nhân sự ở tab Nhân sự trước đã."}</p>
     </Panel>
   );
-  return <TimesheetBoard cfg={cfg} flash={flash} onDirtyChange={onDirtyChange} readOnly={readOnly} oneDept={oneDept} />;
+  return (
+    <div className="space-y-3 md:space-y-4">
+      {/* v8.7 — hỗ trợ dự án có thời hạn: trưởng phòng mở cho nhân viên phòng mình, Admin cho mọi người */}
+      {onSupport && <SupportPanel cfg={cfg} onSupport={onSupport} readOnly={readOnly} collapsible
+        note={oneDept ? "Mở cho nhân viên phòng bạn chấm công vào dự án khác trong một khoảng ngày. Hết hạn tự ngắt, giờ đã chấm giữ nguyên." : "Mở cho nhân sự chấm công vào dự án không được giao, trong một khoảng ngày. Hết hạn tự ngắt, giờ đã chấm giữ nguyên."} />}
+      <TimesheetBoard cfg={cfg} flash={flash} onDirtyChange={onDirtyChange} readOnly={readOnly} oneDept={oneDept} />
+    </div>
+  );
 }
 
 /* --------- cảnh báo hạn chốt công (ẩn tạm trong phiên, hoặc tắt vĩnh viễn theo thiết bị) --------- */
@@ -5593,7 +5657,7 @@ function Dashboard({ cfg, saveCfg, flash }) {
     const detail = [...agg.detail].sort((a, b) => a.date.localeCompare(b.date)).map((d) => ({
       "Ngày": d.date, "Thứ": DOW[(parseD(d.date).getDay() + 6) % 7],
       "Nhân sự": empName(d.empId), "Bộ phận": empDept(d.empId), "Vai trò": empTitle(d.empId),
-      "Dự án": projLabel(d.projectId), "Giai đoạn": d.projectId === NO_PROJECT || isLeaveTask(d.taskId) ? "" : phaseLabel(d.phaseId),
+      "Dự án": projLabel(d.projectId), "Loại": supportKind(cfg, d.empId, d.projectId, d.date), "Giai đoạn": d.projectId === NO_PROJECT || isLeaveTask(d.taskId) ? "" : phaseLabel(d.phaseId),
       "Hạng mục": taskLabel(d.taskId), "Tăng ca cho tác vụ": isOtId(d.taskId) ? (d.otFor ? taskLabel(d.otFor) : "Chưa rõ") : "",
       "Ghi chú": d.note || "", "Giờ": d.hours,
       // v4.9: hệ số + giờ quy đổi của dòng tăng ca
@@ -6882,7 +6946,8 @@ const ChartBar = ({ data, color }) => {
 };
 
 /* ============================ DỰ ÁN ============================ */
-function Projects({ cfg, saveCfg, flash }) {
+function Projects({ cfg, saveCfg, flash, onSupport = null }) {
+  const [supFor, setSupFor] = useState(null);   // v8.7: dự án đang mở hộp "+ Hỗ trợ"
   const [name, setName] = useState(""); const [code, setCode] = useState(""); const [client, setClient] = useState("");
   const [budgets, setBudgets] = useState({});   // giờ công dự kiến theo phase
   const [editId, setEditId] = useState(null);
@@ -6907,6 +6972,8 @@ function Projects({ cfg, saveCfg, flash }) {
   const teamBlock = (p) => {
     const on = teamOpen.has(p.id);
     const team = cfg.employees.filter((e) => !isResigned(e) && inProj(e, p.id));
+    const today8 = fmt(new Date());
+    const sups = supportList(cfg).filter((x) => x.pid === p.id && x.until >= today8);
     return (
       <div>
         <button onClick={() => teamToggle(p.id)} title="Nhân sự tham gia" aria-label="Nhân sự tham gia"
@@ -6924,8 +6991,20 @@ function Projects({ cfg, saveCfg, flash }) {
                   className="flex h-6 w-6 items-center justify-center rounded text-slate-500 opacity-0 hover:bg-rose-950 hover:text-rose-300 group-hover:opacity-100 max-md:opacity-100"><X size={12} /></button>
               </div>
             ))}
+            {/* v8.7 — nhân sự đang hỗ trợ dự án này (có thời hạn) */}
+            {sups.length > 0 && <div className="mb-0.5 mt-1.5 text-[10.5px] uppercase tracking-wider text-violet-400">Hỗ trợ</div>}
+            {sups.map((x) => { const e = cfg.employees.find((y) => y.id === x.empId); return (
+              <div key={x.id} className="flex min-h-[26px] items-center gap-1.5">
+                <span className="whitespace-nowrap text-slate-200">{e?.name || "?"}</span>
+                <span className="sup-tag whitespace-nowrap rounded border border-violet-800 bg-violet-950 px-1 text-[10.5px] text-violet-300">{x.from > today8 ? `từ ${dLabel(x.from)}` : `tới ${dLabel(x.until)}`}{x.phase ? ` · ${x.phase}` : ""}</span>
+                <span className="text-slate-500">{fmtH(supHours(x))} h</span>
+              </div>
+            ); })}
             <button onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); setTp({ pid: p.id, q: "", x: Math.max(8, Math.min(window.innerWidth - 328, r.left)), y: r.bottom + 6, top: r.top }); }}
               className="mt-1 h-8 rounded-md border border-dashed border-slate-700 px-2.5 text-xs text-slate-400 hover:border-teal-600 hover:text-teal-300">+ Nhân sự</button>
+            {onSupport && (
+              <button onClick={() => setSupFor(p.id)} className="ro-hide ml-1.5 mt-1 h-8 rounded-md border border-dashed border-violet-800 px-2.5 text-xs text-violet-300 hover:border-violet-600">+ Hỗ trợ</button>
+            )}
           </div>
         )}
       </div>
@@ -7056,6 +7135,7 @@ function Projects({ cfg, saveCfg, flash }) {
   return (
     <Panel title="Dự án — sửa thông tin & bật/tắt chấm công">
       {teamPop}
+      {supFor && onSupport && <SupportDialog cfg={cfg} emps={cfg.employees.filter((e) => !isResigned(e)).sort((a, b) => a.name.localeCompare(b.name, "vi"))} presetPid={supFor} onSave={onSupport} onClose={() => setSupFor(null)} />}
       {/* bọc trong div để class width không bị w-full của inputCls ghi đè */}
       <div className="ro-hide mb-5 grid gap-2 md:flex md:flex-wrap md:items-end">
         <div className="md:w-28">
@@ -7242,7 +7322,7 @@ const copyText = async (text) => {
   } catch { return false; }
 };
 
-function Employees({ cfg, saveCfg, flash, readOnly = false }) {
+function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = null }) {
   const [sub, setSub] = useState("emp");              // tab con: emp | admin
   const [q, setQ] = useState("");
   const [fDept, setFDept] = useState("");
@@ -7915,7 +7995,7 @@ function Employees({ cfg, saveCfg, flash, readOnly = false }) {
   return (
     <div className="space-y-3 md:space-y-4">
       <div className="inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-1">
-        {[["emp", "Nhân sự", actList.length], ["gone", "Nhân sự nghỉ việc", goneList.length], ["admin", "Tài khoản BOD / Admin", loose.length]].map(([k, l, n]) => (
+        {[["emp", "Nhân sự", actList.length], ["gone", "Nhân sự nghỉ việc", goneList.length], ...(onSupport ? [["sup", "Hỗ trợ dự án", supportList(cfg).filter((x) => x.until >= fmt(new Date())).length]] : []), ["admin", "Tài khoản BOD / Admin", loose.length]].map(([k, l, n]) => (
           <button key={k} onClick={() => setSub(k)}
             className={`h-9 whitespace-nowrap rounded-md px-4 text-sm ${sub === k ? "bg-slate-800 font-medium text-slate-50" : "text-slate-400 hover:text-slate-200"}`}>
             {l}<span className="ml-1.5 font-mono text-xs text-slate-500">{n}</span>
@@ -7923,7 +8003,7 @@ function Employees({ cfg, saveCfg, flash, readOnly = false }) {
         ))}
       </div>
 
-      {sub === "emp" ? empTab : sub === "gone" ? goneTab : adminTab}
+      {sub === "emp" ? empTab : sub === "gone" ? goneTab : sub === "sup" ? <SupportPanel cfg={cfg} onSupport={onSupport} readOnly={readOnly} /> : adminTab}
       {formDlg}
       {resignBox}
       {delBox}
@@ -9095,6 +9175,175 @@ function AllocLimitPanel({ cfg, saveCfg, flash }) {
         <button onClick={save} className={`ml-auto shrink-0 ${btnPrimary}`}><Save size={14} /> Lưu ngưỡng</button>
       </div>
     </Panel>
+  );
+}
+
+/* ============================ v8.7 — HỖ TRỢ DỰ ÁN CÓ THỜI HẠN ============================ */
+const supHours = (x) => {   // giờ đã chấm (cả nháp) của đợt hỗ trợ, trong các tháng đang có trong bộ nhớ
+  let h = 0;
+  const hi = x.until < fmt(new Date()) ? x.until : fmt(new Date());
+  if (hi < x.from) return 0;
+  for (const ym of ymsBetween(x.from, hi)) for (const r of dbTs(x.empId, ym)?.rows || []) {
+    if (r.projectId !== x.pid) continue;
+    for (const [d, v] of Object.entries(r.days || {})) if (d >= x.from && d <= hi && (!x.phase || (r.phaseId || DEFAULT_PHASE) === x.phase)) h += Number(v) || 0;
+  }
+  return h;
+};
+/* hộp Mở hỗ trợ: chọn nhân sự · dự án · giai đoạn · thời gian. emps = nhân sự được chọn (trưởng phòng: phòng mình) */
+function SupportDialog({ cfg, emps, presetEmp = "", presetPid = "", onSave, onClose }) {
+  const today = fmt(new Date());
+  const [eid, setEid] = useState(presetEmp || (emps.length === 1 ? emps[0].id : ""));
+  const [pid, setPid] = useState(presetPid);
+  const [ph, setPh] = useState("");
+  const [from, setFrom] = useState(today);
+  const [until, setUntil] = useState(fmt(addDays(new Date(), 13)));
+  const [dur, setDur] = useState("2w");
+  const [note, setNote] = useState("");
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState(false);
+  const emp = emps.find((e) => e.id === eid);
+  const mine = new Set(Array.isArray(emp?.projects) ? emp.projects : []);
+  const kw = norm(q.trim());
+  const projs = cfg.projects.filter((p) => p.active && !mine.has(p.id) && activePhases().some((x) => projPhaseIsOpen(p, x.id))
+    && (!kw || norm(`${p.code || ""} ${p.name}`).includes(kw)));
+  const proj = cfg.projects.find((p) => p.id === pid);
+  const phases = proj ? activePhases().filter((x) => projPhaseIsOpen(proj, x.id)) : [];
+  const setDuration = (k, f = from) => {
+    setDur(k);
+    if (k === "1w") setUntil(fmt(addDays(parseD(f), 6)));
+    if (k === "2w") setUntil(fmt(addDays(parseD(f), 13)));
+    if (k === "4w") setUntil(fmt(addDays(parseD(f), 27)));
+    if (k === "mo") setUntil(fmt(lastOfMonth(parseD(f))));
+  };
+  const chip = (on) => `rounded-lg border px-2.5 py-1.5 text-[13px] ${on ? "border-teal-600 bg-teal-600 font-medium text-white" : "border-slate-700 text-slate-300 hover:border-slate-500"}`;
+  const ok = eid && pid && from && until && until >= from && until >= today;
+  const save = async () => {
+    if (!ok || busy) return;
+    setBusy(true);
+    const done = await onSave({ id: uid("s"), empId: eid, pid, phase: ph, from, until, note: note.trim() });
+    setBusy(false);
+    if (done) onClose();
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 pt-[6vh]" onMouseDown={(ev) => { if (ev.target === ev.currentTarget && !busy) onClose(); }}>
+      <div className="w-full max-w-xl rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+          <span className="text-sm font-semibold text-slate-50">Mở hỗ trợ dự án</span>
+          <button onClick={onClose} className={iconBtn}><X size={15} /></button>
+        </div>
+        <div className="space-y-3 p-4">
+          <div>
+            <div className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500">Nhân sự</div>
+            <select value={eid} onChange={(e) => { setEid(e.target.value); setPid(presetPid); setPh(""); }} className={selectCls}>
+              <option value="">— Chọn nhân sự —</option>
+              {emps.map((e) => <option key={e.id} value={e.id}>{e.name}{e.code ? ` · ${e.code}` : ""}{e.dept ? ` · ${e.dept}` : ""}</option>)}
+            </select>
+          </div>
+          <div>
+            <div className="mb-1.5 flex items-center justify-between gap-2 text-[11px] uppercase tracking-wider text-slate-500">
+              <span>Hỗ trợ dự án</span>
+              {!presetPid && <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm dự án" className="h-8 w-40 rounded-md border border-slate-700 bg-slate-950 px-2 text-xs normal-case tracking-normal text-slate-200 focus:border-teal-500 focus:outline-none" />}
+            </div>
+            {presetPid && proj ? <div className="text-sm text-slate-100">{proj.code ? `[${proj.code}] ` : ""}{proj.name}{mine.has(proj.id) && <span className="ml-2 text-xs text-amber-400">— người này đã tham gia chính thức</span>}</div> : (
+              <div className="flex max-h-44 flex-wrap gap-1.5 overflow-y-auto">
+                {projs.map((p) => <button key={p.id} type="button" onClick={() => { setPid(p.id); setPh(""); }} className={chip(pid === p.id)}>{p.code ? `${p.code} ` : ""}<span className="opacity-80">{p.name}</span></button>)}
+                {!projs.length && <span className="text-xs text-slate-500">Không có dự án đang mở nào khớp.</span>}
+              </div>
+            )}
+            {emp && !presetPid && <div className="mt-1 text-[11px] text-slate-500">Đã ẩn dự án người này đang tham gia chính thức.</div>}
+          </div>
+          {proj && (
+            <div>
+              <div className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500">Giai đoạn</div>
+              <div className="flex flex-wrap gap-1.5">
+                {phases.map((x) => <button key={x.id} type="button" onClick={() => setPh(x.id)} className={chip(ph === x.id)}>{x.id} {x.name}</button>)}
+                <button type="button" onClick={() => setPh("")} className={chip(ph === "")}>Mọi giai đoạn đang mở</button>
+              </div>
+            </div>
+          )}
+          <div>
+            <div className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500">Thời gian hỗ trợ</div>
+            <div className="flex flex-wrap gap-1.5">
+              {[["1w", "1 tuần"], ["2w", "2 tuần"], ["4w", "4 tuần"], ["mo", "Hết tháng này"]].map(([k, l]) => <button key={k} type="button" onClick={() => setDuration(k)} className={chip(dur === k)}>{l}</button>)}
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <label className="text-xs text-slate-500">Từ ngày<input type="date" value={from} onChange={(e) => { setFrom(e.target.value); if (dur) setDuration(dur, e.target.value); }} className={`mt-1 ${inputCls}`} /></label>
+              <label className="text-xs text-slate-500">Đến hết ngày<input type="date" min={from} value={until} onChange={(e) => { setUntil(e.target.value); setDur(""); }} className={`mt-1 ${inputCls}`} /></label>
+            </div>
+            {until < from && <div className="mt-1 text-xs text-rose-400">Ngày kết thúc phải sau ngày bắt đầu.</div>}
+          </div>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ghi chú (không bắt buộc), ví dụ: hỗ trợ triển khai bản vẽ khối phòng nghỉ" className={inputCls} />
+          <p className="text-xs text-slate-500">Nhân sự chấm được vào dự án này ở các ngày trong khoảng trên (vẫn theo khoá chấm công quá hạn). Hết hạn tự ngắt; giờ đã chấm giữ nguyên.</p>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-800 px-4 py-3">
+          <button onClick={onClose} className={btnGhost}>Huỷ</button>
+          <button onClick={save} disabled={!ok || busy} className={`${btnPrimary} disabled:opacity-40`}>{busy ? <Loader2 className="animate-spin" size={15} /> : <Check size={15} />} Mở hỗ trợ</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+/* danh sách đợt hỗ trợ (đang mở / sắp tới / hết hạn ≤ 30 ngày) + nút Mở hỗ trợ · Gia hạn · Kết thúc */
+function SupportPanel({ cfg, onSupport, readOnly = false, collapsible = false, note = "" }) {
+  const dataTick = useDataTick();   // eslint-disable-line no-unused-vars
+  const today = fmt(new Date());
+  const [dlg, setDlg] = useState(false);
+  const [open, setOpen] = useState(() => !collapsible || supportList(cfg).some((x) => x.until >= fmt(new Date())));   // có đợt đang mở thì mở sẵn
+  const emps = cfg.employees.filter((e) => !isResigned(e)).sort((a, b) => a.name.localeCompare(b.name, "vi"));
+  const empMap = new Map(cfg.employees.map((e) => [e.id, e]));
+  const old = fmt(addDays(new Date(), -30));
+  const items = supportList(cfg).filter((x) => empMap.has(x.empId) && x.until >= old)
+    .sort((a, b) => (a.until >= today) !== (b.until >= today) ? (a.until >= today ? -1 : 1) : a.until.localeCompare(b.until));
+  const live = items.filter((x) => x.until >= today);
+  const pName = (pid) => { const p = cfg.projects.find((x) => x.id === pid); return p ? `${p.code ? `${p.code} ` : ""}${p.name}` : "(dự án đã xoá)"; };
+  const daysLeft = (x) => Math.round((parseD(x.until) - parseD(today)) / 864e5);
+  const extend = (x, n) => onSupport({ ...x, until: fmt(addDays(parseD(x.until < today ? today : x.until), 7 * n)) });
+  const end = (x) => (x.from >= today ? onSupport(x, true) : onSupport({ ...x, until: fmt(addDays(new Date(), -1)) < x.from ? x.from : fmt(addDays(new Date(), -1)) }));
+  const smBtn = "inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs";
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-900">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5">
+        <button onClick={() => collapsible && setOpen(!open)} className={`flex min-w-0 items-center gap-2 text-left ${collapsible ? "" : "cursor-default"}`}>
+          {collapsible && <ChevronDown size={15} className={`shrink-0 text-slate-500 transition-transform ${open ? "rotate-180" : ""}`} />}
+          <span className="text-sm font-medium text-slate-100">Hỗ trợ dự án</span>
+          <span className="sup-tag rounded-md border border-violet-800 bg-violet-950 px-1.5 py-px text-[11px] text-violet-300">{live.length} đang mở</span>
+        </button>
+        {!readOnly && <button onClick={() => setDlg(true)} className={`ro-hide ${btnPrimary} h-9`}><Plus size={14} /> Mở hỗ trợ</button>}
+      </div>
+      {open && (
+        <>
+          {note && <div className="px-3.5 pb-2 text-xs text-slate-500">{note}</div>}
+          {items.length === 0 ? <div className="border-t border-slate-800 px-4 py-5 text-center text-sm text-slate-500">Chưa có đợt hỗ trợ nào.</div>
+            : items.map((x) => {
+              const e = empMap.get(x.empId), left = daysLeft(x), gone = x.until < today, soon = !gone && left <= 2, wait = x.from > today;
+              const h = supHours(x);
+              return (
+                <div key={x.id} className={`flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-slate-800 px-3.5 py-2.5 text-sm ${gone ? "opacity-55" : ""}`}>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-slate-100">{e?.name || "?"} <span className="text-slate-500">→</span> {pName(x.pid)}{x.phase ? <span className="text-slate-500"> · {x.phase}</span> : ""}</div>
+                    <div className="text-xs text-slate-500">
+                      {dLabel(x.from)} → {dLabel(x.until)}
+                      {" · "}{gone ? <span>đã hết hạn</span> : wait ? <span className="text-sky-400">bắt đầu {dLabel(x.from)}</span> : <span className={soon ? "text-amber-400" : "text-violet-300"}>{left === 0 ? "hết hạn hôm nay" : `còn ${left} ngày`}</span>}
+                      {" · "}{fmtH(h)} h{x.note ? ` · ${x.note}` : ""}
+                    </div>
+                  </div>
+                  {!readOnly && !gone && (
+                    <div className="ro-hide flex shrink-0 gap-1.5">
+                      <button onClick={() => extend(x, 1)} className={`${smBtn} border-slate-700 text-slate-300 hover:border-teal-600 hover:text-teal-300`}>+1 tuần</button>
+                      <button onClick={() => extend(x, 2)} className={`${smBtn} border-slate-700 text-slate-300 hover:border-teal-600 hover:text-teal-300`}>+2 tuần</button>
+                      <button onClick={() => end(x)} className={`${smBtn} border-rose-900 text-rose-300 hover:border-rose-700`}>{wait ? "Huỷ" : "Kết thúc"}</button>
+                    </div>
+                  )}
+                  {!readOnly && gone && (
+                    <div className="ro-hide flex shrink-0 gap-1.5"><button onClick={() => onSupport({ ...x, id: uid("s"), from: today, until: fmt(addDays(new Date(), 6)) })} className={`${smBtn} border-slate-700 text-slate-400 hover:text-teal-300`}>Mở lại 1 tuần</button></div>
+                  )}
+                </div>
+              );
+            })}
+        </>
+      )}
+      {dlg && <SupportDialog cfg={cfg} emps={emps} onSave={onSupport} onClose={() => setDlg(false)} />}
+    </div>
   );
 }
 
