@@ -7,16 +7,21 @@ import {
   Clock, Users, FolderKanban, LayoutDashboard, Download, Plus, Trash2, Save,
   AlertTriangle, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, LogOut, Settings,
   CheckCircle2, Loader2, ListChecks, Lock, RotateCcw, Pencil, Check, X, CalendarDays,
-  Copy, Unlock, Search, Flag, Zap, Eraser, ClipboardList, MoreHorizontal, Grid3x3, User, Eye, EyeOff, Bell, Send, Printer, QrCode, Share, GripVertical, Sun, Moon, Monitor, Minus,
+  Copy, Unlock, Search, Flag, Zap, Eraser, ClipboardList, MoreHorizontal, Grid3x3, User, Eye, EyeOff, Bell, Send, Printer, QrCode, Share, GripVertical, Sun, Moon, Monitor, Minus, UserMinus, UserCheck,
 } from "lucide-react";
 import { fetchConfig, saveConfig, fetchTs, fetchTsChanges, fetchTsStamps, saveTs, deleteAllTs, fetchUsage, fetchPhaseDetail, purgeTasks, fetchOrphanTasks } from "./data.js";
 import { mergeConfig } from "./merge.js";
 import { LIGHT_CSS } from "./lightTheme.js";
+import { supabase } from "./storage.js";   // v8.5: xoá hẳn bảng công của một nhân sự (Admin)
 import { askPermission, syncPush, pushPermission, sendTestPush, fetchPushStatus, sendNudge, fetchNudgeLog, fetchNudgeLogRange } from "./push.js";
 import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "./auth.js";
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v8.5 — Nhân sự nghỉ việc: nút Nghỉ việc (chọn ngày nghỉ) khoá tài khoản, gỡ khỏi dự án, chuyển sang tab "Nhân sự nghỉ việc";
+   không còn hiện ở giao dự án / nhắc nộp / KPI nộp bảng công; báo cáo kỳ còn giờ của họ vẫn hiện kèm nhãn "Đã nghỉ". Làm lại được.
+   Xoá nhân sự: chọn giữ giờ công hoặc xoá luôn toàn bộ giờ công (gõ XOA). Khung "Giờ công của nhân sự đã xoá" để xuất Excel / xoá hẳn
+   giờ còn sót của nhân sự đã xoá trước đây.
    Mới ở v8.4 — Màn Chấm công trên điện thoại gọn lại (máy tính giữ nguyên): header chỉ còn logo + vòng tròn chữ cái tên;
    banner 1 dòng "N tuần chưa gửi · cũ nhất dd/mm · Xem ›"; ẩn dải chú thích màu; thẻ tuần ‹ › + Chuẩn · Cố gắng · Tổng;
    dải ngày tô đặc ngày đang xem, chấm màu trạng thái; khối dự án 1 dòng (mã · tên · giai đoạn · ⋯), nhập giờ − / + ngay tại dòng;
@@ -300,7 +305,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v8.4";
+const APP_VERSION = "v8.5";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -551,6 +556,34 @@ const wipeTs = async () => {
   return ok;
 };
 
+/* v8.5 — Xoá hẳn toàn bộ bảng công (mọi tháng) của một nhân sự trên server, rồi bỏ khỏi bộ nhớ. Không hoàn tác được. */
+const purgeEmpTs = async (empId) => {
+  const { error } = await supabase.from("artius_ts").delete().eq("emp_id", empId);
+  if (error) throw new Error(`Không xoá được giờ công: ${error.message || error.code || "lỗi không rõ"}`);
+  const pre = `${empId}:`;
+  if (DB?.ts) for (const k of Object.keys(DB.ts)) if (k.startsWith(pre)) delete DB.ts[k];
+  for (const k of [...TS_STAMP.keys()]) if (k.startsWith(pre)) TS_STAMP.delete(k);
+  bumpData();
+};
+/* v8.5 — Đọc toàn bộ giờ công (mọi tháng, cả nháp) của các nhân sự ids: { id: { total, sent, months, byProj: Map(label → giờ), rows: [...] } } */
+const empHoursAll = async (ids, labelOf) => {
+  const out = {};
+  if (!ids.length) return out;
+  const map = await fetchTs({ empIds: ids });
+  for (const [k, b] of Object.entries(map)) {
+    const i = k.indexOf(":"), id = k.slice(0, i), ym = k.slice(i + 1);
+    const o = out[id] || (out[id] = { total: 0, sent: 0, months: new Set(), byProj: new Map(), rows: [] });
+    for (const r of b?.rows || []) for (const [d, hv] of Object.entries(r.days || {})) {
+      const h = Number(hv) || 0; if (h <= 0) continue;
+      const ok = !!b.sent?.[d];
+      o.total += h; if (ok) o.sent += h; o.months.add(ym);
+      const lb = labelOf.proj(r);
+      o.byProj.set(lb, (o.byProj.get(lb) || 0) + h);
+      o.rows.push({ date: d, ym, proj: lb, phase: r.projectId === NO_PROJECT || isLeaveTask(r.taskId) ? "" : (r.phaseId || DEFAULT_PHASE), task: labelOf.task(r), h, sent: ok, note: r.note || "" });
+    }
+  }
+  return out;
+};
 const dbTs = (empId, ym) => DB?.ts?.[slot(empId, ym)] || null;
 /* v1.9 — Gửi và khoá theo TỪNG NGÀY. Ngày đã gửi được ghi ở bucket.sent['YYYY-MM-DD'] trong dòng tháng của ngày đó.
    Quản lý chỉ tổng hợp giờ của những ngày đã gửi. Dòng nào không còn ngày nào thì bỏ. */
@@ -1112,6 +1145,13 @@ const withIdleTask = (c) => {
 };
 let IDLE_PENDING = false;   // v7.2: cấu hình trên server chưa có tác vụ Chờ việc — quản lý mở app sẽ tự lưu
 const NO_PROJECT = "__none__";
+/* v8.5 — Nhân sự nghỉ việc: employee.resignedAt = "YYYY-MM-DD" (ngày bắt đầu nghỉ, từ ngày này không còn làm).
+   Người nghỉ việc: tài khoản bị khoá, gỡ khỏi dự án đang tham gia (lưu lại ở projectsBefore để làm lại), không hiện trong
+   danh sách giao dự án / nhắc nộp / tab Nhân sự đang làm. Giờ công đã chấm giữ nguyên, báo cáo kỳ có giờ của họ vẫn hiện kèm nhãn (Đã nghỉ). */
+const isResigned = (e) => !!e?.resignedAt;
+const goneOnDay = (e, d) => !!e?.resignedAt && d >= e.resignedAt;
+const empNameTag = (e) => (e ? `${e.name}${isResigned(e) ? " (Đã nghỉ)" : ""}` : "(đã xoá)");
+const ResignedBadge = () => <span className="ml-1.5 inline-block rounded border border-slate-700 px-1 align-middle text-[10px] font-normal text-slate-400">Đã nghỉ</span>;
 const NO_PHASE = "?";   // v3.0: dòng mới, giai đoạn chưa chọn (dự án "" = chưa chọn, hạng mục "" = chưa chọn)
 /* LEAVE_TYPES / LEAVE_TASKS là bản sống: App chép cfg.leaveTypes vào đây ở mỗi lần render (syncLeave),
    quản lý thêm / sửa / xoá loại nghỉ ở tab Tác vụ. */
@@ -3789,7 +3829,9 @@ function HoursMatrix({ cfg, ym, flash, onPickEmp }) {
     return detail;
   }, [cfg.employees, from, to, dataTick]);
 
+  const withHrs = useMemo(() => new Set(base.map((d) => d.empId)), [base]);
   const emps = cfg.employees.filter((e) => {
+    if (isResigned(e) && !withHrs.has(e.id)) return false;   // v8.5: người đã nghỉ chỉ hiện khi kỳ này còn giờ của họ
     if (fDept !== "all" && e.dept !== fDept) return false;
     const kw = norm(q.trim());   // v6.6: gõ không dấu vẫn tìm ra
     return !kw || norm(`${e.name} ${e.code || ""} ${e.dept} ${e.role || ""} ${roleTitle(e.role)}`).includes(kw);
@@ -3824,7 +3866,7 @@ function HoursMatrix({ cfg, ym, flash, onPickEmp }) {
     const XLSX = await loadXlsx();
     const wb = XLSX.utils.book_new();
     const mtx = shown.map((e) => {
-      const row = { "Mã": e.code || "", "Nhân sự": e.name, "Bộ phận": e.dept, "Vai trò": roleTitle(e.role) };
+      const row = { "Mã": e.code || "", "Nhân sự": empNameTag(e), "Bộ phận": e.dept, "Vai trò": roleTitle(e.role) };
       const m = view.cell.get(e.id);
       for (const c of allCols) row[projLabel(c)] = m?.get(c) || 0;
       row["Tổng giờ"] = view.empTot.get(e.id) || 0;
@@ -3841,12 +3883,12 @@ function HoursMatrix({ cfg, ym, flash, onPickEmp }) {
       .sort((a, b) => (empMap.get(a.empId)?.name || "").localeCompare(empMap.get(b.empId)?.name || "") || a.date.localeCompare(b.date))
       .map((d) => {
         const e = empMap.get(d.empId);
-        return { "Mã": e?.code || "", "Nhân sự": e?.name || "(đã xoá)", "Bộ phận": e?.dept || "", "Vai trò": roleTitle(e?.role), "Ngày": d.date, "Thứ": DOW[(parseD(d.date).getDay() + 6) % 7],
+        return { "Mã": e?.code || "", "Nhân sự": (e ? empNameTag(e) : "(đã xoá)"), "Bộ phận": e?.dept || "", "Vai trò": roleTitle(e?.role), "Ngày": d.date, "Thứ": DOW[(parseD(d.date).getDay() + 6) % 7],
           "Dự án": projLabel(d.projectId), "Giai đoạn": d.projectId === NO_PROJECT ? "" : phaseLabel(d.phaseId), "Hạng mục": taskLabel(d.taskId), "Ghi chú": d.note || "", "Giờ": d.hours };
       });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), "Chi tiết");
     const need = mondaysDue(ym);
-    const st = shown.map((e) => { const miss = need.filter((m) => !weekDone(e.id, m)); return { "Nhân sự": e.name, "Vai trò": roleTitle(e.role), "Số tuần cần nộp": need.length, "Đã nộp": need.length - miss.length, "Thiếu": miss.length, "Tuần thiếu": miss.map(dLabel).join(", ") }; });
+    const st = shown.map((e) => { const miss = need.filter((m) => !weekDone(e.id, m)); return { "Nhân sự": empNameTag(e), "Vai trò": roleTitle(e.role), "Số tuần cần nộp": need.length, "Đã nộp": need.length - miss.length, "Thiếu": miss.length, "Tuần thiếu": miss.map(dLabel).join(", ") }; });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(st), "Tình trạng nộp");
     const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
@@ -3903,7 +3945,7 @@ function HoursMatrix({ cfg, ym, flash, onPickEmp }) {
                   <tr key={e.id} className="group">
                     <td className="sticky left-0 z-10 border-b border-slate-800/70 bg-slate-900 px-3 py-1.5 md:px-4">
                       <button onClick={() => onPickEmp(e.id)} title="Xem và sửa bảng công chi tiết" className="block w-full text-left">
-                        <span className="block truncate font-medium text-slate-100 group-hover:text-teal-300">{e.name}</span>
+                        <span className="block truncate font-medium text-slate-100 group-hover:text-teal-300">{e.name}{isResigned(e) && <ResignedBadge />}</span>
                         <span className="block truncate text-[11px] text-slate-500">{e.dept}{e.role ? ` · ${e.role}` : ""}</span>
                       </button>
                     </td>
@@ -4041,6 +4083,7 @@ const saveDayTs = async (empId, d, vals) => {
           oneDept: trưởng phòng — cfg.employees đã lọc còn phòng của mình, ẩn ô chọn bộ phận. */
 function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept = false }) {
   const dataTick = useDataTick();
+  const empById8 = useMemo(() => new Map(cfg.employees.map((e) => [e.id, e])), [cfg.employees]);
   const today = fmt(new Date());
   const [mode, setMode] = useState("week");                     // week | month
   const [monday, setMonday] = useState(fmt(mondayOf(new Date())));
@@ -4130,14 +4173,17 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
   /* v6.4: hôm nay chỉ tính vào giờ chuẩn khi đã có giờ gửi — trước đây tính luôn nên ai cũng "thiếu 8 h" cả ngày */
   const stdOf = (d, eid) => {
     if (d > today) return 0;
+    if (eid && gone(eid, d)) return 0;
     if (d === today && eid) { const c = cellOf.get(`${eid}|${d}`); if (!c || c.reg + c.leave + c.ot <= 0) return 0; }
     return minHoursFor(d, hoursCfg, hs) || 0;
   };
+  const gone = (eid, d) => goneOnDay(empById8.get(eid), d);   // v8.5: ngày sau khi nghỉ việc — không tính giờ chuẩn, không nhắc
   const dayInfo = (eid, d) => {
     const c = cellOf.get(`${eid}|${d}`) || { reg: 0, ot: 0, leave: 0, draft: 0, idle: 0, items: [] };
-    const std = minHoursFor(d, hoursCfg, hs) || 0, done = c.reg + c.leave;
+    const std = gone(eid, d) ? 0 : minHoursFor(d, hoursCfg, hs) || 0, done = c.reg + c.leave;
     let st;
     if (hs.has(d)) st = "hol";
+    else if (gone(eid, d)) st = done + c.ot + c.draft > 0 ? (c.draft ? "draft" : "full") : "off";
     else if (d > today) st = "fut";
     else if (d === today && done + c.ot + c.draft === 0) st = "fut";   // v6.4: hôm nay chưa chấm — chưa coi là bỏ trống
     else if (!std) st = done + c.ot > 0 ? (c.draft ? "draft" : "full") : c.draft ? "draft" : "off";
@@ -4152,12 +4198,12 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
     let reg = 0, ot = 0, std = 0, miss = [], draft = 0, eff = 0, idle = 0;
     for (const d of list) {
       const x = dayInfo(eid, d); reg += x.done; ot += x.ot; draft += x.draft; eff += x.eff; idle += x.idle || 0; std += stdOf(d, eid);
-      if (d < today && stdOf(d) > 0 && x.done === 0 && x.draft === 0) miss.push(d);   // v6.4: hôm nay chưa tính là bỏ trống
+      if (d < today && stdOf(d, eid) > 0 && x.done === 0 && x.draft === 0) miss.push(d);   // v6.4: hôm nay chưa tính là bỏ trống
     }
     return { reg, ot, t: reg + ot, std, miss, draft, eff, idle, base: reg - eff };
   };
   const weekState = (eid, mon) => {
-    if (mon > today) return "fut";
+    if (mon > today || gone(eid, mon)) return "fut";
     if (weekDone(eid, mon)) return "ok";
     const s = sumOf(eid, weekDays(mon));
     if (s.draft > 0) return "dr";
@@ -4166,6 +4212,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
   /* lý do cần nhắc trong tuần đang xem (rỗng = không cần nhắc) */
   const reasons = (eid) => {
     const wd = weekDays(monday), s = sumOf(eid, wd), out = [];
+    if (isResigned(empById8.get(eid))) return out;   // v8.5: người đã nghỉ không nhắc nộp
     const due = wd.filter((d) => d < today && stdOf(d) > 0);
     if (due.length && s.miss.length === due.length) out.push("Chưa chấm cả tuần");
     else if (s.miss.length) out.push(`Bỏ trống ${s.miss.map((d) => `${DOW_OF(d)} ${dLabel(d)}`).join(", ")}`);
@@ -4175,6 +4222,8 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
   };
 
   const emps = cfg.employees.filter((e) => {
+    // v8.5: người đã nghỉ chỉ hiện khi các tuần đang xem còn giờ của họ
+    if (isResigned(e) && ![...cellOf.keys()].some((k) => k.startsWith(`${e.id}|`))) return false;
     if (fDept !== "all" && (e.dept || "") !== fDept) return false;
     const kw = norm(q.trim());   // v6.6: gõ không dấu vẫn tìm ra
     return !kw || norm(`${e.name} ${e.code || ""} ${e.dept || ""} ${e.role || ""} ${roleTitle(e.role)}`).includes(kw);
@@ -4185,7 +4234,8 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
   const sums = new Map(emps.map((e) => [e.id, sumOf(e.id, days)]));
   // v6.5: "Đã nộp đủ" xét các tuần đã qua (hết Chủ nhật) — tuần đang chạy chưa tới hạn nộp (cùng quy tắc chuông Nhắc tháng)
   const due = mode === "week" ? weeks.filter((m) => m <= today) : weeks.filter((m) => fmt(addDays(parseD(m), 6)) < today);
-  const okN = emps.filter((e) => due.every((m) => weekDone(e.id, m))).length;
+  const empsAct = emps.filter((e) => !isResigned(e));   // v8.5: KPI nộp bảng công chỉ tính người đang làm
+  const okN = empsAct.filter((e) => due.every((m) => weekDone(e.id, m))).length;
   const totT = [...sums.values()].reduce((a, s) => a + s.t, 0), totStd = [...sums.values()].reduce((a, s) => a + s.std, 0), totOt = [...sums.values()].reduce((a, s) => a + s.ot, 0);
   const lowN = [...sums.values()].filter((s) => s.std > 0 && s.base + s.draft < (s.std * lim.under) / 100).length;   // v6.7: nháp không tính là thiếu
 
@@ -4209,7 +4259,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
     }).catch(() => {});
     return () => { alive = false; };
   }, [monthKey]);
-  const missWeeks = (eid) => weeks.filter((m) => fmt(addDays(parseD(m), 6)) < today && !weekDone(eid, m));
+  const missWeeks = (eid) => (isResigned(empById8.get(eid)) ? [] : weeks.filter((m) => fmt(addDays(parseD(m), 6)) < today && !weekDone(eid, m)));
   const monthBell = (eid) => {
     const mw = missWeeks(eid), log = mNudged.get(eid) || new Map();
     const last = [...log.values()].filter(Boolean).sort().pop();      // lần nhắc gần nhất của người này trong tháng
@@ -4259,7 +4309,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
     const wb = XLSX.utils.book_new();
     const LBL = { full: "", part: "thiếu", draft: "nháp", none: "bỏ trống", leave: "nghỉ phép", hol: "lễ", off: "", fut: "" };
     const grid = emps.map((e) => {
-      const row = { "Mã": e.code || "", "Nhân sự": e.name, "Bộ phận": e.dept || "", "Vai trò": roleTitle(e.role) };
+      const row = { "Mã": e.code || "", "Nhân sự": empNameTag(e), "Bộ phận": e.dept || "", "Vai trò": roleTitle(e.role) };
       for (const d of days) { const x = dayInfo(e.id, d); row[`${DOW_OF(d)} ${dLabel(d)}`] = x.done + x.ot ? +(x.done + x.ot).toFixed(2) : LBL[x.st] || ""; }
       const s = sums.get(e.id);
       row["Giờ đã gửi"] = +s.t.toFixed(2); row["Trong đó tăng ca"] = +s.ot.toFixed(2); row["Giờ chuẩn tới hôm nay"] = s.std;
@@ -4268,11 +4318,11 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(grid), "Bảng công");
     const detail = [];
     for (const e of emps) for (const d of days) for (const it of (cellOf.get(`${e.id}|${d}`)?.items || [])) {
-      detail.push({ "Nhân sự": e.name, "Bộ phận": e.dept || "", "Ngày": d, "Thứ": DOW_OF(d), "Dự án · tác vụ": it.label, "Giờ": it.h, "Trạng thái": it.sent ? "Đã gửi" : "Nháp" });
+      detail.push({ "Nhân sự": empNameTag(e), "Bộ phận": e.dept || "", "Ngày": d, "Thứ": DOW_OF(d), "Dự án · tác vụ": it.label, "Giờ": it.h, "Trạng thái": it.sent ? "Đã gửi" : "Nháp" });
     }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail.length ? detail : [{ "Nhân sự": "(chưa có giờ)" }]), "Chi tiết");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(emps.map((e) => {
-      const row = { "Nhân sự": e.name, "Bộ phận": e.dept || "" };
+      const row = { "Nhân sự": empNameTag(e), "Bộ phận": e.dept || "" };
       for (const m of weeks) row[`Tuần ${dLabel(m)}`] = WEEK_ST[weekState(e.id, m)][0];
       return row;
     })), "Tình trạng nộp");
@@ -4379,7 +4429,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
   const NameCell = ({ e }) => (
     <td className="sticky left-0 z-10 border-b border-slate-800/70 bg-slate-900 px-3 py-1.5 md:px-4">
       <button onClick={() => { if (mode === "month") setMonday(fmt(mondayOf(ym === ymOf(today) ? new Date() : parseD(`${ym}-01`)))); openDrawer(e.id); }} title={readOnly ? undefined : "Sửa giờ công tuần này"} className={`block w-full min-w-[150px] text-left ${readOnly ? "cursor-default" : ""}`}>
-        <span className={`block truncate text-sm text-slate-100 ${readOnly ? "" : "hover:text-teal-300"}`}>{e.name}</span>
+        <span className={`block truncate text-sm text-slate-100 ${readOnly ? "" : "hover:text-teal-300"}`}>{e.name}{isResigned(e) && <ResignedBadge />}</span>
         <span className="block truncate text-[11px] text-slate-500">{roleTitle(e.role) || e.dept}</span>
       </button>
     </td>
@@ -4602,8 +4652,8 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
       </div>
 
       <div className="grid grid-cols-2 gap-px border-b border-slate-800 bg-slate-800 md:grid-cols-5">
-        <Kpi l="Đã nộp đủ" v={okN} sub={`/ ${emps.length} người`} cls={okN < emps.length ? "text-amber-400" : "text-teal-300"} />
-        <Kpi l="Chưa nộp / còn nháp" v={emps.length - okN} sub="người" cls="text-slate-50" />
+        <Kpi l="Đã nộp đủ" v={okN} sub={`/ ${empsAct.length} người`} cls={okN < empsAct.length ? "text-amber-400" : "text-teal-300"} />
+        <Kpi l="Chưa nộp / còn nháp" v={empsAct.length - okN} sub="người" cls="text-slate-50" />
         <Kpi l="Tổng giờ đã gửi" v={fmtH(totT)} sub={`/ ${fmtH(totStd)} h chuẩn`} />
         <Kpi l="Trong đó tăng ca" v={fmtH(totOt)} sub="h" cls="text-teal-400" />
         <Kpi l={`Thiếu giờ chuẩn (<${lim.under}%)`} v={lowN} sub="người" cls={lowN ? "text-amber-400" : "text-slate-50"} />
@@ -5359,7 +5409,16 @@ function Dashboard({ cfg, saveCfg, flash }) {
     return out;
   }, [cfg.employees, todayK, dataTick]); // eslint-disable-line react-hooks/exhaustive-deps
   const stdBase = stdPeriod - stdToday;
-  const stdForEmp = (eid) => (stdToday && !sentToday.has(eid) ? stdBase : stdPeriod);
+  const stdForEmp = (eid) => {
+    // v8.5: người đã nghỉ trong kỳ — giờ chuẩn chỉ tính tới trước ngày nghỉ
+    const e = cfg.employees.find((x) => x.id === eid);
+    if (e?.resignedAt && e.resignedAt <= to) {
+      let t = 0;
+      for (let d = from; d < e.resignedAt && d <= to; d = fmt(addDays(parseD(d), 1))) t += minHoursFor(d, hoursCfg, holidaySet) || 0;
+      return t;
+    }
+    return stdToday && !sentToday.has(eid) ? stdBase : stdPeriod;
+  };
   const clearFilters = () => { setFDept("all"); setQ(""); };
   const hasFilter = fDept !== "all" || q.trim() !== "";
   // v5.6: chọn nhanh kỳ — Tuần này (T2 → hôm nay), 7 ngày qua, Tháng này (ngày 1 → hôm nay)
@@ -5387,8 +5446,10 @@ function Dashboard({ cfg, saveCfg, flash }) {
     }
     const status = [];
     for (const ym of yms) {
-      const need = mondaysDue(ym);
+      const need0 = mondaysDue(ym);
       for (const e of cfg.employees) {
+        const need = e.resignedAt ? need0.filter((m) => m < e.resignedAt) : need0;   // v8.5: không tính tuần sau ngày nghỉ việc
+        if (isResigned(e) && !need.length) continue;
         const missing = need.filter((m) => !weekDone(e.id, m));
         status.push({ empId: e.id, ym, done: need.length - missing.length, need: need.length, missing });
       }
@@ -5432,7 +5493,7 @@ function Dashboard({ cfg, saveCfg, flash }) {
   const empMap = useMemo(() => new Map(cfg.employees.map((e) => [e.id, e])), [cfg.employees]);
   const projMapById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
   const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands, cfg.otLegacy]);
-  const empName = (id) => empMap.get(id)?.name || "(đã xoá)";
+  const empName = (id) => empNameTag(empMap.get(id));   // v8.5: người đã nghỉ kèm "(Đã nghỉ)"
   const empDept = (id) => empMap.get(id)?.dept || "";
   const empTitle = (id) => roleTitle(empMap.get(id)?.role);
   const projLabel = (id) => { if (id === NO_PROJECT) return "Khác"; const p = projMapById.get(id); return p ? (p.code ? `[${p.code}] ${p.name}` : p.name) : "(dự án đã xoá)"; };
@@ -5616,7 +5677,7 @@ function Dashboard({ cfg, saveCfg, flash }) {
     <div className="space-y-3 md:space-y-4">
       {/* v5.6 — chuyển tab Dự án | Nhân sự */}
       <div className="flex rounded-xl border border-slate-800 bg-slate-900 p-1 md:inline-flex">
-        {[["proj", "Dự án", nProjActive], ["ppl", "Nhân sự", cfg.employees.length]].map(([k, l, n]) => (
+        {[["proj", "Dự án", nProjActive], ["ppl", "Nhân sự", cfg.employees.filter((e) => !isResigned(e)).length]].map(([k, l, n]) => (
           <button key={k} onClick={() => setDTab(k)} aria-pressed={dTab === k}
             className={`${CTRL} flex flex-1 items-center justify-center gap-2 rounded-lg px-6 text-sm font-medium md:flex-none ${dTab === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>
             {l}<span className={`rounded-full px-1.5 font-mono text-[11px] ${dTab === k ? "bg-teal-900/60 text-teal-300" : "bg-slate-800 text-slate-500"}`}>{n}</span>
@@ -5663,7 +5724,7 @@ function Dashboard({ cfg, saveCfg, flash }) {
           </div>
           {!agg ? <p className="px-4 py-6 text-sm text-slate-500">Đang tải…</p> : (
             <StaffAllocation matrix={agg.matrix} otByEmp={agg.otByEmp} effortByEmp={agg.effortByEmp} idleByEmp={agg.idleByEmp} std={stdBase} stdOf={stdForEmp} cfg={cfg}
-              staff={cfg.employees.filter((e) => matchEmp(e.id))}
+              staff={cfg.employees.filter((e) => !isResigned(e) && matchEmp(e.id))}
               empName={empName} projMapById={projMapById} detail={agg.detail}
               projDetail={data.detail} taskLabel={taskLabel} />
           )}
@@ -6817,7 +6878,7 @@ function Projects({ cfg, saveCfg, flash }) {
   const teamToggle = (pid) => setTeamOpen((s) => { const n = new Set(s); n.has(pid) ? n.delete(pid) : n.add(pid); return n; });
   const teamBlock = (p) => {
     const on = teamOpen.has(p.id);
-    const team = cfg.employees.filter((e) => inProj(e, p.id));
+    const team = cfg.employees.filter((e) => !isResigned(e) && inProj(e, p.id));
     return (
       <div>
         <button onClick={() => teamToggle(p.id)} title="Nhân sự tham gia" aria-label="Nhân sự tham gia"
@@ -6844,7 +6905,7 @@ function Projects({ cfg, saveCfg, flash }) {
   };
   const teamPop = tp && (() => {
     const kw = norm(tp.q.trim());
-    const list = cfg.employees.filter((e) => !kw || norm(`${e.name} ${e.code || ""} ${roleTitle(e.role)}`).includes(kw));
+    const list = cfg.employees.filter((e) => !isResigned(e) && (!kw || norm(`${e.name} ${e.code || ""} ${roleTitle(e.role)}`).includes(kw)));
     const depts = [...new Set(list.map((e) => e.dept || "Khác"))];
     const below = tp.y + 400 < window.innerHeight;
     return (
@@ -7164,6 +7225,10 @@ function Employees({ cfg, saveCfg, flash, readOnly = false }) {
   /* Khung thêm / sửa: { kind: "emp" | "admin", empId, accId, hadAcc, autoUser, f: {...} } */
   const [dlg, setDlg] = useState(null);
   const [pendingDel, setPendingDel] = useState(null); // nhân sự chờ xác nhận xoá
+  const [resignDlg, setResignDlg] = useState(null);   // v8.5: { e, date } — đánh dấu nghỉ việc
+  const [delDlg, setDelDlg] = useState(null);         // v8.5: { kind: "emp" | "orphan", e?, id, mode: "keep" | "purge", txt, info }
+  const [goneHrs, setGoneHrs] = useState(null);       // v8.5: giờ công (mọi tháng) của người đã nghỉ { id: {...} }
+  const [orphanHrs, setOrphanHrs] = useState(null);   // v8.5: giờ công còn lại của nhân sự đã xoá trước đây { id: {...} }
   /* v6.9 (mẫu C) — sửa "Dự án đang tham gia" ngay trên danh sách: { kind: "add" | "copy", eid, x, y, q } */
   const [pp, setPp] = useState(null);
   useEffect(() => {
@@ -7227,7 +7292,8 @@ function Employees({ cfg, saveCfg, flash, readOnly = false }) {
   /* ---- lọc và gom nhóm ---- */
   const statusOf = (e) => { const a = accByEmp.get(e.id); return !a ? "none" : a.disabled ? "locked" : "active"; };
   const kw = norm(q.trim());
-  const visible = cfg.employees.filter((e) => {
+  const actList = cfg.employees.filter((e) => !isResigned(e));   // v8.5: tab Nhân sự chỉ còn người đang làm
+  const visible = actList.filter((e) => {
     if (fDept && e.dept !== fDept) return false;
     if (fStatus && statusOf(e) !== fStatus) return false;
     return !kw || norm(`${e.code || ""} ${e.name} ${accByEmp.get(e.id)?.username || ""} ${e.role || ""} ${roleInfo(e.role)?.name || ""}`).includes(kw);
@@ -7317,6 +7383,109 @@ function Employees({ cfg, saveCfg, flash, readOnly = false }) {
     } catch (e) { flash(e.message, "err"); }
     setBusy(false);
   };
+  /* ---------- v8.5: nghỉ việc / làm lại / xoá kèm giờ công ---------- */
+  const hrsLabel = useMemo(() => ({
+    proj: (r) => {
+      if (r.projectId === NO_PROJECT || isLeaveTask(r.taskId)) return isLeaveTask(r.taskId) ? "Vắng mặt" : "Việc chung";
+      const p = cfg.projects.find((x) => x.id === r.projectId);
+      return p ? (p.code ? `[${p.code}] ${p.name}` : p.name) : "(dự án đã xoá)";
+    },
+    task: (r) => { const t = [...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].find((x) => x.id === r.taskId); return t ? taskText(t) : "(tác vụ đã xoá)"; },
+  }), [cfg.projects, cfg.tasks]);
+  const goneList = cfg.employees.filter(isResigned);
+  const goneKey = goneList.map((e) => e.id).join(",");
+  // mở tab Nghỉ việc: đọc tổng giờ của người đã nghỉ + giờ còn sót của nhân sự đã xoá trước đây
+  const loadGone = useCallback(async () => {
+    if (readOnly) return;
+    try {
+      const ids = new Set(cfg.employees.map((e) => e.id));
+      const stamps = await fetchTsStamps("");
+      const orphanIds = [...new Set(stamps.map((x) => x.empId))].filter((id) => !ids.has(id));
+      const [g, o] = await Promise.all([empHoursAll(goneKey ? goneKey.split(",") : [], hrsLabel), empHoursAll(orphanIds, hrsLabel)]);
+      setGoneHrs(g);
+      setOrphanHrs(Object.fromEntries(Object.entries(o).filter(([, v]) => v.total > 0 || v.months.size)));
+    } catch (e) { flash(e.message, "err"); }
+  }, [goneKey, cfg.employees, hrsLabel, readOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  // đọc lại khi mở tab, khi danh sách nghỉ việc đổi, hoặc khi vừa xoá nhân sự (cfg mới → giờ của người vừa xoá chuyển sang khung "đã xoá")
+  useEffect(() => { if (sub === "gone") loadGone(); }, [sub, goneKey, empIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const resign = async () => {
+    const { e, date } = resignDlg || {};
+    if (!e || busy) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) return flash("Chọn ngày nghỉ việc.", "err");
+    setBusy(true);
+    const a = accByEmp.get(e.id);
+    if (a && !a.disabled) {
+      try { const r = await accountsApi("setDisabled", { id: a.id, disabled: true }); mergeAcc(r.account); }
+      catch (err) { setBusy(false); return flash(`Chưa khoá được tài khoản — ${err.message}`, "err"); }
+    }
+    const ok = await saveCfg({ ...cfg, employees: cfg.employees.map((x) => (x.id !== e.id ? x
+      : { ...x, resignedAt: date, projectsBefore: Array.isArray(x.projects) ? x.projects : [], projects: [] })) });
+    setBusy(false);
+    if (ok === false) return;
+    setResignDlg(null);
+    flash(`${e.name} đã chuyển sang Nghỉ việc${a ? " · tài khoản đã khoá" : ""}.`);
+  };
+  const rehire = async (e) => {
+    if (busy) return;
+    setBusy(true);
+    const a = accByEmp.get(e.id);
+    if (a?.disabled) {
+      try { const r = await accountsApi("setDisabled", { id: a.id, disabled: false }); mergeAcc(r.account); }
+      catch (err) { setBusy(false); return flash(`Chưa mở khoá được tài khoản — ${err.message}`, "err"); }
+    }
+    const ok = await saveCfg({ ...cfg, employees: cfg.employees.map((x) => {
+      if (x.id !== e.id) return x;
+      const { resignedAt, projectsBefore, ...rest } = x;   // eslint-disable-line no-unused-vars
+      return { ...rest, projects: (Array.isArray(projectsBefore) ? projectsBefore : []).filter((pid) => cfg.projects.some((p) => p.id === pid && p.active)) };
+    }) });
+    setBusy(false);
+    if (ok !== false) flash(`${e.name} đã làm lại — có trong tab Nhân sự${a ? ", tài khoản đã mở khoá" : ""}.`);
+  };
+  // hộp xoá: đọc giờ công mọi tháng của người đó để biết sẽ mất bao nhiêu nếu chọn xoá luôn giờ
+  const openDel = async (e) => {
+    setDelDlg({ kind: "emp", e, id: e.id, mode: "keep", txt: "", info: null });
+    try { const r = await empHoursAll([e.id], hrsLabel); setDelDlg((d) => (d && d.id === e.id ? { ...d, info: r[e.id] || { total: 0, sent: 0, months: new Set(), byProj: new Map(), rows: [] } } : d)); }
+    catch (err) { flash(err.message, "err"); }
+  };
+  const openOrphanDel = (id) => setDelDlg({ kind: "orphan", id, mode: "purge", txt: "", info: orphanHrs?.[id] || null });
+  const exportHours = async (list, file) => {
+    const rows = [];
+    for (const { name, code, info } of list) for (const r of [...(info?.rows || [])].sort((a, b) => a.date.localeCompare(b.date)))
+      rows.push({ "Mã NV": code || "", "Nhân sự": name, "Ngày": r.date, "Dự án": r.proj, "Giai đoạn": r.phase, "Tác vụ": r.task, "Giờ": r.h, "Trạng thái": r.sent ? "Đã gửi" : "Nháp", "Ghi chú": r.note });
+    if (!rows.length) return flash("Không có giờ công nào để xuất.", "err");
+    const XLSX = await loadXlsx();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [{ wch: 10 }, { wch: 26 }, { wch: 12 }, { wch: 30 }, { wch: 10 }, { wch: 34 }, { wch: 7 }, { wch: 10 }, { wch: 30 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Giờ công");
+    XLSX.writeFile(wb, `ARTIUS_gio-cong_${file}_${fmt(new Date())}.xlsx`);
+    flash(`Đã xuất ${rows.length} dòng giờ công.`);
+  };
+  const doDelete = async () => {
+    const d = delDlg; if (!d || busy) return;
+    const purge = d.mode === "purge";
+    if (purge && d.txt.trim().toUpperCase() !== "XOA") return flash("Gõ XOA để xác nhận xoá hẳn giờ công.", "err");
+    setBusy(true);
+    try {
+      if (d.kind === "emp") {
+        const a = accByEmp.get(d.id);
+        if (a) { await accountsApi("remove", { id: a.id }); setAccounts((list) => (list || []).filter((x) => x.id !== a.id)); }
+        if (purge) await purgeEmpTs(d.id);
+        const ok = await saveCfg({ ...cfg, employees: cfg.employees.filter((x) => x.id !== d.id) });
+        if (ok === false) { setBusy(false); return; }
+        flash(purge ? `Đã xoá ${d.e.name} và ${fmtH(d.info?.total || 0)} h giờ công.` : `Đã xoá ${d.e.name} — giờ công giữ nguyên.`);
+      } else {
+        await purgeEmpTs(d.id);
+        setOrphanHrs((o) => { const n = { ...(o || {}) }; delete n[d.id]; return n; });
+        flash(`Đã xoá hẳn ${fmtH(d.info?.total || 0)} h giờ công của nhân sự đã xoá.`);
+      }
+      setDelDlg(null);
+      if (sub === "gone" && d.kind === "orphan") loadGone();
+    } catch (err) { flash(err.message, "err"); }
+    setBusy(false);
+  };
+
   const copyAccount = async (a, name) => {
     const ok = await copyText(`${name ? `${name}\n` : ""}Tên đăng nhập: ${a.username}\nMật khẩu: ${a.password}`);
     flash(ok ? `Đã chép tài khoản ${a.username}.` : "Trình duyệt không cho chép. Bấm con mắt để xem mật khẩu.", ok ? "ok" : "err");
@@ -7395,7 +7564,9 @@ function Employees({ cfg, saveCfg, flash, readOnly = false }) {
       <div className="flex shrink-0 justify-end gap-1">
         {a && accBtns(a, e.name)}
         <button onClick={() => openEdit(e)} title="Sửa" className={iconBtn}><Pencil size={14} /></button>
-        <button onClick={() => setPendingDel(e)} title="Xoá" className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={14} /></button>
+        <button onClick={() => setResignDlg({ e, date: fmt(new Date()) })} title="Nghỉ việc — khoá tài khoản, chuyển sang tab Nghỉ việc, giữ giờ công" aria-label="Nghỉ việc"
+          className={`ro-hide ${iconBtn} hover:border-amber-700 hover:text-amber-400`}><UserMinus size={14} /></button>
+        <button onClick={() => openDel(e)} title="Xoá" className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={14} /></button>
       </div>
     );
     return (
@@ -7452,12 +7623,12 @@ function Employees({ cfg, saveCfg, flash, readOnly = false }) {
         <button onClick={openAdd} className={`whitespace-nowrap ${btnPrimary}`}><Plus size={14} /> Thêm nhân sự</button>
       </div>
       <div className="px-3.5 pb-2.5 text-xs text-slate-500">
-        {visible.length === cfg.employees.length ? `${visible.length} nhân sự` : `${visible.length} / ${cfg.employees.length} nhân sự`}
+        {visible.length === actList.length ? `${visible.length} nhân sự` : `${visible.length} / ${actList.length} nhân sự`}
       </div>
       <div className={`hidden border-y border-slate-800 px-3.5 py-2 text-[11px] uppercase tracking-wider text-slate-500 ${COLS}`}>
         <div>Mã NV</div><div>Họ và tên</div><div>Vai trò</div><div>Tên đăng nhập</div><div>Mật khẩu</div><div>Dự án đang tham gia</div><div></div>
       </div>
-      {cfg.employees.length === 0 ? <div className="px-4 py-7 text-center text-sm text-slate-500">Chưa có nhân sự.</div>
+      {actList.length === 0 ? <div className="px-4 py-7 text-center text-sm text-slate-500">Chưa có nhân sự.</div>
         : groups.length === 0 ? <div className="px-4 py-7 text-center text-sm text-slate-500">Không có nhân sự khớp bộ lọc.</div>
         : groups.map((g) => (
           <React.Fragment key={g.dept}>
@@ -7470,6 +7641,147 @@ function Employees({ cfg, saveCfg, flash, readOnly = false }) {
         ))}
     </div>
   );
+
+  /* ---------------- v8.5: tab con Nhân sự nghỉ việc ---------------- */
+  const vnDate = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : "");
+  const topProj = (info) => [...(info?.byProj || new Map()).entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} ${fmtH(v)} h`).join(" · ");
+  const goneTab = (
+    <div className="space-y-3 md:space-y-4">
+      <div className={panelCls}>
+        <div className="px-3.5 pb-2.5 pt-3 text-xs leading-relaxed text-slate-500">
+          Người nghỉ việc: tài khoản đã khoá, không còn hiện ở Chấm công, giao dự án, nhắc nộp và danh sách nhân sự đang làm.
+          Giờ công đã chấm vẫn tính cho dự án; Bảng công / Dashboard chỉ hiện họ ở những kỳ còn giờ, kèm nhãn <span className="text-slate-300">Đã nghỉ</span>.
+        </div>
+        {goneList.length === 0 ? <div className="border-t border-slate-800 px-4 py-7 text-center text-sm text-slate-500">Chưa có nhân sự nghỉ việc.</div>
+          : [...goneList].sort((a, b) => (b.resignedAt || "").localeCompare(a.resignedAt || "")).map((e) => {
+            const info = goneHrs?.[e.id], a = accByEmp.get(e.id);
+            return (
+              <div key={e.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-800 px-3.5 py-2.5 text-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    {e.code && <span className="font-mono text-xs text-slate-500">{e.code}</span>}
+                    <span className="text-slate-100">{e.name}</span>
+                    <span className="text-xs text-slate-500">{[e.dept, roleTitle(e.role)].filter(Boolean).join(" · ")}</span>
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    Nghỉ từ <span className="text-slate-300">{vnDate(e.resignedAt)}</span>
+                    {a && <> · tài khoản <span className="font-mono">{a.username}</span> {a.disabled ? "đã khoá" : <span className="text-amber-400">chưa khoá</span>}</>}
+                    {" · "}{goneHrs === null ? "đang đọc giờ công…" : info ? <>đã chấm <span className="font-mono text-slate-300">{fmtH(info.total)} h</span>{topProj(info) && ` — ${topProj(info)}`}</> : "chưa chấm giờ nào"}
+                  </div>
+                </div>
+                <div className="ro-hide flex shrink-0 gap-1">
+                  <button onClick={() => exportHours([{ name: e.name, code: e.code, info }], (e.code || e.name).replace(/\s+/g, "-"))} disabled={!info} title="Xuất Excel giờ công" className={`${iconBtn} disabled:opacity-40`}><Download size={14} /></button>
+                  <button onClick={() => rehire(e)} disabled={busy} title="Làm lại — đưa về tab Nhân sự, mở khoá tài khoản, giao lại dự án cũ" className={`${iconBtn} hover:border-teal-700 hover:text-teal-300`}><UserCheck size={14} /></button>
+                  <button onClick={() => openDel(e)} title="Xoá nhân sự" className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={14} /></button>
+                </div>
+              </div>
+            );
+          })}
+      </div>
+
+      {/* giờ công còn sót lại của nhân sự đã bị xoá trước đây (trước v8.5 xoá nhân sự không xoá giờ) */}
+      {!readOnly && (
+        <div className={panelCls}>
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-3">
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-slate-100">Giờ công của nhân sự đã xoá</div>
+              <div className="text-xs text-slate-500">Hồ sơ đã xoá nhưng giờ công vẫn còn và vẫn tính vào dự án (báo cáo hiện "(đã xoá)").</div>
+            </div>
+            {orphanHrs && Object.keys(orphanHrs).length > 0 && (
+              <button onClick={() => exportHours(Object.entries(orphanHrs).map(([id, info]) => ({ name: `(đã xoá) ${id}`, code: "", info })), "nhan-su-da-xoa")} className={`whitespace-nowrap ${btnGhost}`}><Download size={14} /> Xuất Excel tất cả</button>
+            )}
+          </div>
+          {orphanHrs === null ? <div className="flex items-center gap-2 border-t border-slate-800 px-4 py-5 text-sm text-slate-500"><Loader2 className="animate-spin" size={15} /> Đang kiểm tra…</div>
+            : Object.keys(orphanHrs).length === 0 ? <div className="border-t border-slate-800 px-4 py-5 text-center text-sm text-slate-500">Không còn giờ công nào của nhân sự đã xoá.</div>
+            : Object.entries(orphanHrs).sort((a, b) => b[1].total - a[1].total).map(([id, info]) => (
+              <div key={id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-800 px-3.5 py-2.5 text-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="text-slate-300">(nhân sự đã xoá) <span className="font-mono text-xs text-slate-500">{id}</span></div>
+                  <div className="mt-0.5 text-xs text-slate-500"><span className="font-mono text-slate-300">{fmtH(info.total)} h</span> · {info.months.size} tháng{topProj(info) && ` — ${topProj(info)}`}</div>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <button onClick={() => exportHours([{ name: `(đã xoá) ${id}`, code: "", info }], id)} title="Xuất Excel giờ công" className={iconBtn}><Download size={14} /></button>
+                  <button onClick={() => openOrphanDel(id)} className={`${btnBase} h-9 border border-rose-900 px-3 text-rose-300 hover:border-rose-700`}><Trash2 size={14} /> Xoá hẳn</button>
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+
+  /* v8.5 — hộp Nghỉ việc */
+  const resignBox = resignDlg && (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 pt-[12vh]" onMouseDown={(ev) => { if (ev.target === ev.currentTarget) setResignDlg(null); }}>
+      <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <div className="border-b border-slate-800 px-4 py-3 text-sm font-semibold text-slate-50">{resignDlg.e.name} nghỉ việc?</div>
+        <div className="space-y-3 p-4 text-sm text-slate-300">
+          <label className="block">
+            <span className="mb-1 block text-xs text-slate-500">Nghỉ từ ngày (không tính giờ chuẩn, không nhắc nộp từ ngày này)</span>
+            <input type="date" value={resignDlg.date} onChange={(ev) => setResignDlg({ ...resignDlg, date: ev.target.value })} className={inputCls} />
+          </label>
+          <ul className="list-disc space-y-1 pl-5 text-xs text-slate-400">
+            <li>Khoá tài khoản đăng nhập{accByEmp.get(resignDlg.e.id) ? ` (${accByEmp.get(resignDlg.e.id).username})` : " — người này chưa có tài khoản"}.</li>
+            <li>Gỡ khỏi {empProjs(resignDlg.e).length} dự án đang tham gia (nhớ lại để giao lại nếu làm lại).</li>
+            <li>Chuyển sang tab Nhân sự nghỉ việc. Giờ công đã chấm giữ nguyên, vẫn tính cho dự án.</li>
+          </ul>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-800 px-4 py-3">
+          <button onClick={() => setResignDlg(null)} className={btnGhost}>Huỷ</button>
+          <button onClick={resign} disabled={busy} className={`${btnBase} bg-amber-600 text-white hover:bg-amber-500 disabled:opacity-50`}>{busy ? <Loader2 className="animate-spin" size={15} /> : <UserMinus size={15} />} Chuyển sang Nghỉ việc</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  /* v8.5 — hộp Xoá: chọn giữ hay xoá luôn giờ công (gõ XOA để xoá hẳn) */
+  const delBox = delDlg && (() => {
+    const d = delDlg, info = d.info, emp = d.kind === "emp";
+    const purge = d.mode === "purge";
+    const opt = (k, title, desc) => (
+      <button type="button" onClick={() => setDelDlg({ ...d, mode: k, txt: "" })}
+        className={`flex w-full items-start gap-2.5 rounded-lg border p-3 text-left ${d.mode === k ? (k === "purge" ? "border-rose-700 bg-rose-950" : "border-teal-700 bg-teal-950/40") : "border-slate-700 hover:border-slate-500"}`}>
+        <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${d.mode === k ? (k === "purge" ? "border-rose-400" : "border-teal-400") : "border-slate-600"}`}>{d.mode === k && <span className={`h-1.5 w-1.5 rounded-full ${k === "purge" ? "bg-rose-400" : "bg-teal-400"}`} />}</span>
+        <span><span className="block text-sm text-slate-100">{title}</span><span className="block text-xs text-slate-400">{desc}</span></span>
+      </button>
+    );
+    return (
+      <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 pt-[10vh]" onMouseDown={(ev) => { if (ev.target === ev.currentTarget && !busy) setDelDlg(null); }}>
+        <div className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+          <div className="border-b border-slate-800 px-4 py-3 text-sm font-semibold text-slate-50">{emp ? `Xoá nhân sự ${d.e.name}?` : "Xoá hẳn giờ công của nhân sự đã xoá?"}</div>
+          <div className="space-y-3 p-4">
+            <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-xs text-slate-400">
+              {!info ? <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={13} /> Đang đọc giờ công…</span>
+                : info.total === 0 ? "Người này chưa chấm giờ nào."
+                : <>Giờ công đã chấm: <span className="font-mono text-sm text-slate-100">{fmtH(info.total)} h</span> trong {info.months.size} tháng
+                    {info.total > info.sent && <> (nháp {fmtH(info.total - info.sent)} h)</>}
+                    <div className="mt-1.5 space-y-0.5">{[...info.byProj.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => (
+                      <div key={k} className="flex justify-between gap-3"><span className="min-w-0 truncate">{k}</span><span className="shrink-0 font-mono text-slate-300">{fmtH(v)} h</span></div>))}</div></>}
+            </div>
+            {emp && opt("keep", "Xoá nhân sự, giữ giờ công", "Dự án vẫn tính số giờ này; báo cáo hiện tên là (đã xoá).")}
+            {emp && opt("purge", "Xoá luôn toàn bộ giờ công", "Dùng khi nhập nhầm hoặc tài khoản thử. Giờ thực tế của các dự án giảm tương ứng.")}
+            {purge && (
+              <div className="space-y-2">
+                <div className="text-xs text-rose-300">Không hoàn tác được. Nên bấm Xuất Excel để giữ một bản trước khi xoá.</div>
+                <input autoFocus value={d.txt} onChange={(ev) => setDelDlg({ ...d, txt: ev.target.value })} placeholder="Gõ XOA để xác nhận" className={`font-mono ${inputCls}`} />
+              </div>
+            )}
+            {emp && !isResigned(d.e) && d.mode === "keep" && (
+              <div className="text-xs text-slate-500">Nhân sự nghỉ việc thì nên dùng <button onClick={() => { setDelDlg(null); setResignDlg({ e: d.e, date: fmt(new Date()) }); }} className="text-amber-400 underline underline-offset-2">Nghỉ việc</button> thay vì xoá — giữ được tên trong báo cáo.</div>
+            )}
+          </div>
+          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-800 px-4 py-3">
+            {info && info.total > 0 && <button onClick={() => exportHours([{ name: emp ? d.e.name : `(đã xoá) ${d.id}`, code: emp ? d.e.code : "", info }], emp ? (d.e.code || d.e.name).replace(/\s+/g, "-") : d.id)} className={`mr-auto ${btnGhost}`}><Download size={14} /> Xuất Excel</button>}
+            <button onClick={() => setDelDlg(null)} disabled={busy} className={btnGhost}>Huỷ</button>
+            <button onClick={doDelete} disabled={busy || (purge && (!info || d.txt.trim().toUpperCase() !== "XOA"))}
+              className={`${btnBase} bg-rose-600 text-white hover:bg-rose-500 disabled:opacity-40`}>
+              {busy ? <Loader2 className="animate-spin" size={15} /> : <Trash2 size={15} />} {purge ? (emp ? "Xoá nhân sự và giờ công" : "Xoá hẳn giờ công") : "Xoá nhân sự"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  })();
 
   /* ---------------- tab con Tài khoản quản lý: tài khoản không gắn nhân sự ---------------- */
   const adminTab = (
@@ -7575,7 +7887,7 @@ function Employees({ cfg, saveCfg, flash, readOnly = false }) {
   return (
     <div className="space-y-3 md:space-y-4">
       <div className="inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-1">
-        {[["emp", "Nhân sự", cfg.employees.length], ["admin", "Tài khoản BOD / Admin", loose.length]].map(([k, l, n]) => (
+        {[["emp", "Nhân sự", actList.length], ["gone", "Nhân sự nghỉ việc", goneList.length], ["admin", "Tài khoản BOD / Admin", loose.length]].map(([k, l, n]) => (
           <button key={k} onClick={() => setSub(k)}
             className={`h-9 whitespace-nowrap rounded-md px-4 text-sm ${sub === k ? "bg-slate-800 font-medium text-slate-50" : "text-slate-400 hover:text-slate-200"}`}>
             {l}<span className="ml-1.5 font-mono text-xs text-slate-500">{n}</span>
@@ -7583,8 +7895,10 @@ function Employees({ cfg, saveCfg, flash, readOnly = false }) {
         ))}
       </div>
 
-      {sub === "emp" ? empTab : adminTab}
+      {sub === "emp" ? empTab : sub === "gone" ? goneTab : adminTab}
       {formDlg}
+      {resignBox}
+      {delBox}
 
       {/* v6.9 (mẫu C) — popover chọn dự án / chép dự án từ người khác */}
       {pp && (() => {
@@ -8525,10 +8839,10 @@ function ReminderPanel({ cfg, saveCfg, flash }) {
     setTesting(false);
   };
 
-  const emps = cfg.employees || [];
+  const emps = (cfg.employees || []).filter((e) => !isResigned(e));   // v8.5: bỏ người đã nghỉ
   const on = new Set((st?.subs || []).map((x) => x.emp_id).filter(Boolean));
   const missing = emps.filter((e) => !on.has(e.id));
-  const empName = (id) => emps.find((e) => e.id === id)?.name || "(nhân sự đã xoá)";
+  const empName = (id) => { const e = (cfg.employees || []).find((x) => x.id === id); return e ? empNameTag(e) : "(nhân sự đã xoá)"; };
   const stamp = (iso) => { const d = new Date(iso); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
   const what = (x) => (x.kind === "week" ? `Tuần ${dLabel(x.period)}` : `Tháng ${Number(x.period.slice(5, 7))}/${x.period.slice(0, 4)}`);
 

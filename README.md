@@ -1,5 +1,14 @@
 # ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
 
+## Mới ở v8.5 — Nhân sự nghỉ việc · xoá hẳn giờ công
+- Tab Nhân sự → nút **Nghỉ việc** (icon người có dấu trừ): chọn ngày nghỉ → tài khoản bị khoá, gỡ khỏi dự án đang tham gia, chuyển sang tab con **Nhân sự nghỉ việc**.
+- Người nghỉ việc không còn hiện ở: tab Nhân sự (đang làm), giao nhân sự cho dự án, nhắc nộp (chuông, nhắc tự động — tài khoản đã khoá), KPI "Đã nộp đủ", danh sách chưa bật thông báo, Dashboard (người chưa chấm).
+- Báo cáo (Bảng công Tuần/Tháng, Ma trận giờ, Dashboard, Excel) vẫn hiện họ ở những kỳ còn giờ, kèm nhãn **Đã nghỉ**; ngày từ lúc nghỉ không tính giờ chuẩn, không báo thiếu.
+- Tab Nhân sự nghỉ việc: xem ngày nghỉ, tổng giờ đã chấm; **Xuất Excel**, **Làm lại** (mở khoá tài khoản, giao lại dự án cũ), **Xoá**.
+- Xoá nhân sự: chọn **Giữ giờ công** hoặc **Xoá luôn toàn bộ giờ công** (hiện trước số giờ theo dự án, gõ XOA để xác nhận, không hoàn tác).
+- Khung **Giờ công của nhân sự đã xoá** (trong tab Nhân sự nghỉ việc): liệt kê giờ còn sót của nhân sự đã xoá trước đây → Xuất Excel / Xoá hẳn.
+- Không cần sửa database: tài khoản Admin đã có quyền xoá bảng công.
+
 ## Mới ở v8.4 — Chấm công trên điện thoại gọn, dễ dùng hơn
 Chỉ đổi giao diện điện thoại; máy tính giữ nguyên.
 - Header: logo + vòng tròn chữ cái tên (bấm để mở Tài khoản).
