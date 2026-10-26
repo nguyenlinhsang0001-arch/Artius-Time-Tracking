@@ -18,6 +18,11 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v9.3 — Trưởng phòng có thêm tab Dự án (chỉ xem; thêm / gỡ nhân viên phòng mình vào dự án) và tab Nhân sự (chỉ nhân viên phòng mình;
+   giao / gỡ dự án, Tất cả dự án). Không xem tài khoản / mật khẩu, không thấy nhân viên phòng khác, không thêm / sửa / xoá nhân sự.
+   Ghi qua hàm SQL artius_emp_projects_set (supabase/v9_3_truong_phong.sql).
+   Mới ở v9.2 — Điện thoại: nhóm Tăng ca (khi mở đủ tác vụ) chỉ hiện dòng tăng ca của ngày đang xem; dòng tăng ca của ngày khác không hiện sẵn.
+   Bấm "Tăng ca" / "+ Thêm dòng tăng ca" tạo dòng mới cho ngày đó; chọn trùng tác vụ + khung giờ của dòng đã có thì tự gộp vào dòng đó.
    Mới ở v9.1 — Điện thoại: nút ⋯ ở đầu khối dự án đổi thành thùng rác — xoá dự án khỏi ngày đang xem (còn giờ ngày khác thì chỉ xoá
    giờ ngày này, không thì xoá hẳn khối), có Hoàn tác. Sửa khối / tăng ca: bấm nút mở rộng ˅.
    Mới ở v9.0 — Chấm công trên điện thoại: ngày đang xem chỉ hiện tác vụ có giờ của chính ngày đó; ngày chưa chấm thì trống
@@ -320,7 +325,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v9.1";
+const APP_VERSION = "v9.3";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1756,6 +1761,34 @@ function AppMain() {
     ? { ...cfg, employees: cfg.employees.filter((e) => me.dept && e.dept === me.dept && e.id !== me.empId) } : null),
   [cfg, me?.type, me?.dept, me?.empId]); // eslint-disable-line react-hooks/exhaustive-deps
   const bodSave = useCallback(async () => { flash("Tài khoản BOD chỉ xem, không sửa được.", "err"); return false; }, [flash]);
+  /* v9.3 — trưởng phòng "lưu thiết lập" ở tab Dự án / Nhân sự: chỉ được đổi dự án tham gia (projects, allProjects) của nhân viên phòng mình.
+     So bản mới với headCfg; mỗi người thay đổi ghi qua hàm SQL artius_emp_projects_set. Đổi gì khác → báo chỉ xem. */
+  const headSave = useCallback(async (next) => {
+    if (!headCfg) return false;
+    const before = new Map(headCfg.employees.map((e) => [e.id, e]));
+    const changed = [];
+    for (const e of next.employees || []) {
+      const b = before.get(e.id);
+      if (!b) { flash("Trưởng phòng không thêm được nhân sự.", "err"); return false; }
+      const { projects: p1, allProjects: a1, ...r1 } = e, { projects: p2, allProjects: a2, ...r2 } = b;
+      if (JSON.stringify(r1) !== JSON.stringify(r2)) { flash("Trưởng phòng chỉ giao / gỡ dự án cho nhân viên, không sửa được thông tin khác.", "err"); return false; }
+      if (JSON.stringify(p1 || []) !== JSON.stringify(p2 || []) || !!a1 !== !!a2) changed.push(e);
+    }
+    const { employees: ne, ...restN } = next, { employees: oe, ...restO } = headCfg;   // eslint-disable-line no-unused-vars
+    if (JSON.stringify(restN) !== JSON.stringify(restO)) { flash("Trưởng phòng chỉ xem dự án, chỉ thêm / gỡ nhân sự phòng mình.", "err"); return false; }
+    try {
+      for (const e of changed) {
+        const { error } = await supabase.rpc("artius_emp_projects_set", { p_emp: e.id, p_projects: Array.isArray(e.projects) ? e.projects : [], p_all: !!e.allProjects });
+        if (error) throw error;
+        setCfg((c) => (c ? { ...c, employees: c.employees.map((x) => { if (x.id !== e.id) return x; const { allProjects, ...rest } = x; return { ...rest, projects: Array.isArray(e.projects) ? e.projects : [], ...(e.allProjects ? { allProjects: true } : {}) }; }) } : c));   // eslint-disable-line no-unused-vars
+      }
+      return true;
+    } catch (err) {
+      const m = String(err?.message || err || "");
+      flash(/artius_emp_projects_set|schema cache|function/i.test(m) && !/phòng/.test(m) ? "Chưa bật được: Admin cần chạy file supabase/v9_3_truong_phong.sql trên Supabase." : `Chưa lưu được — ${m}`, "err");
+      return false;
+    }
+  }, [headCfg, flash]);
   /* v8.7 — ghi một đợt hỗ trợ dự án. Admin: lưu thẳng thiết lập. Trưởng phòng: qua hàm SQL artius_support_set (chỉ nhân viên phòng mình). */
   const supportSave = useCallback(async (item, remove = false) => {
     const msg = remove ? "Đã huỷ đợt hỗ trợ." : "Đã lưu hỗ trợ dự án.";
@@ -1816,7 +1849,7 @@ function AppMain() {
          ["emp", "Nhân sự", Users], ["task", "Tác vụ", ListChecks], ["set", "Thiết lập", Settings],
          ...(me.empId ? [["ts", "Chấm công", Clock], ["eset", "Cài đặt", Settings]] : [])]
     : me?.type === "head"
-      ? [["ts", "Chấm công", Clock], ["edash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList], ["eset", "Cài đặt", Settings]]
+      ? [["ts", "Chấm công", Clock], ["edash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList], ["proj", "Dự án", FolderKanban], ["emp", "Nhân sự", Users], ["eset", "Cài đặt", Settings]]   // v9.3: + Dự án, Nhân sự (phòng mình)
     : me ? [["ts", "Chấm công", Clock], ["edash", "Dashboard", LayoutDashboard], ["eset", "Cài đặt", Settings]] : [];
 
   /* v8.4 — điện thoại: tài khoản có tab Cài đặt cá nhân → header chỉ còn logo + vòng tròn chữ cái tên (bấm mở Tài khoản);
@@ -1999,6 +2032,9 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
                 {tab === "edash" && <EmployeeDashboard cfg={cfg} empId={me.empId} onGoTimesheet={(mon) => { setTsMonday(mon || null); setTab("ts"); }} />}
                 {tab === "eset" && <EmployeeSettings cfg={cfg} empId={me.empId} onSignOut={signOut} />}
                 {tab === "sheet" && me.type === "head" && headCfg && <AdminTimesheet cfg={headCfg} flash={flash} onDirtyChange={setSheetDirty} oneDept onSupport={supportSave} />}
+                {/* v9.3 — trưởng phòng: Dự án (chỉ xem, thêm / gỡ nhân sự phòng mình) · Nhân sự (phòng mình, giao dự án; không xem tài khoản / mật khẩu) */}
+                {tab === "proj" && me.type === "head" && headCfg && <ReadOnlyView><Projects cfg={headCfg} saveCfg={headSave} flash={flash} /></ReadOnlyView>}
+                {tab === "emp" && me.type === "head" && headCfg && <Employees cfg={headCfg} saveCfg={headSave} flash={flash} limited />}
               </>
             )}
         </main>
@@ -2511,11 +2547,11 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
      nhân sự chọn "Tăng ca cho tác vụ" rồi mới nhập giờ. Mỗi khung giờ chỉ có một dòng trống cùng lúc (tránh trùng rowKey). */
   const addOtRow = (g) => {
     // v5.0: khung giờ lần lượt — dòng thứ nhất là khung đầu (17:30 – 21:00), dòng sau lấy khung kế tiếp, hết thì quay lại từ đầu
-    const nOt = rows.filter((r) => groupKey(r) === g.key && isOtId(r.taskId)).length;
+    const nOt = rows.filter((r) => groupKey(r) === g.key && isOtId(r.taskId) && (r.days[activeDay] > 0 || r.fresh === activeDay || dayKeys.has(rowKey(r)))).length;   // v9.2: đếm theo ngày đang xem
     const order = otBands.map((_, k) => otBands[(nOt + k) % otBands.length]);
     const freeBand = order.find((t) => !rows.some((r) => groupKey(r) === g.key && !r.otFor && isOtId(r.taskId) && otBandKey(taskById.get(r.taskId) || t) === otBandKey(t)));
     if (!freeBand) return flash("Chọn tác vụ cho dòng tăng ca đang trống trước đã.", "err");
-    const row = { projectId: g.projectId, phaseId: g.phaseId || DEFAULT_PHASE, taskId: freeBand.id, otFor: "", note: "", days: {} };
+    const row = { projectId: g.projectId, phaseId: g.phaseId || DEFAULT_PHASE, taskId: freeBand.id, otFor: "", note: "", days: {}, fresh: activeDay };   // v9.2: fresh = dòng mới tạo ở ngày đang xem (điện thoại), không lưu lên server
     let last = -1;
     rows.forEach((r, k) => { if (groupKey(r) === g.key) last = k; });
     const at = last >= 0 ? last + 1 : rows.length;
@@ -2582,7 +2618,17 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
       else if (next.projectId === NO_PROJECT && !isKhacTask(next.taskId)) { next.projectId = activeProjects[0]?.id || ""; next.phaseId = fitPhase(next.projectId, next.phaseId || DEFAULT_PHASE); }
     }
     // sửa dropdown thành trùng một dòng khác cũng tạo rowKey trùng — chặn tại đây
-    if (rows.some((y, k) => k !== i && rowKey(y) === rowKey(next))) return flash("Đã có dòng cho tổ hợp này rồi.", "err");
+    const dup = rows.findIndex((y, k) => k !== i && rowKey(y) === rowKey(next));
+    if (dup >= 0 && isOtId(next.taskId) && !rowHasHours(cur)) {
+      // v9.2: dòng tăng ca mới chọn trùng tác vụ + khung giờ của dòng đã có (ngày khác) → gộp vào dòng đó, bỏ dòng mới
+      const keep = { ...rows[dup], fresh: activeDay };
+      setRows(rows.map((x, j) => (j === dup ? keep : x)).filter((_, j) => j !== i));
+      setDayKeys((s2) => new Set([...s2, rowKey(keep)]));
+      gridInputs.current = {}; mobileInputs.current = []; taskSel.current = {};
+      setDirty(true);
+      return;
+    }
+    if (dup >= 0) return flash("Đã có dòng cho tổ hợp này rồi.", "err");
     setRows((r) => r.map((x, j) => (j === i ? next : x)));
     setDirty(true);
   };
@@ -3141,7 +3187,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
     setOpenKeys((s2) => { const n = new Set(s2); n.delete(gk); return n; });
     setUndoRow({ kind: "day", snap, label: `${projFull(mine[0].projectId)} — ${dayName(activeDay)}` });
   };
-  const showToday = (r) => (r.days[activeDay] || 0) > 0 || dayKeys.has(rowKey(r));
+  const showToday = (r) => (r.days[activeDay] || 0) > 0 || dayKeys.has(rowKey(r)) || r.fresh === activeDay;
   // đổi ngày: thu các khối đang mở đủ tác vụ về lại (chỉ giữ tác vụ có giờ) để ngày mới không bày sẵn mọi tác vụ
   const pickDay = (d) => {
     if (openKeys.size) {
@@ -3646,7 +3692,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
               const canDel = !gLocked && !locked;
               const proj = cfg.projects.find((p) => p.id === g.projectId);
               // v9.0: khối thu gọn chỉ hiện tác vụ có giờ của ngày đang xem; không có tác vụ nào thì ẩn cả khối
-              const secs = sectionsOf(g, open).map((sec) => (open ? sec : { ...sec, items: sec.items.filter(({ r }) => showToday(r)) })).filter((sec) => open || sec.items.length);
+              // v9.2: khối mở đủ tác vụ — nhóm Tăng ca cũng chỉ hiện dòng tăng ca của ngày đang xem
+              const secs = sectionsOf(g, open).map((sec) => (open && !sec.ot ? sec : { ...sec, items: sec.items.filter(({ r }) => showToday(r)) })).filter((sec) => open || sec.items.length);
               if (!open && !secs.length) return null;
               return (
                 <div key={g.key} className={`overflow-hidden rounded-2xl border bg-slate-900 ${open ? "border-teal-800" : isSupProj(g.projectId) ? "border-violet-800" : "border-slate-800"}`}>
@@ -7397,7 +7444,9 @@ const copyText = async (text) => {
   } catch { return false; }
 };
 
-function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = null }) {
+function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = null, limited = false }) {
+  /* v9.3 — limited = trưởng phòng: chỉ thấy nhân viên phòng mình (cfg đã lọc), chỉ giao / gỡ dự án; không xem tài khoản, mật khẩu,
+     không thêm / sửa / xoá / cho nghỉ việc. Ghi qua hàm SQL artius_emp_projects_set (kiểm tra đúng phòng ban). */
   const [sub, setSub] = useState("emp");              // tab con: emp | admin
   const [q, setQ] = useState("");
   const [fDept, setFDept] = useState("");
@@ -7438,7 +7487,7 @@ function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = null }) 
 
   useEffect(() => {
     let alive = true;
-    if (readOnly) { setAccounts([]); return () => { alive = false; }; }   // v7.7: BOD không xem tài khoản đăng nhập / mật khẩu
+    if (readOnly || limited) { setAccounts([]); return () => { alive = false; }; }   // v9.3: trưởng phòng cũng không đọc tài khoản / mật khẩu   // v7.7: BOD không xem tài khoản đăng nhập / mật khẩu
     (async () => {
       try { const r = await accountsApi("list"); if (alive) setAccounts(r.accounts); }
       catch (e) { if (alive) flash(e.message, "err"); }
@@ -7584,7 +7633,7 @@ function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = null }) 
   const goneKey = goneList.map((e) => e.id).join(",");
   // mở tab Nghỉ việc: đọc tổng giờ của người đã nghỉ + giờ còn sót của nhân sự đã xoá trước đây
   const loadGone = useCallback(async () => {
-    if (readOnly) return;
+    if (readOnly || limited) return;
     try {
       const ids = new Set(cfg.employees.map((e) => e.id));
       const stamps = await fetchTsStamps("");
@@ -7755,7 +7804,7 @@ function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = null }) 
         <button onClick={(ev) => openPp(ev, "add", e.id)} className="ro-hide h-8 rounded-md border border-dashed border-slate-700 px-2.5 text-xs text-slate-400 hover:border-teal-600 hover:text-teal-300">+ Dự án</button>
       </>
     );
-    const btns = (
+    const btns = limited ? <div /> : (
       <div className="flex shrink-0 justify-end gap-1">
         {a && accBtns(a, e.name)}
         <button onClick={() => openEdit(e)} title="Sửa" className={iconBtn}><Pencil size={14} /></button>
@@ -7772,9 +7821,9 @@ function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = null }) 
           <div className={`min-w-0 break-words ${dim || "text-slate-100"}`}>{e.name}</div>
           <div className="min-w-0">{roleEl || none}</div>
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            {a ? <><span className="break-all font-mono text-xs text-slate-300">{a.username}</span>{lvBadge(a)}{a.disabled && lockedBadge}</> : <span className="text-slate-600">Chưa có</span>}
+            {limited ? none : a ? <><span className="break-all font-mono text-xs text-slate-300">{a.username}</span>{lvBadge(a)}{a.disabled && lockedBadge}</> : <span className="text-slate-600">Chưa có</span>}
           </div>
-          <div><PasswordCell value={a?.password} shown={!!shown[a?.id]} onToggle={() => toggleShown(a.id)} /></div>
+          <div>{limited ? none : <PasswordCell value={a?.password} shown={!!shown[a?.id]} onToggle={() => toggleShown(a.id)} />}</div>
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">{projEl}</div>
           {btns}
         </div>
@@ -7808,6 +7857,7 @@ function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = null }) 
           <option value="">Mọi phòng ban</option>
           {deptOrder.map((d) => <option key={d}>{d}</option>)}
         </select>
+        {!limited && <>
         <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className={selectCls}>
           <option value="">Mọi tài khoản</option>
           <option value="none">Chưa có tài khoản</option>
@@ -7816,6 +7866,7 @@ function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = null }) 
         </select>
         <button onClick={exportAccounts} className={`whitespace-nowrap ${btnGhost}`}><Download size={14} /> Xuất tài khoản</button>
         <button onClick={openAdd} className={`whitespace-nowrap ${btnPrimary}`}><Plus size={14} /> Thêm nhân sự</button>
+        </>}
       </div>
       <div className="px-3.5 pb-2.5 text-xs text-slate-500">
         {visible.length === actList.length ? `${visible.length} nhân sự` : `${visible.length} / ${actList.length} nhân sự`}
@@ -8088,7 +8139,7 @@ function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = null }) 
   return (
     <div className="space-y-3 md:space-y-4">
       <div className="inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-1">
-        {[["emp", "Nhân sự", actList.length], ["gone", "Nhân sự nghỉ việc", goneList.length], ...(onSupport ? [["sup", "Hỗ trợ dự án", supportList(cfg).filter((x) => x.until >= fmt(new Date())).length]] : []), ["admin", "Tài khoản BOD / Admin", loose.length]].map(([k, l, n]) => (
+        {[["emp", "Nhân sự", actList.length], ["gone", "Nhân sự nghỉ việc", goneList.length], ...(onSupport ? [["sup", "Hỗ trợ dự án", supportList(cfg).filter((x) => x.until >= fmt(new Date())).length]] : []), ["admin", "Tài khoản BOD / Admin", loose.length]].filter(([k]) => !limited || k === "emp").map(([k, l, n]) => (
           <button key={k} onClick={() => setSub(k)}
             className={`h-9 whitespace-nowrap rounded-md px-4 text-sm ${sub === k ? "bg-slate-800 font-medium text-slate-50" : "text-slate-400 hover:text-slate-200"}`}>
             {l}<span className="ml-1.5 font-mono text-xs text-slate-500">{n}</span>

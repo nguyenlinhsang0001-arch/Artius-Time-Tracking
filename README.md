@@ -1,5 +1,17 @@
 # ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
 
+## Mới ở v9.3 — Trưởng phòng: tab Dự án và Nhân sự
+- **Dự án**: trưởng phòng xem được danh sách dự án (chỉ xem — không sửa tên, giờ dự kiến, mở / đóng giai đoạn). Ở khối nhân sự tham gia chỉ thấy nhân viên **phòng mình**; bấm **+ Nhân sự** để thêm / gỡ nhân viên phòng mình vào dự án.
+- **Nhân sự**: chỉ thấy nhân viên **phòng mình** (không gồm chính mình); giao / gỡ dự án (+ Dự án, ✕, Tất cả, chép dự án từ người khác).
+- Trưởng phòng **không** xem được tên đăng nhập / mật khẩu, không thấy nhân viên phòng khác, không thêm / sửa / xoá / cho nghỉ việc.
+- **Bắt buộc chạy SQL**: Supabase → SQL Editor → dán `supabase/v9_3_truong_phong.sql` → Run. Database chặn trưởng phòng giao dự án cho người ngoài phòng hoặc cho chính mình.
+
+## Mới ở v9.2 — Điện thoại: tăng ca theo đúng ngày
+- Khi mở đủ tác vụ (˅), nhóm **Tăng ca** chỉ hiện dòng tăng ca có giờ của **ngày đang xem**. Dòng tăng ca của ngày khác trong tuần không còn hiện sẵn với số 0 (và không bị khoá ô chọn nữa).
+- Bấm **Tăng ca** / **+ Thêm dòng tăng ca** tạo dòng mới cho ngày đó, chọn được tác vụ và khung giờ.
+- Chọn trùng tác vụ + khung giờ của dòng tăng ca đã có ở ngày khác thì app tự gộp vào dòng đó (không báo lỗi trùng).
+- Máy tính giữ nguyên.
+
 ## Mới ở v9.1 — Điện thoại: thùng rác ở đầu khối dự án
 - Nút ⋯ cạnh nút mở rộng đổi thành **thùng rác**: bấm là xoá dự án khỏi **ngày đang xem**. Dự án còn giờ ở ngày khác trong tuần thì chỉ xoá giờ của ngày này; không còn giờ ngày nào thì xoá hẳn khối. Có nút **Hoàn tác**.
 - Cần sửa khối (đổi giai đoạn, thêm tác vụ, tăng ca) thì bấm nút mở rộng **˅**.
