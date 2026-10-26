@@ -1,5 +1,11 @@
 # ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
 
+## Mới ở v9.8 — Mở chấm bù nằm trong nút Mở khoá
+- Bảng công (Admin), cột **Mở khoá / sửa**: nút mở khoá (🔓) hiện thêm ở các tuần **đã quá hạn chấm công** (kể cả tuần chưa gửi). Bấm mở hộp thoại: mở khoá tuần (nếu đã gửi) và tick **Mở chấm bù cho nhân sự tới ngày…** — một lần bấm làm cả hai.
+- Nút có chấm xanh khi tuần đó đang mở chấm bù; bấm lại để đổi hạn.
+- Hộp thoại **Khoá quá hạn** giữ như cũ nhưng chỉ còn: đổi số tuần + danh sách các tuần đang mở chấm bù (có nút khoá lại). Form "Mở chấm bù cho một nhân sự" đã bỏ khỏi đó.
+- Trưởng phòng vẫn mở khoá tuần đã gửi như trước; mở chấm bù chỉ Admin (ghi vào thiết lập).
+
 ## Mới ở v9.7 — Khoá chấm công quá hạn chuyển sang Bảng công
 - Admin: ở **Bảng công**, thanh công cụ có nút **🔒 Khoá quá hạn · 2 tuần** (hiện số tuần đang áp dụng, hoặc "tắt"). Bấm mở hộp thoại: đổi số tuần nhân viên được sửa (0 = tắt), mở chấm bù cho một nhân sự, xem / khoá lại các tuần đang mở.
 - Đã bỏ khung "Khoá chấm công quá hạn" khỏi Thiết lập (chức năng giữ nguyên, chỉ đổi chỗ). Trưởng phòng và BOD không thấy nút này (như trước, chỉ Admin đổi được).

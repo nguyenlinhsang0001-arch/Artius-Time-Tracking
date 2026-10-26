@@ -18,6 +18,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v9.8 — Mở chấm bù cho một nhân sự chuyển vào nút mở khoá (cột Mở khoá / sửa) của Bảng công; hộp thoại Khoá quá hạn chỉ còn đổi số tuần + danh sách đang mở.
    Mới ở v9.7 — Khoá chấm công quá hạn chuyển từ Thiết lập sang Bảng công (Admin): nút "Khoá quá hạn · N tuần" ở thanh công cụ mở hộp thoại đổi số tuần + mở chấm bù.
    Mới ở v9.6 — Thiết lập → Nhắc nộp bảng công: thêm "Nhắc hằng ngày" (bật / tắt, chọn giờ) — nhắc người chưa Gửi giờ hôm nay. Cần cập nhật api/_reminders.js trên Vercel.
    Mới ở v9.5 — Mode sáng: nâng độ tương phản chữ/nền (xám phụ, xanh ngọc, vàng cam, đỏ, nút & nhãn xanh) lên từ 4.5:1.
@@ -329,7 +330,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v9.7";
+const APP_VERSION = "v9.8";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -4711,10 +4712,20 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
               {!readOnly && <>
               <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
                 <span className="inline-flex gap-1.5">
-                  {weekDays(monday).some((d) => daySent(e.id, d)) ? (
-                    <button onClick={() => setUnlockFor(e.id)} title="Mở khoá cả tuần — nhân sự sửa lại và gửi lại được"
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-slate-100"><Unlock size={15} /></button>
-                  ) : <span className="inline-block w-9" />}
+                  {(() => {
+                    const hasSent = weekDays(monday).some((d) => daySent(e.id, d));
+                    const cut = pastCut(cfg), locked = !!(cut && monday < cut);
+                    const buUntil = locked ? pastOpenUntil(cfg, e.id, monday) : null;
+                    const canBu = !!pastLockSave && locked && !isResigned(e);          // v9.8: chỉ Admin mở chấm bù (ghi vào thiết lập)
+                    if (!hasSent && !canBu) return <span className="inline-block w-9" />;
+                    return (
+                      <button onClick={() => setUnlockFor(e.id)}
+                        title={hasSent ? (canBu ? "Mở khoá cả tuần / mở chấm bù cho nhân sự" : "Mở khoá cả tuần — nhân sự sửa lại và gửi lại được") : (buUntil ? `Đang mở chấm bù tới hết ${dLabel(buUntil)} — bấm để đổi hạn` : "Tuần đã quá hạn chấm công — bấm để mở chấm bù cho nhân sự")}
+                        className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg border hover:bg-slate-800 hover:text-slate-100 ${buUntil ? "border-teal-700 text-teal-400" : "border-slate-700 text-slate-300"}`}>
+                        <Unlock size={15} />{buUntil && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-teal-400 ring-2 ring-slate-900" />}
+                      </button>
+                    );
+                  })()}
                   <button onClick={() => openDrawer(e.id)} title="Sửa giờ công cả tuần"
                     className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-slate-100"><Pencil size={15} /></button>
                 </span>
@@ -4973,17 +4984,31 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
         );
       })()}
 
-      <ConfirmDialog open={!!unlockFor} tone="ok"
-        title={`Mở khoá tuần ${dLabel(monday)} – ${dLabel(fmt(addDays(parseD(monday), 6)))}?`}
-        desc={`${cfg.employees.find((e) => e.id === unlockFor)?.name || ""} sẽ sửa lại và gửi lại được tuần này. Giờ công giữ nguyên, nhưng tạm chưa tính vào tổng hợp cho tới khi gửi lại.${pastCut(cfg) && monday < pastCut(cfg) && !pastOpenUntil(cfg, unlockFor, monday) ? " Lưu ý: tuần này đã quá hạn chấm công — muốn nhân sự tự sửa thì mở chấm bù bằng nút Khoá quá hạn ở thanh trên của Bảng công." : ""}`}
-        confirmLabel="Mở khoá" cancelLabel="Thôi"
-        onCancel={() => setUnlockFor(null)}
-        onConfirm={async () => {
-          const id = unlockFor; setUnlockFor(null);
-          const ok = await unlockWeekTs(id, monday);
-          const nm = cfg.employees.find((e) => e.id === id)?.name || "";
-          flash(ok ? `Đã mở khoá tuần ${dLabel(monday)} cho ${nm}.` : `Chưa mở khoá được — ${LAST_STORAGE_ERROR || "mất kết nối"}`, ok ? "ok" : "err");
-        }} />
+      {unlockFor && (() => {
+        const emp = cfg.employees.find((e) => e.id === unlockFor);
+        const hasSent = weekDays(monday).some((d) => daySent(unlockFor, d));
+        const cut = pastCut(cfg), locked = !!(cut && monday < cut);
+        return (
+          <UnlockWeekDialog key={`${unlockFor}|${monday}`} name={emp?.name || ""} monday={monday} hasSent={hasSent}
+            canBu={!!pastLockSave && locked} locked={locked} today={today} openedUntil={locked ? pastOpenUntil(cfg, unlockFor, monday) : null}
+            onCancel={() => setUnlockFor(null)}
+            onConfirm={async ({ unlock, buUntil }) => {
+              const id = unlockFor; setUnlockFor(null);
+              const nm = emp?.name || "";
+              let okU = true, okB = true;
+              if (unlock && hasSent) okU = await unlockWeekTs(id, monday);
+              if (okU && buUntil) {
+                const next = cleanPastOpen(cfg, today, (c) => { (c[id] = c[id] || {})[monday] = buUntil; });
+                okB = (await pastLockSave({ ...cfg, pastOpen: next })) !== false;
+              }
+              const ok = okU && okB;
+              const parts = [];
+              if (unlock && hasSent && okU) parts.push(`mở khoá tuần ${dLabel(monday)}`);
+              if (buUntil && okB) parts.push(`mở chấm bù tới hết ${dLabel(buUntil)}`);
+              flash(ok ? `Đã ${parts.join(" và ")} cho ${nm}.` : `Chưa thực hiện được — ${LAST_STORAGE_ERROR || "mất kết nối"}`, ok ? "ok" : "err");
+            }} />
+        );
+      })()}
     </div>
   );
 }
@@ -9527,37 +9552,82 @@ function SupportPanel({ cfg, onSupport, readOnly = false, collapsible = false, n
   );
 }
 
-/* v8.6 — Khoá chấm công quá hạn + mở chấm bù cho từng người */
+/* v9.8 — ghi lại pastOpen: bỏ các mục đã hết hạn, áp thay đổi fn, bỏ nhân sự không còn tuần nào */
+const cleanPastOpen = (cfg, today, fn) => {
+  const cur = {};
+  for (const [id, m] of Object.entries(cfg.pastOpen || {})) for (const [w, u] of Object.entries(m || {})) if (u >= today) (cur[id] = cur[id] || {})[w] = u;
+  fn(cur);
+  for (const id of Object.keys(cur)) if (!Object.keys(cur[id]).length) delete cur[id];
+  return cur;
+};
+
+/* v9.8 — Mở khoá tuần và / hoặc mở chấm bù cho một nhân sự (cột "Mở khoá / sửa" của Bảng công).
+   Tuần đã gửi → mở khoá. Tuần quá hạn chấm công (Admin) → tick "mở chấm bù tới ngày…". Một lần bấm làm cả hai. */
+function UnlockWeekDialog({ name, monday, hasSent, canBu, locked, today, openedUntil, onCancel, onConfirm }) {
+  const [wantBu, setWantBu] = useState(canBu);
+  const [until, setUntil] = useState(openedUntil || fmt(addDays(new Date(), 3)));
+  useEffect(() => {
+    const h = (e) => { if (e.key === "Escape") onCancel(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [onCancel]);
+  const bu = canBu && (wantBu || !hasSent);
+  const bad = bu && (!until || until < today);
+  const label = hasSent ? (bu ? "Mở khoá + chấm bù" : "Mở khoá") : "Mở chấm bù";
+  const wk = `${dLabel(monday)} – ${dLabel(fmt(addDays(parseD(monday), 6)))}`;
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={onCancel}>
+      <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start gap-3">
+          <Unlock size={20} className="mt-0.5 shrink-0 text-teal-400" />
+          <div className="min-w-0">
+            <h4 className="text-sm font-semibold text-slate-50">{hasSent ? `Mở khoá tuần ${wk}?` : `Mở chấm bù tuần ${wk}?`}</h4>
+            {hasSent && <p className="mt-1 text-sm text-slate-400">{name} sẽ sửa lại và gửi lại được tuần này. Giờ công giữ nguyên, nhưng tạm chưa tính vào tổng hợp cho tới khi gửi lại.</p>}
+            {!hasSent && <p className="mt-1 text-sm text-slate-400">Tuần này đã quá hạn chấm công nên {name} không tự nhập được. Mở chấm bù để nhân sự nhập và gửi trong thời hạn bên dưới.</p>}
+            {hasSent && locked && !canBu && <p className="mt-2 text-xs text-amber-400">Tuần này đã quá hạn chấm công: mở khoá xong nhân sự vẫn chưa sửa được. Chỉ Admin mở chấm bù được.</p>}
+          </div>
+        </div>
+        {canBu && (
+          <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950 p-3">
+            {hasSent && (
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-200">
+                <input type="checkbox" checked={wantBu} onChange={(e) => setWantBu(e.target.checked)} className="h-4 w-4 accent-teal-600" />
+                Mở chấm bù cho {name} (tuần đã quá hạn)
+              </label>
+            )}
+            {openedUntil && <p className="mb-2 text-xs text-teal-400">Đang mở chấm bù tới hết {dLabel(openedUntil)}.</p>}
+            {(wantBu || !hasSent) && (
+              <label className={`flex items-center gap-2 text-xs text-slate-500 ${hasSent ? "mt-2" : ""}`}>
+                <span className="whitespace-nowrap">Mở tới</span>
+                <input type="date" min={today} value={until} onChange={(e) => setUntil(e.target.value)} className={`min-w-0 flex-1 ${inputCls}`} />
+              </label>
+            )}
+            <p className="mt-2 text-xs text-slate-500">Hết ngày “Mở tới” là tuần này tự khoá lại.</p>
+          </div>
+        )}
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button onClick={onCancel} className={btnGhost}>Thôi</button>
+          <button disabled={bad} onClick={() => onConfirm({ unlock: hasSent, buUntil: bu ? until : null })} className={`${btnPrimary} disabled:opacity-40`}><CheckCircle2 size={14} /> {label}</button>
+        </div>
+        {bad && <p className="mt-2 text-xs text-rose-400">Hạn mở phải từ hôm nay trở đi.</p>}
+      </div>
+    </div>
+  );
+}
+
+/* v8.6 — Khoá chấm công quá hạn (v9.8: chỉ còn đổi số tuần + danh sách tuần đang mở chấm bù; mở chấm bù mới làm ở cột Mở khoá / sửa của Bảng công) */
 function PastLockPanel({ cfg, saveCfg, flash }) {
   const today = fmt(new Date());
   const weeks = pastWeeks(cfg), cut = pastCut(cfg, today);
-  const emps = cfg.employees.filter((e) => !isResigned(e)).sort((a, b) => a.name.localeCompare(b.name, "vi"));
-  const lockedMons = [];
-  if (cut) for (let i = 1; i <= 16; i++) lockedMons.push(fmt(addDays(parseD(cut), -7 * i)));
-  const [eid, setEid] = useState("");
-  const [mon, setMon] = useState("");
-  const [until, setUntil] = useState(fmt(addDays(new Date(), 3)));
   const [busy, setBusy] = useState(false);
   const opens = Object.entries(cfg.pastOpen || {}).flatMap(([id, m]) => Object.entries(m || {}).map(([w, u]) => ({ id, w, u })))
     .sort((a, b) => b.u.localeCompare(a.u));
-  // ghi pastOpen mới, tiện tay bỏ các mục đã hết hạn
   const writeOpen = async (fn) => {
-    const cur = {};
-    for (const [id, m] of Object.entries(cfg.pastOpen || {})) for (const [w, u] of Object.entries(m || {})) if (u >= today) (cur[id] = cur[id] || {})[w] = u;
-    fn(cur);
-    for (const id of Object.keys(cur)) if (!Object.keys(cur[id]).length) delete cur[id];
+    const cur = cleanPastOpen(cfg, today, fn);
     setBusy(true); const ok = await saveCfg({ ...cfg, pastOpen: cur }); setBusy(false);
     return ok !== false;
   };
   const setWeeks = async (n) => { await saveCfg({ ...cfg, pastLock: { ...(cfg.pastLock || {}), weeks: n } }); flash(n ? `Nhân viên chỉ chấm / sửa được ${n} tuần gần nhất.` : "Đã tắt khoá chấm công quá hạn."); };
-  const addOpen = async () => {
-    if (!eid || !mon) return flash("Chọn nhân sự và tuần cần chấm bù.", "err");
-    if (!until || until < today) return flash("Hạn mở phải từ hôm nay trở đi.", "err");
-    if (await writeOpen((c) => { (c[eid] = c[eid] || {})[mon] = until; })) {
-      flash(`Đã mở chấm bù tuần ${dLabel(mon)} cho ${cfg.employees.find((e) => e.id === eid)?.name || ""} tới hết ${dLabel(until)}.`);
-      setMon("");
-    }
-  };
   const nm = (id) => empNameTag(cfg.employees.find((e) => e.id === id));
   const wkLabel = (m) => `${dLabel(m)} – ${dLabel(fmt(addDays(parseD(m), 6)))}`;
   return (
@@ -9578,23 +9648,7 @@ function PastLockPanel({ cfg, saveCfg, flash }) {
 
       {cut && (
         <div className="mt-4 border-t border-slate-800 pt-4">
-          <div className="mb-2 text-sm text-slate-200">Mở chấm bù cho một nhân sự</div>
-          <div className="grid gap-2 md:grid-cols-[minmax(180px,1fr)_200px_170px_auto]">
-            <select value={eid} onChange={(e) => setEid(e.target.value)} className={selectCls}>
-              <option value="">— Nhân sự —</option>
-              {emps.map((e) => <option key={e.id} value={e.id}>{e.name}{e.code ? ` · ${e.code}` : ""}</option>)}
-            </select>
-            <select value={mon} onChange={(e) => setMon(e.target.value)} className={selectCls}>
-              <option value="">— Tuần cần chấm bù —</option>
-              {lockedMons.map((m) => <option key={m} value={m}>{wkLabel(m)}</option>)}
-            </select>
-            <label className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="whitespace-nowrap">Mở tới</span>
-              <input type="date" min={today} value={until} onChange={(e) => setUntil(e.target.value)} className={`min-w-0 flex-1 ${inputCls}`} />
-            </label>
-            <button onClick={addOpen} disabled={busy} className={`ro-hide ${btnPrimary} disabled:opacity-50`}><Unlock size={14} /> Mở chấm bù</button>
-          </div>
-          <p className="mt-2 text-xs text-slate-500">Hết ngày "Mở tới" là tuần đó tự khoá lại. Tuần đã gửi thì mở khoá ở Bảng công trước, rồi mới mở chấm bù ở đây.</p>
+          <p className="text-xs text-slate-500">Mở chấm bù cho một nhân sự: ở Bảng công, bấm nút mở khoá (🔓) ở cột “Mở khoá / sửa” của người đó.</p>
           {opens.length > 0 && (
             <div className="mt-3 space-y-1.5">
               {opens.map((o) => {
