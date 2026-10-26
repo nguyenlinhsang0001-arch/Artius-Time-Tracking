@@ -1,5 +1,11 @@
 # ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
 
+## Mới ở v9.5 — Mode sáng: chữ và nhãn rõ hơn
+- Rà toàn app bằng phép đo tương phản (1.910 đoạn chữ, mọi màn): 22 nhóm màu dưới 4.5:1 đã được làm đậm lên từ 4.5:1 trở lên (chữ trang trí như "—", "·" lên 3.5:1).
+- Chữ xám phụ (ngày CN, ghi chú, nhãn menu), chữ xanh ngọc ("Tuần này", "0 h"), chữ vàng cam ("152 h", "thiếu giờ chuẩn", nhãn P1), chữ đỏ/hồng, chữ xanh dương nhạt.
+- Nút / tab / ô lọc xanh ngọc đang chọn và nhãn xanh lá ("Đang chấm công", "Đủ") đậm hơn để chữ trắng nổi; số đếm trong tab đang chọn đổi sang nền tối.
+- Mode tối giữ nguyên (chỉ thêm quy tắc dưới html[data-theme="light"]).
+
 ## Mới ở v9.4 — Mode sáng: mã dự án chữ đen
 - Tab **Dự án**: cột Mã DA hiện chữ đen ở giao diện Sáng (trước đây chữ trắng nên không thấy). Giao diện Tối giữ nguyên.
 

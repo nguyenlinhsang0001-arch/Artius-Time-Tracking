@@ -18,6 +18,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v9.5 — Mode sáng: nâng độ tương phản chữ/nền (xám phụ, xanh ngọc, vàng cam, đỏ, nút & nhãn xanh) lên từ 4.5:1.
    Mới ở v9.4 — Mode sáng: mã dự án ở tab Dự án hiện chữ đen (trước đây chữ trắng nên mất trên nền sáng).
    Mới ở v9.3 — Trưởng phòng có thêm tab Dự án (chỉ xem; thêm / gỡ nhân viên phòng mình vào dự án) và tab Nhân sự (chỉ nhân viên phòng mình;
    giao / gỡ dự án, Tất cả dự án). Không xem tài khoản / mật khẩu, không thấy nhân viên phòng khác, không thêm / sửa / xoá nhân sự.
@@ -326,7 +327,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v9.4";
+const APP_VERSION = "v9.5";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1082,6 +1083,11 @@ const TONE_L = { "#2dd4bf": "#0d9488", "#f59e0b": "#d97706", "#a78bfa": "#7c3aed
   "#34d399": "#059669", "#fb7185": "#e11d48", "#38bdf8": "#0284c7", "#c084fc": "#9333ea", "#a3e635": "#65a30d", "#fb923c": "#ea580c",
   "#22d3ee": "#0891b2", "#4ade80": "#16a34a", "#f87171": "#dc2626" };
 const tone = (hex) => (hex && isLight() ? TONE_L[String(hex).toLowerCase()] || hex : hex);
+/* v9.5 — màu CHỮ nhỏ của giai đoạn trên nền sáng: đậm hơn màu tô (thanh, chấm) để đạt 4.5:1 */
+const TONE_T = { "#d97706": "#a64a07", "#0d9488": "#0d6e66", "#7c3aed": "#6d28d9", "#db2777": "#be185d", "#2563eb": "#1d4ed8", "#ca8a04": "#92400e",
+  "#059669": "#047857", "#e11d48": "#be123c", "#0284c7": "#0369a1", "#9333ea": "#7e22ce", "#65a30d": "#4d7c0f", "#ea580c": "#c2410c",
+  "#0891b2": "#0e7490", "#16a34a": "#15803d", "#dc2626": "#b91c1c" };
+const toneT = (hex) => (hex && isLight() ? TONE_T[String(hex).toLowerCase()] || hex : hex);
 const phaseColor = (id) => PHASE_COLORS[((parseInt(String(id).replace(/\D/g, ""), 10) || 1) - 1) % PHASE_COLORS.length];
 const DEFAULT_PHASES = [
   { id: "P1", name: "Đấu thầu", desc: "Khảo sát sơ bộ, nghiên cứu, concept đấu thầu, báo giá, hồ sơ proposal", active: true },
@@ -4199,7 +4205,7 @@ const DAY_ST_L = {
   full: { background: "#3b82f61f", color: "#1d4ed8" },
   part: { background: "#f59e0b1f", color: "#b45309", boxShadow: "inset 0 0 0 1px #d9770666" },
   draft: { color: "#64748b", fontWeight: 500, border: "1.5px dashed #94a3b8" },
-  none: { background: "#fff1f2", color: "#e11d48", boxShadow: "inset 0 0 0 1px #fecdd3" },   // v7.9: nhạt hơn
+  none: { background: "#fff1f2", color: "#be123c", boxShadow: "inset 0 0 0 1px #fecdd3" },   // v7.9: nhạt hơn
   leave: { background: "#cbd5e1", color: "#334155", boxShadow: "inset 0 0 0 1px #94a3b8" },   // v7.9: nghỉ phép xám xanh (tách khỏi thiếu giờ vàng và giờ cố gắng tím)
   hol: { background: "repeating-linear-gradient(45deg,#64748b22 0 4px,transparent 4px 8px)", color: "#64748b", boxShadow: "inset 0 0 0 1px #64748b40" },
   off: { color: "#cbd5e1" },
@@ -8943,7 +8949,7 @@ function PhasePanel({ cfg, saveCfg, flash }) {
           return (
             <div key={x.id} data-phase-card={x.id} className={`relative min-w-0 rounded-lg border border-slate-800 bg-slate-950 py-3 pl-3 pr-14 ${off ? "opacity-60" : ""}`}>
               <div className="flex min-w-0 items-center gap-2">
-                <span className="shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px]" style={{ color: c, borderColor: `${c}66`, background: `${c}1a` }}>{x.id}</span>
+                <span className="shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px]" style={{ color: toneT(c), borderColor: `${c}66`, background: `${c}1a` }}>{x.id}</span>
                 {isEd("name")
                   ? <input autoFocus value={val} onChange={(e) => setVal(e.target.value)} onBlur={commit} onKeyDown={editKey} aria-label="Tên giai đoạn" className={`h-8 text-sm ${editCls}`} />
                   : <button onClick={() => startEdit(x, "name")} className="-ml-1 min-w-0 truncate rounded border border-transparent px-1 text-left text-sm font-medium text-slate-100 hover:border-slate-700">{x.name}</button>}
