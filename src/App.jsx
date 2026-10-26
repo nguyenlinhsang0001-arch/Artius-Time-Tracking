@@ -18,6 +18,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v9.6 — Thiết lập → Nhắc nộp bảng công: thêm "Nhắc hằng ngày" (bật / tắt, chọn giờ) — nhắc người chưa Gửi giờ hôm nay. Cần cập nhật api/_reminders.js trên Vercel.
    Mới ở v9.5 — Mode sáng: nâng độ tương phản chữ/nền (xám phụ, xanh ngọc, vàng cam, đỏ, nút & nhãn xanh) lên từ 4.5:1.
    Mới ở v9.4 — Mode sáng: mã dự án ở tab Dự án hiện chữ đen (trước đây chữ trắng nên mất trên nền sáng).
    Mới ở v9.3 — Trưởng phòng có thêm tab Dự án (chỉ xem; thêm / gỡ nhân viên phòng mình vào dự án) và tab Nhân sự (chỉ nhân viên phòng mình;
@@ -327,7 +328,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v9.5";
+const APP_VERSION = "v9.6";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -8979,7 +8980,7 @@ function PhasePanel({ cfg, saveCfg, flash }) {
 }
 
 /* v2.6 — Lịch nhắc nộp bảng công (thông báo trên máy tính). Lưu ở cfg.reminders; server đọc lại mỗi 15 phút. */
-const REM_DEFAULT = { weekOn: true, weekDow: 1, weekTime: "09:30", monthOn: true, monthTo: 2, monthTime: "09:30" };
+const REM_DEFAULT = { dayOn: false, dayTime: "16:30", weekOn: true, weekDow: 1, weekTime: "09:30", monthOn: true, monthTo: 2, monthTime: "09:30" };
 const REM_DOW = [[1, "Thứ Hai"], [2, "Thứ Ba"], [3, "Thứ Tư"], [4, "Thứ Năm"], [5, "Thứ Sáu"], [6, "Thứ Bảy"], [7, "Chủ nhật"]];
 const REM_HOURS = Array.from({ length: 16 }, (_, i) => pad(i + 6));          // 06 … 21
 const REM_MINS = ["00", "15", "30", "45"];
@@ -9103,11 +9104,17 @@ function ReminderPanel({ cfg, saveCfg, flash }) {
   const missing = emps.filter((e) => !on.has(e.id));
   const empName = (id) => { const e = (cfg.employees || []).find((x) => x.id === id); return e ? empNameTag(e) : "(nhân sự đã xoá)"; };
   const stamp = (iso) => { const d = new Date(iso); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
-  const what = (x) => (x.kind === "week" ? `Tuần ${dLabel(x.period)}` : `Tháng ${Number(x.period.slice(5, 7))}/${x.period.slice(0, 4)}`);
+  const what = (x) => (x.kind === "day" ? `Ngày ${dLabel(x.period.slice(0, 10))}` : x.kind === "week" ? `Tuần ${dLabel(x.period)}` : `Tháng ${Number(x.period.slice(5, 7))}/${x.period.slice(0, 4)}`);
 
   return (
     <Panel title="Nhắc nộp bảng công — thông báo trên máy tính">
       <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Toggle on={r.dayOn} onClick={() => set({ dayOn: !r.dayOn })} />
+          <span className="w-28 text-sm text-slate-200">Nhắc hằng ngày</span>
+          <div className={`flex h-9 w-56 items-center rounded-lg border border-slate-800 bg-slate-950 px-3 text-sm text-slate-400 ${r.dayOn ? "" : "opacity-40"}`}>Mỗi ngày làm việc</div>
+          <TimePick value={r.dayTime} disabled={!r.dayOn} onChange={(v) => set({ dayTime: v })} />
+        </div>
         <div className="flex flex-wrap items-center gap-3">
           <Toggle on={r.weekOn} onClick={() => set({ weekOn: !r.weekOn })} />
           <span className="w-28 text-sm text-slate-200">Nhắc tuần trước</span>
@@ -9125,7 +9132,7 @@ function ReminderPanel({ cfg, saveCfg, flash }) {
           <TimePick value={r.monthTime} disabled={!r.monthOn} onChange={(v) => set({ monthTime: v })} />
         </div>
         <div className="flex flex-wrap items-center gap-3 border-t border-slate-800 pt-3">
-          <span className="text-xs text-slate-500">Chỉ gửi cho nhân sự còn ngày chưa gửi. Lần đầu trong vòng 15 phút sau giờ đã chọn, sau đó nhắc lại mỗi 1 giờ tới 17:30 cho tới khi gửi đủ.</span>
+          <span className="text-xs text-slate-500">Chỉ gửi cho nhân sự còn ngày chưa gửi (nhắc hằng ngày: chưa gửi giờ của hôm nay; bỏ ngày lễ và ngày không phải chấm). Lần đầu trong vòng 15 phút sau giờ đã chọn, sau đó nhắc lại mỗi 1 giờ tới 17:30 cho tới khi gửi đủ.</span>
           <button onClick={test} disabled={testing} className={`ml-auto ${btnGhost} disabled:opacity-40`}>{testing ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />} Gửi thử tới máy này</button>
           <button onClick={save} disabled={!dirty} className={`${btnPrimary} disabled:opacity-40`}><Save size={14} /> Lưu lịch nhắc</button>
         </div>

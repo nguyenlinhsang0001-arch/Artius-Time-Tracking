@@ -1,5 +1,12 @@
 # ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
 
+## Mới ở v9.6 — Nhắc chấm công hằng ngày
+- **Thiết lập → Nhắc nộp bảng công**: thêm dòng **Nhắc hằng ngày** (công tắc bật / tắt + chọn giờ, mặc định **tắt**, giờ mặc định 16:30), cùng kiểu với nhắc tuần / tháng.
+- Mỗi ngày làm việc, từ giờ đã chọn, app gửi thông báo cho nhân sự **chưa Gửi giờ hôm nay**. Bỏ ngày lễ và ngày giờ chuẩn = 0 (ví dụ Chủ nhật). Người đã gửi thì không bị nhắc; người đã nghỉ việc không bị nhắc.
+- Nhắc lại mỗi 1 giờ cho tới 17:30 như nhắc tuần / tháng (giờ 16:30 thì chỉ có 16:30 và 17:30).
+- Danh sách "Lần nhắc gần nhất" hiện thêm dòng "Ngày dd/mm".
+- **Bắt buộc**: chép `api/_reminders.js` của bản này đè lên file cùng tên trong project Vercel rồi deploy lại (không cần chạy SQL). Chưa chép thì công tắc vẫn lưu được nhưng server chưa gửi nhắc ngày.
+
 ## Mới ở v9.5 — Mode sáng: chữ và nhãn rõ hơn
 - Rà toàn app bằng phép đo tương phản (1.910 đoạn chữ, mọi màn): 22 nhóm màu dưới 4.5:1 đã được làm đậm lên từ 4.5:1 trở lên (chữ trang trí như "—", "·" lên 3.5:1).
 - Chữ xám phụ (ngày CN, ghi chú, nhãn menu), chữ xanh ngọc ("Tuần này", "0 h"), chữ vàng cam ("152 h", "thiếu giờ chuẩn", nhãn P1), chữ đỏ/hồng, chữ xanh dương nhạt.
