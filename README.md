@@ -1,5 +1,19 @@
 # ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
 
+## Mới ở v8.9 — Chấm công trên điện thoại dễ nhìn, nhập nhanh hơn
+- Ô đã có giờ nổi rõ: nền xanh ngọc nhạt, số đậm, viền xanh, vạch xanh ở đầu dòng tác vụ — rõ ở cả giao diện Sáng / Tối, kể cả ngày đã gửi (khoá).
+- Nút **˄ / ˅** ở đầu mỗi khối dự án: thu gọn (chỉ còn tác vụ có giờ) / mở đủ tác vụ.
+- Bỏ dòng "Cả tuần x h" dưới từng tác vụ (tổng tuần đã có ở thẻ tuần).
+- Nút **8h** cạnh ô − / +: bấm là điền đúng 8 giờ cho tác vụ đó trong ngày đang xem; bấm lại khi đang 8h thì xoá về 0.
+- Không cần chạy SQL.
+
+## Mới ở v8.8 — Quyền "Tất cả dự án"
+- Tab Nhân sự → cột **Dự án đang tham gia** có nút **Tất cả**: nhân sự chấm được **mọi dự án đang mở, kể cả dự án thêm sau**, không phải chọn từng dự án. Hàng chip được thay bằng một nhãn **✓ Tất cả dự án**; bấm ✕ để tắt — quay về danh sách dự án đã chọn trước đó.
+- Hộp Thêm / Sửa nhân sự có ô **Tất cả dự án** phía trên danh sách dự án.
+- Tab Dự án: người có quyền này hiện trong nhân sự tham gia của mọi dự án, kèm nhãn "tất cả DA" (gỡ từng dự án thì tắt quyền ở tab Nhân sự trước).
+- Người có quyền này không xuất hiện trong danh sách mở Hỗ trợ dự án (không cần). Nghỉ việc thì quyền tắt; Làm lại thì bật lại.
+- Không cần chạy SQL.
+
 ## Mới ở v8.7 — Hỗ trợ dự án có thời hạn
 - **Trưởng phòng** (nhân viên phòng mình) hoặc **Admin** (mọi người) mở cho một nhân sự chấm công vào dự án **không được giao**: chọn nhân sự · dự án · giai đoạn (một giai đoạn hoặc mọi giai đoạn đang mở) · thời gian (1 / 2 / 4 tuần, hết tháng, hoặc tự chọn từ ngày → đến hết ngày) · ghi chú.
 - Mở ở: **Bảng công** (khung "Hỗ trợ dự án" ở đầu — trưởng phòng dùng chỗ này), **Nhân sự → Hỗ trợ dự án** (Admin), **Dự án → + Hỗ trợ** ở khối nhân sự tham gia (Admin).
