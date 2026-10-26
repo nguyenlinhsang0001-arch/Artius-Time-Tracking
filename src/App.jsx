@@ -18,6 +18,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v9.7 — Khoá chấm công quá hạn chuyển từ Thiết lập sang Bảng công (Admin): nút "Khoá quá hạn · N tuần" ở thanh công cụ mở hộp thoại đổi số tuần + mở chấm bù.
    Mới ở v9.6 — Thiết lập → Nhắc nộp bảng công: thêm "Nhắc hằng ngày" (bật / tắt, chọn giờ) — nhắc người chưa Gửi giờ hôm nay. Cần cập nhật api/_reminders.js trên Vercel.
    Mới ở v9.5 — Mode sáng: nâng độ tương phản chữ/nền (xám phụ, xanh ngọc, vàng cam, đỏ, nút & nhãn xanh) lên từ 4.5:1.
    Mới ở v9.4 — Mode sáng: mã dự án ở tab Dự án hiện chữ đen (trước đây chữ trắng nên mất trên nền sáng).
@@ -328,7 +329,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v9.6";
+const APP_VERSION = "v9.7";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -2028,7 +2029,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
             : me.type === "admin" ? (
               <>
                 {tab === "dash" && <Dashboard cfg={cfg} saveCfg={saveCfg} flash={flash} />}
-                {tab === "sheet" && <AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} onSupport={supportSave} />}
+                {tab === "sheet" && <AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} onSupport={supportSave} pastLockSave={saveCfg} />}
                 {tab === "proj" && <Projects cfg={cfg} saveCfg={saveCfg} flash={flash} onSupport={supportSave} />}
                 {tab === "emp" && <Employees cfg={cfg} saveCfg={saveCfg} flash={flash} onSupport={supportSave} />}
                 {tab === "task" && <Tasks cfg={cfg} saveCfg={saveCfg} flash={flash} />}
@@ -4291,7 +4292,7 @@ const saveDayTs = async (empId, d, vals) => {
 
 /* v7.3 — readOnly: BOD chỉ xem (không sửa nhanh, không mở ngăn kéo, không mở khoá, không nhắc).
           oneDept: trưởng phòng — cfg.employees đã lọc còn phòng của mình, ẩn ô chọn bộ phận. */
-function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept = false }) {
+function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept = false, pastLockSave = null }) {
   const dataTick = useDataTick();
   const empById8 = useMemo(() => new Map(cfg.employees.map((e) => [e.id, e])), [cfg.employees]);
   const today = fmt(new Date());
@@ -4330,6 +4331,13 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
     if (JSON.stringify(nb) !== JSON.stringify(band)) setBand(nb);
   });   // đo lại sau mỗi lần vẽ; chỉ setState khi vị trí đổi
   const [leaveAsk, setLeaveAsk] = useState(false);              // đang hỏi bỏ thay đổi chưa lưu
+  const [plOpen, setPlOpen] = useState(false);                     // v9.7: hộp thoại Khoá chấm công quá hạn (chỉ Admin)
+  useEffect(() => {
+    if (!plOpen) return undefined;
+    const f = (e) => { if (e.key === "Escape") setPlOpen(false); };
+    window.addEventListener("keydown", f);
+    return () => window.removeEventListener("keydown", f);
+  }, [plOpen]);
   const [pop, setPop] = useState(null);                         // v6.0 (C): { eid, d, x, y, items, vals } — sửa nhanh một ô ngày
   const [popSaving, setPopSaving] = useState(false);
   const popRef = useRef(null);
@@ -4858,8 +4866,22 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm nhân sự" className={`pl-9 ${inputCls}`} />
         </div>
-        <button onClick={exportXlsx} disabled={emps.length === 0} className={`w-full sm:ml-auto sm:w-auto ${btnPrimary} disabled:opacity-40`}><Download size={15} /> Xuất Excel</button>
+        {pastLockSave && !readOnly && !oneDept && (
+          <button onClick={() => setPlOpen(true)} title="Khoá chấm công quá hạn: đổi số tuần nhân viên được sửa, mở chấm bù cho một người"
+            className={`w-full sm:ml-auto sm:w-auto ${btnGhost}`}><Lock size={14} /> Khoá quá hạn · {pastWeeks(cfg) ? `${pastWeeks(cfg)} tuần` : "tắt"}</button>
+        )}
+        <button onClick={exportXlsx} disabled={emps.length === 0} className={`w-full ${pastLockSave && !readOnly && !oneDept ? "" : "sm:ml-auto"} sm:w-auto ${btnPrimary} disabled:opacity-40`}><Download size={15} /> Xuất Excel</button>
       </div>
+
+      {plOpen && pastLockSave && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 pt-[8vh]" role="dialog" aria-modal="true"
+          onMouseDown={(ev) => { if (ev.target === ev.currentTarget) setPlOpen(false); }}>
+          <div className="relative w-full max-w-4xl">
+            <button onClick={() => setPlOpen(false)} aria-label="Đóng" className={`absolute right-3 top-2.5 z-10 ${iconBtn} h-8 w-8`}><X size={15} /></button>
+            <PastLockPanel cfg={cfg} saveCfg={pastLockSave} flash={flash} />
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-px border-b border-slate-800 bg-slate-800 md:grid-cols-5">
         <Kpi l="Đã nộp đủ" v={okN} sub={`/ ${empsAct.length} người`} cls={okN < empsAct.length ? "text-amber-400" : "text-teal-300"} />
@@ -4953,7 +4975,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
 
       <ConfirmDialog open={!!unlockFor} tone="ok"
         title={`Mở khoá tuần ${dLabel(monday)} – ${dLabel(fmt(addDays(parseD(monday), 6)))}?`}
-        desc={`${cfg.employees.find((e) => e.id === unlockFor)?.name || ""} sẽ sửa lại và gửi lại được tuần này. Giờ công giữ nguyên, nhưng tạm chưa tính vào tổng hợp cho tới khi gửi lại.${pastCut(cfg) && monday < pastCut(cfg) && !pastOpenUntil(cfg, unlockFor, monday) ? " Lưu ý: tuần này đã quá hạn chấm công — muốn nhân sự tự sửa thì mở chấm bù ở Thiết lập → Khoá chấm công quá hạn." : ""}`}
+        desc={`${cfg.employees.find((e) => e.id === unlockFor)?.name || ""} sẽ sửa lại và gửi lại được tuần này. Giờ công giữ nguyên, nhưng tạm chưa tính vào tổng hợp cho tới khi gửi lại.${pastCut(cfg) && monday < pastCut(cfg) && !pastOpenUntil(cfg, unlockFor, monday) ? " Lưu ý: tuần này đã quá hạn chấm công — muốn nhân sự tự sửa thì mở chấm bù bằng nút Khoá quá hạn ở thanh trên của Bảng công." : ""}`}
         confirmLabel="Mở khoá" cancelLabel="Thôi"
         onCancel={() => setUnlockFor(null)}
         onConfirm={async () => {
@@ -4968,7 +4990,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
 
 /* v6.1 — Bảng công (quản lý) chỉ còn Tổng quan bảng công: xem Tuần / Tháng, sửa nhanh từng ô, sửa cả tuần trong ngăn kéo.
    Bỏ tab "Chi tiết nhân viên" (ngăn kéo đã dùng đúng bảng sửa đó). */
-function AdminTimesheet({ cfg, flash, onDirtyChange, readOnly = false, oneDept = false, onSupport = null }) {
+function AdminTimesheet({ cfg, flash, onDirtyChange, readOnly = false, oneDept = false, onSupport = null, pastLockSave = null }) {
   if (cfg.employees.length === 0) return (
     <Panel title="Bảng công nhân sự">
       <p className="text-sm text-slate-500">{oneDept ? "Phòng ban của bạn chưa có nhân viên nào khác." : "Chưa có nhân sự nào. Thêm nhân sự ở tab Nhân sự trước đã."}</p>
@@ -4979,7 +5001,7 @@ function AdminTimesheet({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
       {/* v8.7 — hỗ trợ dự án có thời hạn: trưởng phòng mở cho nhân viên phòng mình, Admin cho mọi người */}
       {onSupport && <SupportPanel cfg={cfg} onSupport={onSupport} readOnly={readOnly} collapsible
         note={oneDept ? "Mở cho nhân viên phòng bạn chấm công vào dự án khác trong một khoảng ngày. Hết hạn tự ngắt, giờ đã chấm giữ nguyên." : "Mở cho nhân sự chấm công vào dự án không được giao, trong một khoảng ngày. Hết hạn tự ngắt, giờ đã chấm giữ nguyên."} />}
-      <TimesheetBoard cfg={cfg} flash={flash} onDirtyChange={onDirtyChange} readOnly={readOnly} oneDept={oneDept} />
+      <TimesheetBoard cfg={cfg} flash={flash} onDirtyChange={onDirtyChange} readOnly={readOnly} oneDept={oneDept} pastLockSave={pastLockSave} />
     </div>
   );
 }
@@ -9750,8 +9772,6 @@ function SettingsTab({ cfg, saveCfg, flash }) {
           Nhân sự thấy cảnh báo vàng về bảng công tháng trước từ đầu tháng, chuyển đỏ “quá hạn” sau ngày {pad(day)}.
         </p>
       </Panel>
-
-      <PastLockPanel cfg={cfg} saveCfg={saveCfg} flash={flash} />
 
       <Panel title="Xoá dữ liệu chấm công">
         <p className="text-sm text-slate-300">Xoá toàn bộ giờ công đã nhập của mọi nhân sự. Danh sách dự án, nhân sự và hạng mục được giữ lại. Không khôi phục được — xuất Excel trước khi xoá.</p>

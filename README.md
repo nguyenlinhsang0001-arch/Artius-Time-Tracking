@@ -1,5 +1,10 @@
 # ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
 
+## Mới ở v9.7 — Khoá chấm công quá hạn chuyển sang Bảng công
+- Admin: ở **Bảng công**, thanh công cụ có nút **🔒 Khoá quá hạn · 2 tuần** (hiện số tuần đang áp dụng, hoặc "tắt"). Bấm mở hộp thoại: đổi số tuần nhân viên được sửa (0 = tắt), mở chấm bù cho một nhân sự, xem / khoá lại các tuần đang mở.
+- Đã bỏ khung "Khoá chấm công quá hạn" khỏi Thiết lập (chức năng giữ nguyên, chỉ đổi chỗ). Trưởng phòng và BOD không thấy nút này (như trước, chỉ Admin đổi được).
+- Không cần chạy SQL, không đổi api.
+
 ## Mới ở v9.6 — Nhắc chấm công hằng ngày
 - **Thiết lập → Nhắc nộp bảng công**: thêm dòng **Nhắc hằng ngày** (công tắc bật / tắt + chọn giờ, mặc định **tắt**, giờ mặc định 16:30), cùng kiểu với nhắc tuần / tháng.
 - Mỗi ngày làm việc, từ giờ đã chọn, app gửi thông báo cho nhân sự **chưa Gửi giờ hôm nay**. Bỏ ngày lễ và ngày giờ chuẩn = 0 (ví dụ Chủ nhật). Người đã gửi thì không bị nhắc; người đã nghỉ việc không bị nhắc.
