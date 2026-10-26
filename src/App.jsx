@@ -18,6 +18,9 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v8.6 — Khoá chấm công quá hạn: nhân viên chỉ nhập / sửa được N tuần gần nhất (mặc định 2: tuần này + tuần trước, tính từ thứ Hai);
+   ngày cũ hơn bị khoá kể cả giờ nháp, không gửi được. Thiết lập → Khoá chấm công quá hạn: đổi số tuần (0 = tắt), mở chấm bù một tuần cho
+   một người tới hạn chọn. Database cũng chặn: chạy supabase/v8_6_khoa_qua_han.sql.
    Mới ở v8.5 — Nhân sự nghỉ việc: nút Nghỉ việc (chọn ngày nghỉ) khoá tài khoản, gỡ khỏi dự án, chuyển sang tab "Nhân sự nghỉ việc";
    không còn hiện ở giao dự án / nhắc nộp / KPI nộp bảng công; báo cáo kỳ còn giờ của họ vẫn hiện kèm nhãn "Đã nghỉ". Làm lại được.
    Xoá nhân sự: chọn giữ giờ công hoặc xoá luôn toàn bộ giờ công (gõ XOA). Khung "Giờ công của nhân sự đã xoá" để xuất Excel / xoá hẳn
@@ -305,7 +308,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v8.5";
+const APP_VERSION = "v8.6";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1150,6 +1153,13 @@ const NO_PROJECT = "__none__";
    danh sách giao dự án / nhắc nộp / tab Nhân sự đang làm. Giờ công đã chấm giữ nguyên, báo cáo kỳ có giờ của họ vẫn hiện kèm nhãn (Đã nghỉ). */
 const isResigned = (e) => !!e?.resignedAt;
 const goneOnDay = (e, d) => !!e?.resignedAt && d >= e.resignedAt;
+/* v8.6 — Khoá chấm công quá hạn: nhân viên chỉ sửa được N tuần gần nhất (cfg.pastLock.weeks, mặc định 2 = tuần này + tuần trước,
+   tính từ thứ Hai; 0 = tắt). Ngày trước mốc bị khoá, kể cả giờ nháp chưa gửi. Quản lý mở tạm cho một người chấm bù một tuần:
+   cfg.pastOpen = { "<empId>": { "<thứ Hai>": "<hạn YYYY-MM-DD>" } }. Database cũng chặn (artius_ts_guard · supabase/v8_6_khoa_qua_han.sql). */
+const pastWeeks = (cfg) => { const n = Number(cfg?.pastLock?.weeks); return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 2; };
+const pastCut = (cfg, today = fmt(new Date())) => { const w = pastWeeks(cfg); return w > 0 ? fmt(addDays(mondayOf(parseD(today)), -7 * (w - 1))) : ""; };
+const pastOpenUntil = (cfg, empId, d, today = fmt(new Date())) => { const u = cfg?.pastOpen?.[empId]?.[fmt(mondayOf(parseD(d)))] || ""; return u >= today ? u : ""; };
+const pastLocked = (cfg, empId, d, today = fmt(new Date())) => { const c = pastCut(cfg, today); return !!c && d < c && !pastOpenUntil(cfg, empId, d, today); };
 const empNameTag = (e) => (e ? `${e.name}${isResigned(e) ? " (Đã nghỉ)" : ""}` : "(đã xoá)");
 const ResignedBadge = () => <span className="ml-1.5 inline-block rounded border border-slate-700 px-1 align-middle text-[10px] font-normal text-slate-400">Đã nghỉ</span>;
 const NO_PHASE = "?";   // v3.0: dòng mới, giai đoạn chưa chọn (dự án "" = chưa chọn, hạng mục "" = chưa chọn)
@@ -2201,7 +2211,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   const days = useMemo(() => weekDays(monday), [monday]);
   const yms = useMemo(() => [...new Set(days.map(ymOf))], [days]);
   const isSent = (d) => !!buckets[ymOf(d)]?.sent?.[d];
-  const dayLocked = (d) => !admin && isSent(d);
+  const pastLk = (d) => !admin && pastLocked(cfg, empId, d);   // v8.6: quá hạn chấm công
+  const dayLocked = (d) => !admin && (isSent(d) || pastLocked(cfg, empId, d));
   /* v2.3 — Nhân sự không chấm giờ làm việc cho ngày chưa tới (sau hôm nay). Vắng mặt (nghỉ phép…) thì vẫn
      đăng ký trước được. Quản lý không bị giới hạn. Database cũng chặn (artius_ts_guard). */
   const todayKey = fmt(new Date());
@@ -2368,7 +2379,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
             const cur = map.get(k) || { projectId: x.projectId, phaseId: x.phaseId || DEFAULT_PHASE, taskId: x.taskId, ...(x.otFor ? { otFor: x.otFor } : {}), note: "", days: {} };
             for (const d of days) {
               const v = Number(x.days[d]) || 0;
-              if (v > 0 && !loaded[ymOf(d)]?.sent?.[d] && cur.days[d] !== v) { cur.days[d] = v; restored += 1; }
+              if (v > 0 && !loaded[ymOf(d)]?.sent?.[d] && !(!admin && pastLocked(cfg, empId, d)) && cur.days[d] !== v) { cur.days[d] = v; restored += 1; }
             }
             if (x.note && !cur.note) cur.note = x.note;
             map.set(k, cur);
@@ -2637,7 +2648,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
       seen.add(k);
     }
     { const msg = otProblem(); if (msg) { flash(msg, "err"); return false; } }
-    if (submitMode === "submit" && !days.some((d) => !isSent(d) && sendTotal(d) > 0)) {
+    if (submitMode === "submit" && !days.some((d) => !isSent(d) && !pastLk(d) && sendTotal(d) > 0)) {
       flash("Chưa có giờ mới để gửi. Nhập giờ vào các ngày chưa gửi trước đã.", "err");
       return false;
     }
@@ -2661,7 +2672,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
       const daysInYm = days.filter((d) => ymOf(d) === ym);
       /* Nhân sự chỉ ghi được ngày CHƯA gửi (tính theo bản vừa đọc lại từ server); ngày đã gửi giữ nguyên.
          Quản lý ghi được mọi ngày. */
-      const writable = admin ? daysInYm : daysInYm.filter((d) => !sent[d]);
+      const writable = admin ? daysInYm : daysInYm.filter((d) => !sent[d] && !pastLocked(cfg, empId, d));   // v8.6: ngày quá hạn giữ nguyên bản server
       const keep = bucket.rows.map((r) => {
         if (projClosed(r)) return r;                       // giờ của dự án đã đóng giữ nguyên bản trên server
         const dd = { ...r.days }; for (const d of writable) delete dd[d];
@@ -2675,7 +2686,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
         const had = map.get(k);
         const cur = had || { projectId: r.projectId, phaseId: r.phaseId || DEFAULT_PHASE, taskId: r.taskId, ...(r.otFor ? { otFor: r.otFor } : {}), days: {} };
         // dòng đang giữ giờ của ngày đã gửi thì nhân sự không đổi giai đoạn của nó (database cũng chặn)
-        if (admin || !had || !Object.keys(had.days).some((d) => sent[d])) cur.phaseId = r.phaseId || DEFAULT_PHASE;
+        if (admin || !had || !Object.keys(had.days).some((d) => sent[d] || pastLocked(cfg, empId, d))) cur.phaseId = r.phaseId || DEFAULT_PHASE;
         cur.note = (r.note || "").trim();
         for (const d of writable) if (r.days[d] > 0 && !futureBlocked(r, d)) cur.days[d] = r.days[d];
         map.set(k, cur);
@@ -2928,12 +2939,14 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
      quản lý luôn sửa được. Ngày chưa gửi vẫn nhập và gửi sau bình thường. */
   const sentDays = days.filter(isSent);
   const submitted = days.filter((d) => minHoursFor(d, hoursCfg, holidaySet) !== null).every(isSent) || yms.every((ym) => buckets[ym]?.weeks?.[monday]);
-  const locked = !admin && sentDays.length === 7;          // cả 7 ngày đã gửi: không còn gì để nhập
-  const rowLocked = (r) => !admin && (projClosed(r) || days.some((d) => isSent(d) && r.days[d] > 0));
-  const toSend = days.filter((d) => !isSent(d) && sendTotal(d) > 0);
+  const locked = !admin && days.every((d) => isSent(d) || pastLk(d));   // cả 7 ngày đã gửi (v8.6: hoặc đã quá hạn): không còn gì để nhập
+  const rowLocked = (r) => !admin && (projClosed(r) || days.some((d) => (isSent(d) || pastLk(d)) && r.days[d] > 0));
+  const pastDays = days.filter(pastLk);                                  // v8.6
+  const openUntil = admin ? "" : days.map((d) => pastOpenUntil(cfg, empId, d)).find(Boolean) || "";
+  const toSend = days.filter((d) => !isSent(d) && !pastLk(d) && sendTotal(d) > 0);
   /* v2.4 — "có giờ sẽ mất": quản lý thì mọi thay đổi chưa lưu; nhân sự thì chỉ khi đang có giờ ở ngày chưa gửi.
      Chỉ thêm dòng trống (chưa nhập giờ) thì chuyển tuần / đổi tab / đóng trang không bị hỏi. */
-  const atRisk = admin ? dirty : dirty && days.some((d) => !isSent(d) && dayTotal(d) > 0);
+  const atRisk = admin ? dirty : dirty && days.some((d) => !isSent(d) && !pastLk(d) && dayTotal(d) > 0);
   // báo lên App để chặn đổi tab khi còn giờ chưa gửi
   useEffect(() => { onDirtyChange?.(atRisk); return () => onDirtyChange?.(false); }, [atRisk, onDirtyChange]);
   // v1.9 — không còn lưu nháp: đóng hoặc tải lại trang khi còn giờ chưa gửi thì trình duyệt hỏi lại
@@ -3198,6 +3211,19 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
         )}
       </div>
 
+
+      {/* v8.6 — tuần đã quá hạn chấm công (khoá sau N tuần) / đang được mở chấm bù */}
+      {!admin && (pastDays.length > 0 || openUntil) && (
+        <div className={`flex items-start gap-2.5 rounded-xl border p-3 text-sm ${openUntil ? "border-teal-900 bg-teal-950/60 text-teal-100" : "border-slate-700 bg-slate-900 text-slate-300"}`}>
+          {openUntil ? <Unlock size={17} className="mt-0.5 shrink-0 text-teal-400" /> : <Lock size={17} className="mt-0.5 shrink-0 text-slate-400" />}
+          <div>
+            {openUntil
+              ? <>Quản lý đang mở chấm bù tuần này cho bạn tới hết ngày <b>{dLabel(openUntil)}</b>. Nhập xong nhớ bấm Gửi giờ công.</>
+              : <>{pastDays.length === 7 ? "Tuần này" : `${pastDays.map(dayName).join(", ")}`} đã quá hạn chấm công — chỉ nhập / sửa được {pastWeeks(cfg)} tuần gần nhất.
+                  {" "}Cần chấm bù thì nhờ quản lý mở.</>}
+          </div>
+        </div>
+      )}
 
       {!loading && myTasks.length === 0 && (
         <div className="flex items-start gap-2.5 rounded-xl border border-amber-900 bg-amber-950 p-3 text-sm text-amber-100">
@@ -4743,7 +4769,7 @@ function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, oneDept =
 
       <ConfirmDialog open={!!unlockFor} tone="ok"
         title={`Mở khoá tuần ${dLabel(monday)} – ${dLabel(fmt(addDays(parseD(monday), 6)))}?`}
-        desc={`${cfg.employees.find((e) => e.id === unlockFor)?.name || ""} sẽ sửa lại và gửi lại được tuần này. Giờ công giữ nguyên, nhưng tạm chưa tính vào tổng hợp cho tới khi gửi lại.`}
+        desc={`${cfg.employees.find((e) => e.id === unlockFor)?.name || ""} sẽ sửa lại và gửi lại được tuần này. Giờ công giữ nguyên, nhưng tạm chưa tính vào tổng hợp cho tới khi gửi lại.${pastCut(cfg) && monday < pastCut(cfg) && !pastOpenUntil(cfg, unlockFor, monday) ? " Lưu ý: tuần này đã quá hạn chấm công — muốn nhân sự tự sửa thì mở chấm bù ở Thiết lập → Khoá chấm công quá hạn." : ""}`}
         confirmLabel="Mở khoá" cancelLabel="Thôi"
         onCancel={() => setUnlockFor(null)}
         onConfirm={async () => {
@@ -4788,7 +4814,9 @@ function DeadlineBanner({ cfg, empId, onGo = null }) {
       const ym = `${today.getFullYear()}-${pad(today.getMonth() + 1)}`;
       const target = today.getDate() <= dl ? prevYm(ym) : ym;
       const need = mondaysDue(target);
-      setState({ target, missing: need.filter((m) => !weekDone(empId, m)), thisYm: ym });
+      // v8.6: tuần đã quá hạn chấm công (không tự sửa được nữa) thì không nhắc ở đây
+      const cut = pastCut(cfg);
+      setState({ target, missing: need.filter((m) => !weekDone(empId, m) && (!cut || m >= cut || pastOpenUntil(cfg, empId, m))), thisYm: ym });
     })();
   }, [empId, dataTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -9070,6 +9098,95 @@ function AllocLimitPanel({ cfg, saveCfg, flash }) {
   );
 }
 
+/* v8.6 — Khoá chấm công quá hạn + mở chấm bù cho từng người */
+function PastLockPanel({ cfg, saveCfg, flash }) {
+  const today = fmt(new Date());
+  const weeks = pastWeeks(cfg), cut = pastCut(cfg, today);
+  const emps = cfg.employees.filter((e) => !isResigned(e)).sort((a, b) => a.name.localeCompare(b.name, "vi"));
+  const lockedMons = [];
+  if (cut) for (let i = 1; i <= 16; i++) lockedMons.push(fmt(addDays(parseD(cut), -7 * i)));
+  const [eid, setEid] = useState("");
+  const [mon, setMon] = useState("");
+  const [until, setUntil] = useState(fmt(addDays(new Date(), 3)));
+  const [busy, setBusy] = useState(false);
+  const opens = Object.entries(cfg.pastOpen || {}).flatMap(([id, m]) => Object.entries(m || {}).map(([w, u]) => ({ id, w, u })))
+    .sort((a, b) => b.u.localeCompare(a.u));
+  // ghi pastOpen mới, tiện tay bỏ các mục đã hết hạn
+  const writeOpen = async (fn) => {
+    const cur = {};
+    for (const [id, m] of Object.entries(cfg.pastOpen || {})) for (const [w, u] of Object.entries(m || {})) if (u >= today) (cur[id] = cur[id] || {})[w] = u;
+    fn(cur);
+    for (const id of Object.keys(cur)) if (!Object.keys(cur[id]).length) delete cur[id];
+    setBusy(true); const ok = await saveCfg({ ...cfg, pastOpen: cur }); setBusy(false);
+    return ok !== false;
+  };
+  const setWeeks = async (n) => { await saveCfg({ ...cfg, pastLock: { ...(cfg.pastLock || {}), weeks: n } }); flash(n ? `Nhân viên chỉ chấm / sửa được ${n} tuần gần nhất.` : "Đã tắt khoá chấm công quá hạn."); };
+  const addOpen = async () => {
+    if (!eid || !mon) return flash("Chọn nhân sự và tuần cần chấm bù.", "err");
+    if (!until || until < today) return flash("Hạn mở phải từ hôm nay trở đi.", "err");
+    if (await writeOpen((c) => { (c[eid] = c[eid] || {})[mon] = until; })) {
+      flash(`Đã mở chấm bù tuần ${dLabel(mon)} cho ${cfg.employees.find((e) => e.id === eid)?.name || ""} tới hết ${dLabel(until)}.`);
+      setMon("");
+    }
+  };
+  const nm = (id) => empNameTag(cfg.employees.find((e) => e.id === id));
+  const wkLabel = (m) => `${dLabel(m)} – ${dLabel(fmt(addDays(parseD(m), 6)))}`;
+  return (
+    <Panel title="Khoá chấm công quá hạn">
+      <div className="grid gap-3 md:flex md:flex-wrap md:items-end">
+        <div>
+          <label className="mb-1 block text-xs text-slate-500">Nhân viên chấm / sửa được</label>
+          <select value={weeks} onChange={(e) => setWeeks(Number(e.target.value))} className={`md:w-80 ${selectCls}`}>
+            <option value={0}>Không khoá (tắt)</option>
+            {[1, 2, 3, 4, 6, 8].map((n) => <option key={n} value={n}>{n === 1 ? "Chỉ tuần này" : `${n} tuần gần nhất${n === 2 ? " (tuần này + tuần trước)" : ""}`}</option>)}
+          </select>
+        </div>
+        <p className="text-xs text-slate-500 md:pb-3">
+          {cut ? <>Hôm nay {dLabel(today)}: nhân viên nhập được từ <b className="text-slate-300">thứ Hai {dLabel(cut)}</b>. Ngày trước đó bị khoá (kể cả giờ nháp chưa gửi). Admin và trưởng phòng vẫn sửa được ở Bảng công.</>
+            : "Đang tắt — nhân viên sửa được giờ chưa gửi ở mọi tuần cũ."}
+        </p>
+      </div>
+
+      {cut && (
+        <div className="mt-4 border-t border-slate-800 pt-4">
+          <div className="mb-2 text-sm text-slate-200">Mở chấm bù cho một nhân sự</div>
+          <div className="grid gap-2 md:grid-cols-[minmax(180px,1fr)_200px_170px_auto]">
+            <select value={eid} onChange={(e) => setEid(e.target.value)} className={selectCls}>
+              <option value="">— Nhân sự —</option>
+              {emps.map((e) => <option key={e.id} value={e.id}>{e.name}{e.code ? ` · ${e.code}` : ""}</option>)}
+            </select>
+            <select value={mon} onChange={(e) => setMon(e.target.value)} className={selectCls}>
+              <option value="">— Tuần cần chấm bù —</option>
+              {lockedMons.map((m) => <option key={m} value={m}>{wkLabel(m)}</option>)}
+            </select>
+            <label className="flex items-center gap-2 text-xs text-slate-500">
+              <span className="whitespace-nowrap">Mở tới</span>
+              <input type="date" min={today} value={until} onChange={(e) => setUntil(e.target.value)} className={`min-w-0 flex-1 ${inputCls}`} />
+            </label>
+            <button onClick={addOpen} disabled={busy} className={`ro-hide ${btnPrimary} disabled:opacity-50`}><Unlock size={14} /> Mở chấm bù</button>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">Hết ngày "Mở tới" là tuần đó tự khoá lại. Tuần đã gửi thì mở khoá ở Bảng công trước, rồi mới mở chấm bù ở đây.</p>
+          {opens.length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              {opens.map((o) => {
+                const live = o.u >= today;
+                return (
+                  <div key={`${o.id}|${o.w}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm">
+                    <span className="min-w-0 flex-1 text-slate-200">{nm(o.id)} <span className="text-slate-500">· tuần {wkLabel(o.w)}</span></span>
+                    <span className={`text-xs ${live ? "text-teal-400" : "text-slate-500"}`}>{live ? `mở tới hết ${dLabel(o.u)}` : "đã hết hạn"}</span>
+                    <button onClick={async () => { if (await writeOpen((c) => { if (c[o.id]) delete c[o.id][o.w]; })) flash("Đã khoá lại tuần này."); }} disabled={busy}
+                      title="Khoá lại ngay" className={`ro-hide ${iconBtn} h-8 w-8 hover:border-rose-800 hover:text-rose-400`}><X size={14} /></button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 function SettingsTab({ cfg, saveCfg, flash }) {
   const [day, setDay] = useState(cfg.deadlineDay || 5);
   const [confirm, setConfirm] = useState("");
@@ -9226,6 +9343,8 @@ function SettingsTab({ cfg, saveCfg, flash }) {
           Nhân sự thấy cảnh báo vàng về bảng công tháng trước từ đầu tháng, chuyển đỏ “quá hạn” sau ngày {pad(day)}.
         </p>
       </Panel>
+
+      <PastLockPanel cfg={cfg} saveCfg={saveCfg} flash={flash} />
 
       <Panel title="Xoá dữ liệu chấm công">
         <p className="text-sm text-slate-300">Xoá toàn bộ giờ công đã nhập của mọi nhân sự. Danh sách dự án, nhân sự và hạng mục được giữ lại. Không khôi phục được — xuất Excel trước khi xoá.</p>

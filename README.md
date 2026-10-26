@@ -1,5 +1,12 @@
 # ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
 
+## Mới ở v8.6 — Khoá chấm công quá hạn
+- Nhân viên chỉ nhập / sửa / gửi được giờ trong **N tuần gần nhất** (mặc định 2 = tuần này + tuần trước, tính từ thứ Hai). Sang thứ Hai mới, tuần cũ nhất tự khoá.
+- Ngày quá hạn bị khoá cả giờ nháp chưa gửi; màn Chấm công báo "đã quá hạn chấm công — nhờ quản lý mở". Banner nhắc tuần chưa gửi bỏ qua tuần đã quá hạn.
+- **Thiết lập → Khoá chấm công quá hạn**: đổi số tuần (0 = tắt); **Mở chấm bù** một tuần cho một nhân sự tới hết ngày chọn (hết hạn tự khoá lại); danh sách đang mở, bấm ✕ để khoá lại ngay.
+- Admin và trưởng phòng (với nhân viên cùng phòng) vẫn sửa được mọi tuần ở Bảng công.
+- **Bắt buộc chạy SQL** để database chặn cả khi gọi thẳng API: Supabase → SQL Editor → dán `supabase/v8_6_khoa_qua_han.sql` → Run (chạy lại nhiều lần vẫn an toàn, không đổi dữ liệu).
+
 ## Mới ở v8.5 — Nhân sự nghỉ việc · xoá hẳn giờ công
 - Tab Nhân sự → nút **Nghỉ việc** (icon người có dấu trừ): chọn ngày nghỉ → tài khoản bị khoá, gỡ khỏi dự án đang tham gia, chuyển sang tab con **Nhân sự nghỉ việc**.
 - Người nghỉ việc không còn hiện ở: tab Nhân sự (đang làm), giao nhân sự cho dự án, nhắc nộp (chuông, nhắc tự động — tài khoản đã khoá), KPI "Đã nộp đủ", danh sách chưa bật thông báo, Dashboard (người chưa chấm).
