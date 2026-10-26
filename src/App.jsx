@@ -18,6 +18,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v9.4 — Mode sáng: mã dự án ở tab Dự án hiện chữ đen (trước đây chữ trắng nên mất trên nền sáng).
    Mới ở v9.3 — Trưởng phòng có thêm tab Dự án (chỉ xem; thêm / gỡ nhân viên phòng mình vào dự án) và tab Nhân sự (chỉ nhân viên phòng mình;
    giao / gỡ dự án, Tất cả dự án). Không xem tài khoản / mật khẩu, không thấy nhân viên phòng khác, không thêm / sửa / xoá nhân sự.
    Ghi qua hàm SQL artius_emp_projects_set (supabase/v9_3_truong_phong.sql).
@@ -325,7 +326,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v9.3";
+const APP_VERSION = "v9.4";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -7300,7 +7301,7 @@ function Projects({ cfg, saveCfg, flash, onSupport = null }) {
                   const editing = editId === p.id;
                   return (
                     <tr key={p.id} {...projDrag.rowProps(p.id)} className={`border-b border-slate-800 align-top hover:bg-slate-800 ${projDrag.mark(p.id, "tr")}`}>
-                      <td className="whitespace-nowrap px-3 py-2">{projDrag.grip(p.id, editing || projList.length < 2)}{editing ? <input value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} className={`font-mono ${inputCls}`} /> : <span className="font-mono text-base font-bold leading-6 text-white">{p.code || "—"}</span>}</td>
+                      <td className="whitespace-nowrap px-3 py-2">{projDrag.grip(p.id, editing || projList.length < 2)}{editing ? <input value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} className={`font-mono ${inputCls}`} /> : <span className="font-mono text-base font-bold leading-6 text-slate-100">{p.code || "—"}</span>}</td>
                       <td className="px-3 py-2">{editing ? <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && commit()} className={inputCls} /> : <><div className="text-[15px] leading-6 text-slate-100">{p.name}</div>{teamBlock(p)}</>}</td>
                       <td className="px-3 py-2">{editing ? <input value={draft.client} onChange={(e) => setDraft({ ...draft, client: e.target.value })} onKeyDown={(e) => e.key === "Enter" && commit()} className={inputCls} /> : <span className="leading-6 text-slate-400">{p.client || "—"}</span>}</td>
                       {PHASES.map((ph) => (

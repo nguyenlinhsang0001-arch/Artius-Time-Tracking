@@ -1,5 +1,8 @@
 # ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
 
+## Mới ở v9.4 — Mode sáng: mã dự án chữ đen
+- Tab **Dự án**: cột Mã DA hiện chữ đen ở giao diện Sáng (trước đây chữ trắng nên không thấy). Giao diện Tối giữ nguyên.
+
 ## Mới ở v9.3 — Trưởng phòng: tab Dự án và Nhân sự
 - **Dự án**: trưởng phòng xem được danh sách dự án (chỉ xem — không sửa tên, giờ dự kiến, mở / đóng giai đoạn). Ở khối nhân sự tham gia chỉ thấy nhân viên **phòng mình**; bấm **+ Nhân sự** để thêm / gỡ nhân viên phòng mình vào dự án.
 - **Nhân sự**: chỉ thấy nhân viên **phòng mình** (không gồm chính mình); giao / gỡ dự án (+ Dự án, ✕, Tất cả, chép dự án từ người khác).
