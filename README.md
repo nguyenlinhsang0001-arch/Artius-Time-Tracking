@@ -1,5 +1,10 @@
 # ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
 
+## Mới ở v9.1 — Điện thoại: thùng rác ở đầu khối dự án
+- Nút ⋯ cạnh nút mở rộng đổi thành **thùng rác**: bấm là xoá dự án khỏi **ngày đang xem**. Dự án còn giờ ở ngày khác trong tuần thì chỉ xoá giờ của ngày này; không còn giờ ngày nào thì xoá hẳn khối. Có nút **Hoàn tác**.
+- Cần sửa khối (đổi giai đoạn, thêm tác vụ, tăng ca) thì bấm nút mở rộng **˅**.
+- Ngày đã gửi / quá hạn / dự án đã đóng thì không hiện thùng rác.
+
 ## Mới ở v9.0 — Điện thoại: mỗi ngày chỉ hiện tác vụ của ngày đó
 - Ngày đang xem chỉ hiện tác vụ **có giờ của chính ngày đó**. Ngày chưa chấm thì trống — chỉ có nút "Thêm dự án / tác vụ".
 - Tác vụ vừa thêm hoặc vừa sửa trong ngày vẫn hiện (kể cả khi bớt về 0) cho tới khi đổi ngày.

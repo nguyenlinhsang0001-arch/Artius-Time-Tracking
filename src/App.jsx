@@ -18,6 +18,8 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v9.1 — Điện thoại: nút ⋯ ở đầu khối dự án đổi thành thùng rác — xoá dự án khỏi ngày đang xem (còn giờ ngày khác thì chỉ xoá
+   giờ ngày này, không thì xoá hẳn khối), có Hoàn tác. Sửa khối / tăng ca: bấm nút mở rộng ˅.
    Mới ở v9.0 — Chấm công trên điện thoại: ngày đang xem chỉ hiện tác vụ có giờ của chính ngày đó; ngày chưa chấm thì trống
    (không bày sẵn tác vụ của các ngày khác trong tuần). Đổi ngày thì khối đang mở đủ tác vụ tự thu lại.
    Mới ở v8.9 — Chấm công trên điện thoại: ô có giờ nổi rõ (nền xanh ngọc, số đậm, vạch xanh đầu dòng) ở cả Sáng / Tối, kể cả ngày đã khoá;
@@ -318,7 +320,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v9.0";
+const APP_VERSION = "v9.1";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -2642,6 +2644,11 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   };
   const undoDelete = () => {
     if (!undoRow) return;
+    if (undoRow.kind === "day") {   // v9.1: hoàn tác xoá dự án trong một ngày (điện thoại)
+      setRows(undoRow.snap); writeDraft(undoRow.snap);
+      setUndoRow(null); setDirty(true);
+      return;
+    }
     if (undoRow.kind === "clear") {
       setRows((rs) => rs.map((x) => (rowKey(x) === undoRow.key ? { ...x, days: undoRow.days } : x)));
       setUndoRow(null); setDirty(true);
@@ -3119,6 +3126,20 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
     const next = rows.map((x, j) => (j === i ? { ...x, days: { ...x.days, [d]: n || undefined } } : x));
     setRows(next); setDirty(true); writeDraft(next);
     if (rows[i]) setDayKeys((s2) => new Set([...s2, rowKey(rows[i])]));
+  };
+  /* v9.1 (điện thoại): thùng rác ở đầu khối — xoá dự án khỏi NGÀY đang xem. Dự án còn giờ ở ngày khác thì chỉ xoá giờ ngày này;
+     không còn giờ ngày nào thì xoá hẳn khối. Có Hoàn tác. */
+  const dayDelGroup = (gk) => {
+    const mine = rows.filter((r) => groupKey(r) === gk);
+    if (!mine.length) return;
+    const other = mine.some((r) => days.some((d) => d !== activeDay && (r.days[d] || 0) > 0));
+    if (!other) { delGroup(gk); setDayKeys(new Set()); return; }
+    const snap = rows;
+    const next = rows.map((r) => (groupKey(r) !== gk || r.days[activeDay] == null ? r : { ...r, days: { ...r.days, [activeDay]: undefined } }));
+    setRows(next); setDirty(true); writeDraft(next);
+    setDayKeys((s2) => { const n = new Set(s2); for (const r of mine) n.delete(rowKey(r)); return n; });
+    setOpenKeys((s2) => { const n = new Set(s2); n.delete(gk); return n; });
+    setUndoRow({ kind: "day", snap, label: `${projFull(mine[0].projectId)} — ${dayName(activeDay)}` });
   };
   const showToday = (r) => (r.days[activeDay] || 0) > 0 || dayKeys.has(rowKey(r));
   // đổi ngày: thu các khối đang mở đủ tác vụ về lại (chỉ giữ tác vụ có giờ) để ngày mới không bày sẵn mọi tác vụ
@@ -3640,9 +3661,10 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                       <button onClick={() => (open ? foldGroup(g.key) : editGroup(g.key))} aria-label={open ? "Thu gọn — chỉ còn tác vụ có giờ" : "Mở đủ tác vụ"} title={open ? "Thu gọn — chỉ còn tác vụ có giờ" : "Mở đủ tác vụ"}
                         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400">{open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}</button>
                     )}
-                    {(canEdit || canDel) && (
-                      <button onClick={() => setMenuKey(menuKey === g.key ? null : g.key)} aria-label="Tuỳ chọn khối" title="Tuỳ chọn khối"
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${menuKey === g.key ? "bg-slate-800 text-slate-100" : "text-slate-400"}`}><MoreHorizontal size={18} /></button>
+                    {/* v9.1: thùng rác thay nút ⋯ — xoá dự án khỏi ngày đang xem (sửa thì bấm ˅ mở rộng) */}
+                    {!locked && !dayLocked(activeDay) && !projClosed(g.items[0].r) && (
+                      <button onClick={() => dayDelGroup(g.key)} aria-label="Xoá dự án khỏi ngày này" title="Xoá dự án khỏi ngày này"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-rose-400"><Trash2 size={17} /></button>
                     )}
                   </div>
                   {isSupProj(g.projectId) && (
