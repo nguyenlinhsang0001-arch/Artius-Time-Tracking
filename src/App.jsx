@@ -18,6 +18,8 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v9.0 — Chấm công trên điện thoại: ngày đang xem chỉ hiện tác vụ có giờ của chính ngày đó; ngày chưa chấm thì trống
+   (không bày sẵn tác vụ của các ngày khác trong tuần). Đổi ngày thì khối đang mở đủ tác vụ tự thu lại.
    Mới ở v8.9 — Chấm công trên điện thoại: ô có giờ nổi rõ (nền xanh ngọc, số đậm, vạch xanh đầu dòng) ở cả Sáng / Tối, kể cả ngày đã khoá;
    nút ˄ / ˅ ở đầu khối để thu gọn (chỉ còn tác vụ có giờ) / mở đủ; bỏ dòng "Cả tuần x h"; nút "8h" điền nhanh 8 giờ, bấm lại để xoá.
    Mới ở v8.8 — "Dự án đang tham gia" có quyền Tất cả dự án (employee.allProjects): chấm được mọi dự án đang mở, kể cả dự án thêm sau,
@@ -316,7 +318,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v8.9";
+const APP_VERSION = "v9.0";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -2234,6 +2236,10 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
   const [undoRow, setUndoRow] = useState(null);
   const [addSheet, setAddSheet] = useState(null);   // v8.4 (điện thoại): bảng trượt Thêm dự án / tác vụ { pid, ph, picked: [] }
   const [menuKey, setMenuKey] = useState(null);     // v8.4 (điện thoại): khối đang mở menu ⋯
+  /* v9.0 (điện thoại): ngày đang xem chỉ hiện tác vụ có giờ của CHÍNH ngày đó; ngày chưa chấm thì trống.
+     dayKeys = tác vụ vừa thêm / vừa sửa trong ngày đang xem (giữ hiện kể cả khi bớt về 0), xoá khi đổi ngày / đổi tuần. */
+  const [dayKeys, setDayKeys] = useState(() => new Set());
+  useEffect(() => { setDayKeys(new Set()); }, [activeDay, monday]);
   const [showSplit, setShowSplit] = useState(false); // v3.7: chân bảng — mở/thu gọn 3 hàng Giờ chuẩn · OT · Giờ cố gắng // khối/dòng vừa xoá { rows, at, label }, giữ lại để hoàn tác
   /* v3.2 — khối đang MỞ (đang nhập giờ): hiện toàn bộ hạng mục của dự án để gõ giờ thẳng vào, không chọn từ danh sách.
      Bấm ✓ thì khối thu gọn, chỉ giữ hạng mục có giờ, và giờ được tạm lưu trên máy (localStorage) tới khi Gửi. */
@@ -3112,6 +3118,17 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
     const n = v === "" || v === null ? undefined : Math.max(0, Math.min(24, Number(v)));
     const next = rows.map((x, j) => (j === i ? { ...x, days: { ...x.days, [d]: n || undefined } } : x));
     setRows(next); setDirty(true); writeDraft(next);
+    if (rows[i]) setDayKeys((s2) => new Set([...s2, rowKey(rows[i])]));
+  };
+  const showToday = (r) => (r.days[activeDay] || 0) > 0 || dayKeys.has(rowKey(r));
+  // đổi ngày: thu các khối đang mở đủ tác vụ về lại (chỉ giữ tác vụ có giờ) để ngày mới không bày sẵn mọi tác vụ
+  const pickDay = (d) => {
+    if (openKeys.size) {
+      const next = collapseIn(rows, openKeys);
+      setRows(next); setOpenKeys(new Set()); writeDraft(next);
+      gridInputs.current = {}; mobileInputs.current = [];
+    }
+    setActiveDay(d);
   };
   const stepper = (r, i) => {
     const t = taskById.get(r.taskId);
@@ -3155,7 +3172,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
     setAddSheet({ pid: only, ph: only === NO_PROJECT ? DEFAULT_PHASE : "", picked: [] });
   };
   const sheetPick = (pid) => setAddSheet((s) => ({ pid, ph: pid === NO_PROJECT ? DEFAULT_PHASE : (s.pid === pid ? s.ph : (openPhasesOf(pid)[0]?.id || "")), picked: s.pid === pid ? s.picked : [] }));
-  const sheetHas = (pid, ph, tid) => rows.some((r) => r.projectId === pid && (r.phaseId || DEFAULT_PHASE) === ph && r.taskId === tid && !r.otFor);
+  const sheetHas = (pid, ph, tid) => rows.some((r) => r.projectId === pid && (r.phaseId || DEFAULT_PHASE) === ph && r.taskId === tid && !r.otFor && showToday(r));   // v9.0: tác vụ có giờ ngày khác vẫn chọn được
   const addPicked = () => {
     const { pid, ph, picked } = addSheet;
     if (!pid || !picked.length) return;
@@ -3164,6 +3181,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
     const add = picked.map((tid) => ({ projectId: pid, phaseId: ph || DEFAULT_PHASE, taskId: tid, note: "", days: {} })).filter((r) => !have.has(rowKey(r)));
     mobileInputs.current = []; gridInputs.current = {};
     setRows(sortByGroup([...base, ...add])); setDirty(true);
+    setDayKeys((s2) => new Set([...s2, ...picked.map((tid) => rowKey({ projectId: pid, phaseId: ph || DEFAULT_PHASE, taskId: tid }))]));
     setAddSheet(null);
     flash(`Đã thêm ${add.length} tác vụ. Bấm − / + hoặc chạm vào số để nhập giờ.`);
   };
@@ -3570,7 +3588,7 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
                 // chấm màu góc: lễ đỏ · nghỉ phép xanh · vượt ngưỡng đỏ · thiếu giờ cam · có giờ cố gắng tím
                 const dot = hol ? "bg-red-400" : lv ? "bg-sky-400" : isOverDaily(d) ? "bg-red-400" : incomplete ? "bg-amber-400" : effortHrs(d) > 0 ? "bg-violet-400" : "";
                 return (
-                  <button key={d} onClick={() => setActiveDay(d)}
+                  <button key={d} onClick={() => pickDay(d)}
                     className={`relative flex flex-col items-center rounded-xl border pb-1.5 pt-1 ${on ? "border-teal-600 bg-teal-600" : d === todayKey ? "border-teal-800 bg-slate-900" : "border-slate-800 bg-slate-900"} ${!on && d > todayKey ? "opacity-50" : ""}`}>
                     {isSent(d) && <Lock size={9} className={`absolute left-1 top-1 ${on ? "text-white" : "text-teal-500"}`} />}
                     {dot && <span className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${dot}`} />}
@@ -3606,7 +3624,9 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
               const canEdit = !locked && !projClosed(g.items[0].r);
               const canDel = !gLocked && !locked;
               const proj = cfg.projects.find((p) => p.id === g.projectId);
-              const secs = sectionsOf(g, open);
+              // v9.0: khối thu gọn chỉ hiện tác vụ có giờ của ngày đang xem; không có tác vụ nào thì ẩn cả khối
+              const secs = sectionsOf(g, open).map((sec) => (open ? sec : { ...sec, items: sec.items.filter(({ r }) => showToday(r)) })).filter((sec) => open || sec.items.length);
+              if (!open && !secs.length) return null;
               return (
                 <div key={g.key} className={`overflow-hidden rounded-2xl border bg-slate-900 ${open ? "border-teal-800" : isSupProj(g.projectId) ? "border-violet-800" : "border-slate-800"}`}>
                   <div className="flex items-center gap-2 border-b border-slate-800 py-1.5 pl-3 pr-1.5">
@@ -3696,8 +3716,8 @@ function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initial
               );
             })}
 
-            {!groups.some((g) => g.projectId !== "") && (
-              <p className="px-1 pt-1 text-center text-xs text-slate-500">Tuần này chưa có tác vụ nào.</p>
+            {!groups.some((g) => g.projectId !== "" && (openKeys.has(g.key) || g.items.some(({ r }) => showToday(r)))) && (
+              <p className="px-1 pt-1 text-center text-xs text-slate-500">Ngày này chưa chấm giờ.</p>
             )}
             <button onClick={openAddSheet} disabled={locked}
               className="flex w-full items-center justify-center gap-1.5 rounded-2xl border-[1.5px] border-dashed border-slate-600 py-3 text-sm font-medium text-slate-200 disabled:opacity-40">

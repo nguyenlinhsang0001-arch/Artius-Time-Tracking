@@ -1,5 +1,11 @@
 # ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
 
+## Mới ở v9.0 — Điện thoại: mỗi ngày chỉ hiện tác vụ của ngày đó
+- Ngày đang xem chỉ hiện tác vụ **có giờ của chính ngày đó**. Ngày chưa chấm thì trống — chỉ có nút "Thêm dự án / tác vụ".
+- Tác vụ vừa thêm hoặc vừa sửa trong ngày vẫn hiện (kể cả khi bớt về 0) cho tới khi đổi ngày.
+- Bảng "Thêm dự án / tác vụ" chọn lại được tác vụ đã chấm ở ngày khác trong tuần.
+- Đổi ngày thì khối đang mở đủ tác vụ (˅) tự thu lại. Máy tính giữ nguyên bảng tuần 7 cột.
+
 ## Mới ở v8.9 — Chấm công trên điện thoại dễ nhìn, nhập nhanh hơn
 - Ô đã có giờ nổi rõ: nền xanh ngọc nhạt, số đậm, viền xanh, vạch xanh ở đầu dòng tác vụ — rõ ở cả giao diện Sáng / Tối, kể cả ngày đã gửi (khoá).
 - Nút **˄ / ˅** ở đầu mỗi khối dự án: thu gọn (chỉ còn tác vụ có giờ) / mở đủ tác vụ.
