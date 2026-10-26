@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";   // v10.0: hộp "+ Hỗ trợ" của Dự án vẽ ra ngoài vùng chỉ-xem
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, Legend, ReferenceArea,
   ComposedChart, Line, LabelList,
@@ -18,6 +19,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v10.0 — Trưởng phòng thêm nhân sự hỗ trợ trực tiếp trong tab Dự án (nút "+ Hỗ trợ", chỉ nhân viên phòng mình); trưởng phòng chỉ thấy đợt hỗ trợ của phòng mình.
    Mới ở v9.9 — Nhắc hằng ngày: thứ Bảy có giờ riêng (mặc định 11:00), nhắc 2 lần (giờ đó và 1 giờ sau). Cần cập nhật api/_reminders.js trên Vercel.
    Mới ở v9.8 — Mở chấm bù cho một nhân sự chuyển vào nút mở khoá (cột Mở khoá / sửa) của Bảng công; hộp thoại Khoá quá hạn chỉ còn đổi số tuần + danh sách đang mở.
    Mới ở v9.7 — Khoá chấm công quá hạn chuyển từ Thiết lập sang Bảng công (Admin): nút "Khoá quá hạn · N tuần" ở thanh công cụ mở hộp thoại đổi số tuần + mở chấm bù.
@@ -331,7 +333,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v9.9";
+const APP_VERSION = "v10.0";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -1769,7 +1771,11 @@ function AppMain() {
     : myEmp ? { type: who.access === "head" ? "head" : "emp", empId: myEmp.id, dept: myEmp.dept || "" } : null;
   // trưởng phòng: Bảng công chỉ gồm nhân viên cùng phòng (trừ chính mình) — database cũng chỉ cho đọc/ghi đúng phạm vi này
   const headCfg = useMemo(() => (me?.type === "head" && cfg
-    ? { ...cfg, employees: cfg.employees.filter((e) => me.dept && e.dept === me.dept && e.id !== me.empId) } : null),
+    ? (() => {
+      const emps = cfg.employees.filter((e) => me.dept && e.dept === me.dept && e.id !== me.empId);
+      const ids = new Set(emps.map((e) => e.id));
+      return { ...cfg, employees: emps, support: supportList(cfg).filter((x) => ids.has(x.empId)) };   // v10.0: không lộ đợt hỗ trợ của phòng khác
+    })() : null),
   [cfg, me?.type, me?.dept, me?.empId]); // eslint-disable-line react-hooks/exhaustive-deps
   const bodSave = useCallback(async () => { flash("Tài khoản BOD chỉ xem, không sửa được.", "err"); return false; }, [flash]);
   /* v9.3 — trưởng phòng "lưu thiết lập" ở tab Dự án / Nhân sự: chỉ được đổi dự án tham gia (projects, allProjects) của nhân viên phòng mình.
@@ -2020,7 +2026,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
                 {tab === "dash" && <Dashboard cfg={cfg} saveCfg={bodSave} flash={flash} />}
                 {tab === "sheet" && <AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} readOnly onSupport={bodSave} />}
                 {/* v7.7 — BOD xem được mọi mục quản lý nhưng không sửa: mọi lệnh lưu cấu hình bị chặn bởi bodSave */}
-                {tab === "proj" && <ReadOnlyView><Projects cfg={cfg} saveCfg={bodSave} flash={flash} onSupport={bodSave} /></ReadOnlyView>}
+                {tab === "proj" && <ReadOnlyView><Projects cfg={cfg} saveCfg={bodSave} flash={flash} onSupport={bodSave} supportRo /></ReadOnlyView>}
                 {tab === "emp" && <ReadOnlyView><Employees cfg={cfg} saveCfg={bodSave} flash={flash} readOnly onSupport={bodSave} /></ReadOnlyView>}
                 {tab === "task" && <ReadOnlyView><Tasks cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
                 {tab === "set" && <ReadOnlyView><SettingsTab cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
@@ -2044,7 +2050,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
                 {tab === "eset" && <EmployeeSettings cfg={cfg} empId={me.empId} onSignOut={signOut} />}
                 {tab === "sheet" && me.type === "head" && headCfg && <AdminTimesheet cfg={headCfg} flash={flash} onDirtyChange={setSheetDirty} oneDept onSupport={supportSave} />}
                 {/* v9.3 — trưởng phòng: Dự án (chỉ xem, thêm / gỡ nhân sự phòng mình) · Nhân sự (phòng mình, giao dự án; không xem tài khoản / mật khẩu) */}
-                {tab === "proj" && me.type === "head" && headCfg && <ReadOnlyView><Projects cfg={headCfg} saveCfg={headSave} flash={flash} /></ReadOnlyView>}
+                {tab === "proj" && me.type === "head" && headCfg && <ReadOnlyView><Projects cfg={headCfg} saveCfg={headSave} flash={flash} onSupport={supportSave} /></ReadOnlyView>}
                 {tab === "emp" && me.type === "head" && headCfg && <Employees cfg={headCfg} saveCfg={headSave} flash={flash} limited />}
               </>
             )}
@@ -7121,7 +7127,7 @@ const ChartBar = ({ data, color }) => {
 };
 
 /* ============================ DỰ ÁN ============================ */
-function Projects({ cfg, saveCfg, flash, onSupport = null }) {
+function Projects({ cfg, saveCfg, flash, onSupport = null, supportRo = false }) {
   const [supFor, setSupFor] = useState(null);   // v8.7: dự án đang mở hộp "+ Hỗ trợ"
   const [name, setName] = useState(""); const [code, setCode] = useState(""); const [client, setClient] = useState("");
   const [budgets, setBudgets] = useState({});   // giờ công dự kiến theo phase
@@ -7181,7 +7187,7 @@ function Projects({ cfg, saveCfg, flash, onSupport = null }) {
             <button onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); setTp({ pid: p.id, q: "", x: Math.max(8, Math.min(window.innerWidth - 328, r.left)), y: r.bottom + 6, top: r.top }); }}
               className="mt-1 h-8 rounded-md border border-dashed border-slate-700 px-2.5 text-xs text-slate-400 hover:border-teal-600 hover:text-teal-300">+ Nhân sự</button>
             {onSupport && (
-              <button onClick={() => setSupFor(p.id)} className="ro-hide ml-1.5 mt-1 h-8 rounded-md border border-dashed border-violet-800 px-2.5 text-xs text-violet-300 hover:border-violet-600">+ Hỗ trợ</button>
+              <button onClick={() => setSupFor(p.id)} className={`${supportRo ? "ro-hide" : ""} ml-1.5 mt-1 h-8 rounded-md border border-dashed border-violet-800 px-2.5 text-xs text-violet-300 hover:border-violet-600`}>+ Hỗ trợ</button>
             )}
           </div>
         )}
@@ -7313,7 +7319,7 @@ function Projects({ cfg, saveCfg, flash, onSupport = null }) {
   return (
     <Panel title="Dự án — sửa thông tin & bật/tắt chấm công">
       {teamPop}
-      {supFor && onSupport && <SupportDialog cfg={cfg} emps={cfg.employees.filter((e) => !isResigned(e) && !e.allProjects).sort((a, b) => a.name.localeCompare(b.name, "vi"))} presetPid={supFor} onSave={onSupport} onClose={() => setSupFor(null)} />}
+      {supFor && onSupport && createPortal(<SupportDialog cfg={cfg} emps={cfg.employees.filter((e) => !isResigned(e) && !e.allProjects).sort((a, b) => a.name.localeCompare(b.name, "vi"))} presetPid={supFor} onSave={onSupport} onClose={() => setSupFor(null)} />, document.body)}
       {/* bọc trong div để class width không bị w-full của inputCls ghi đè */}
       <div className="ro-hide mb-5 grid gap-2 md:flex md:flex-wrap md:items-end">
         <div className="md:w-28">

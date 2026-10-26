@@ -1,5 +1,11 @@
 # ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
 
+## Mới ở v10.0 — Trưởng phòng thêm nhân sự hỗ trợ ngay ở tab Dự án
+- Tab **Dự án** của trưởng phòng có nút **+ Hỗ trợ** ở từng dự án (như Admin): chọn nhân viên **phòng mình**, thời hạn (1 / 2 tuần…), giai đoạn rồi Lưu. Hết hạn tự ngắt, không cần duyệt.
+- Danh sách "Hỗ trợ" trong thẻ dự án của trưởng phòng chỉ hiện nhân viên phòng mình (đợt hỗ trợ của phòng khác không còn hiện dấu "?").
+- Trưởng phòng vẫn không sửa được tên, giờ dự kiến, mở / đóng giai đoạn. BOD vẫn chỉ xem (không thấy nút).
+- Ghi qua hàm `artius_support_set` (đã có từ v8.7, database chỉ cho trưởng phòng mở cho nhân viên phòng mình). Không cần chạy SQL mới; chưa chạy `v8_7_ho_tro_du_an.sql` thì chạy một lần.
+
 ## Mới ở v9.9 — Nhắc hằng ngày: thứ Bảy có giờ riêng
 - Dòng **Nhắc hằng ngày** có thêm ô giờ **Thứ Bảy** (mặc định **11:00**). Thứ Bảy nhắc **2 lần**: đúng giờ đó (11:00) và 1 giờ sau (12:00), rồi thôi. Các ngày khác giữ nguyên (giờ đã chọn, nhắc lại mỗi giờ tới 17:30).
 - Thứ Bảy vẫn chỉ nhắc khi "Giờ chuẩn T7" > 0 và người đó chưa Gửi giờ hôm nay.
