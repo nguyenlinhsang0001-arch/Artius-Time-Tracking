@@ -1,5 +1,5 @@
 /* ============================================================
-   ARTIUS v2.6 — Tính lịch nhắc và người còn thiếu giờ (dùng chung cho /api/push)
+   ARTIUS v2.6 (+v9.6 nhắc hằng ngày) — Tính lịch nhắc và người còn thiếu giờ (dùng chung cho /api/push)
    Thuần tính toán, không gọi mạng — để kiểm thử được độc lập.
 
    Luật "ngày phải chấm công" giống hệt app (minHoursFor):
@@ -17,6 +17,7 @@ export const REPEAT_EVERY_MIN = 60;
 export const REPEAT_UNTIL = "17:30";
 
 export const DEFAULT_REMINDERS = {
+  dayOn: false, dayTime: "16:30",                       // v9.6: nhắc hằng ngày (mặc định TẮT, bật trong Thiết lập)
   weekOn: true, weekDow: 1, weekTime: "09:30",          // 1 = thứ Hai … 7 = Chủ nhật
   monthOn: true, monthTo: 2, monthTime: "09:30",        // từ ngày cuối tháng tới ngày monthTo của tháng sau
 };
@@ -43,6 +44,8 @@ export function normReminders(r) {
   const x = { ...DEFAULT_REMINDERS, ...(r && typeof r === "object" ? r : {}) };
   const okTime = (t, def) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(t)) ? String(t) : def);
   return {
+    dayOn: x.dayOn === true,
+    dayTime: okTime(x.dayTime, DEFAULT_REMINDERS.dayTime),
     weekOn: x.weekOn !== false,
     weekDow: Math.min(7, Math.max(1, Number(x.weekDow) || 1)),
     weekTime: okTime(x.weekTime, DEFAULT_REMINDERS.weekTime),
@@ -73,6 +76,10 @@ export function dueReminders(cfgReminders, now) {
   const r = normReminders(cfgReminders);
   const out = [];
   const { date, hhmm } = now;
+  /* v9.6 — Nhắc hằng ngày: mỗi ngày từ giờ đã chọn, nhắc cho CHÍNH hôm nay (chỉ người chưa Gửi giờ hôm nay;
+     ngày lễ và ngày giờ chuẩn = 0 thì missingDays trả rỗng nên không ai bị nhắc). Khoá "<ngày>@<ngày>#<lượt>". */
+  const dSlot = r.dayOn ? slotAt(r.dayTime, hhmm) : null;
+  if (dSlot !== null) out.push({ kind: "day", period: `${date}@${date}#${dSlot}`, slot: dSlot, from: date, to: date });
   const wSlot = r.weekOn && dow0(date) + 1 === r.weekDow ? slotAt(r.weekTime, hhmm) : null;
   if (wSlot !== null) {
     const from = addDays(mondayOf(date), -7);
@@ -125,6 +132,13 @@ export function missingDays({ from, to, today, hours, holidays, buckets }) {
 /* Nội dung thông báo */
 export function messageFor(job, days, deadlineDay = 5) {
   const n = days.length;
+  if (job.kind === "day") {
+    return {
+      title: "ARTIUS — Nhắc chấm công hôm nay",
+      body: `${DOW[dow0(job.from)]} ${dLabel(job.from)}: bạn chưa gửi giờ công hôm nay. Mở ARTIUS, chấm giờ và bấm Gửi.`,
+      url: `/?tuan=${mondayOf(job.from)}`,
+    };
+  }
   if (job.kind === "week") {
     const list = days.slice(0, 4).map((d) => `${DOW[dow0(d)]} ${dLabel(d)}`).join(", ") + (n > 4 ? "…" : ".");
     return {
