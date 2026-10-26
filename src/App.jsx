@@ -18,6 +18,7 @@ import { currentUser, signIn as authSignIn, signOut as authSignOut, accountsApi,
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v5.6
+   Mới ở v9.9 — Nhắc hằng ngày: thứ Bảy có giờ riêng (mặc định 11:00), nhắc 2 lần (giờ đó và 1 giờ sau). Cần cập nhật api/_reminders.js trên Vercel.
    Mới ở v9.8 — Mở chấm bù cho một nhân sự chuyển vào nút mở khoá (cột Mở khoá / sửa) của Bảng công; hộp thoại Khoá quá hạn chỉ còn đổi số tuần + danh sách đang mở.
    Mới ở v9.7 — Khoá chấm công quá hạn chuyển từ Thiết lập sang Bảng công (Admin): nút "Khoá quá hạn · N tuần" ở thanh công cụ mở hộp thoại đổi số tuần + mở chấm bù.
    Mới ở v9.6 — Thiết lập → Nhắc nộp bảng công: thêm "Nhắc hằng ngày" (bật / tắt, chọn giờ) — nhắc người chưa Gửi giờ hôm nay. Cần cập nhật api/_reminders.js trên Vercel.
@@ -330,7 +331,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v9.8";
+const APP_VERSION = "v9.9";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -9027,7 +9028,7 @@ function PhasePanel({ cfg, saveCfg, flash }) {
 }
 
 /* v2.6 — Lịch nhắc nộp bảng công (thông báo trên máy tính). Lưu ở cfg.reminders; server đọc lại mỗi 15 phút. */
-const REM_DEFAULT = { dayOn: false, dayTime: "16:30", weekOn: true, weekDow: 1, weekTime: "09:30", monthOn: true, monthTo: 2, monthTime: "09:30" };
+const REM_DEFAULT = { dayOn: false, dayTime: "16:30", daySatTime: "11:00", weekOn: true, weekDow: 1, weekTime: "09:30", monthOn: true, monthTo: 2, monthTime: "09:30" };
 const REM_DOW = [[1, "Thứ Hai"], [2, "Thứ Ba"], [3, "Thứ Tư"], [4, "Thứ Năm"], [5, "Thứ Sáu"], [6, "Thứ Bảy"], [7, "Chủ nhật"]];
 const REM_HOURS = Array.from({ length: 16 }, (_, i) => pad(i + 6));          // 06 … 21
 const REM_MINS = ["00", "15", "30", "45"];
@@ -9161,6 +9162,8 @@ function ReminderPanel({ cfg, saveCfg, flash }) {
           <span className="w-28 text-sm text-slate-200">Nhắc hằng ngày</span>
           <div className={`flex h-9 w-56 items-center rounded-lg border border-slate-800 bg-slate-950 px-3 text-sm text-slate-400 ${r.dayOn ? "" : "opacity-40"}`}>Mỗi ngày làm việc</div>
           <TimePick value={r.dayTime} disabled={!r.dayOn} onChange={(v) => set({ dayTime: v })} />
+          <span className={`text-sm text-slate-400 ${r.dayOn ? "" : "opacity-40"}`}>Thứ Bảy</span>
+          <TimePick value={r.daySatTime} disabled={!r.dayOn} onChange={(v) => set({ daySatTime: v })} />
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Toggle on={r.weekOn} onClick={() => set({ weekOn: !r.weekOn })} />
@@ -9179,7 +9182,7 @@ function ReminderPanel({ cfg, saveCfg, flash }) {
           <TimePick value={r.monthTime} disabled={!r.monthOn} onChange={(v) => set({ monthTime: v })} />
         </div>
         <div className="flex flex-wrap items-center gap-3 border-t border-slate-800 pt-3">
-          <span className="text-xs text-slate-500">Chỉ gửi cho nhân sự còn ngày chưa gửi (nhắc hằng ngày: chưa gửi giờ của hôm nay; bỏ ngày lễ và ngày không phải chấm). Lần đầu trong vòng 15 phút sau giờ đã chọn, sau đó nhắc lại mỗi 1 giờ tới 17:30 cho tới khi gửi đủ.</span>
+          <span className="text-xs text-slate-500">Chỉ gửi cho nhân sự còn ngày chưa gửi (nhắc hằng ngày: chưa gửi giờ của hôm nay; bỏ ngày lễ và ngày không phải chấm; thứ Bảy có giờ riêng và chỉ nhắc 2 lần: giờ đã chọn và 1 giờ sau). Lần đầu trong vòng 15 phút sau giờ đã chọn, sau đó nhắc lại mỗi 1 giờ tới 17:30 cho tới khi gửi đủ.</span>
           <button onClick={test} disabled={testing} className={`ml-auto ${btnGhost} disabled:opacity-40`}>{testing ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />} Gửi thử tới máy này</button>
           <button onClick={save} disabled={!dirty} className={`${btnPrimary} disabled:opacity-40`}><Save size={14} /> Lưu lịch nhắc</button>
         </div>

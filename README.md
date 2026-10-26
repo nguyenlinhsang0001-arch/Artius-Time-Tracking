@@ -1,5 +1,10 @@
 # ARTIUS — Quản lý giờ công · v8.3 (bản webapp cho Vercel)
 
+## Mới ở v9.9 — Nhắc hằng ngày: thứ Bảy có giờ riêng
+- Dòng **Nhắc hằng ngày** có thêm ô giờ **Thứ Bảy** (mặc định **11:00**). Thứ Bảy nhắc **2 lần**: đúng giờ đó (11:00) và 1 giờ sau (12:00), rồi thôi. Các ngày khác giữ nguyên (giờ đã chọn, nhắc lại mỗi giờ tới 17:30).
+- Thứ Bảy vẫn chỉ nhắc khi "Giờ chuẩn T7" > 0 và người đó chưa Gửi giờ hôm nay.
+- **Bắt buộc**: chép lại `api/_reminders.js` của bản này đè lên file trong project Vercel rồi deploy lại (không cần SQL). Ô giờ thứ Bảy lưu được ngay, nhưng server chỉ áp dụng sau khi chép file.
+
 ## Mới ở v9.8 — Mở chấm bù nằm trong nút Mở khoá
 - Bảng công (Admin), cột **Mở khoá / sửa**: nút mở khoá (🔓) hiện thêm ở các tuần **đã quá hạn chấm công** (kể cả tuần chưa gửi). Bấm mở hộp thoại: mở khoá tuần (nếu đã gửi) và tick **Mở chấm bù cho nhân sự tới ngày…** — một lần bấm làm cả hai.
 - Nút có chấm xanh khi tuần đó đang mở chấm bù; bấm lại để đổi hạn.

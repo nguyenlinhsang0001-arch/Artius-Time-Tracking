@@ -17,7 +17,7 @@ export const REPEAT_EVERY_MIN = 60;
 export const REPEAT_UNTIL = "17:30";
 
 export const DEFAULT_REMINDERS = {
-  dayOn: false, dayTime: "16:30",                       // v9.6: nhắc hằng ngày (mặc định TẮT, bật trong Thiết lập)
+  dayOn: false, dayTime: "16:30", daySatTime: "11:00",                       // v9.6: nhắc hằng ngày (mặc định TẮT, bật trong Thiết lập)
   weekOn: true, weekDow: 1, weekTime: "09:30",          // 1 = thứ Hai … 7 = Chủ nhật
   monthOn: true, monthTo: 2, monthTime: "09:30",        // từ ngày cuối tháng tới ngày monthTo của tháng sau
 };
@@ -46,6 +46,7 @@ export function normReminders(r) {
   return {
     dayOn: x.dayOn === true,
     dayTime: okTime(x.dayTime, DEFAULT_REMINDERS.dayTime),
+    daySatTime: okTime(x.daySatTime, DEFAULT_REMINDERS.daySatTime),
     weekOn: x.weekOn !== false,
     weekDow: Math.min(7, Math.max(1, Number(x.weekDow) || 1)),
     weekTime: okTime(x.weekTime, DEFAULT_REMINDERS.weekTime),
@@ -78,7 +79,12 @@ export function dueReminders(cfgReminders, now) {
   const { date, hhmm } = now;
   /* v9.6 — Nhắc hằng ngày: mỗi ngày từ giờ đã chọn, nhắc cho CHÍNH hôm nay (chỉ người chưa Gửi giờ hôm nay;
      ngày lễ và ngày giờ chuẩn = 0 thì missingDays trả rỗng nên không ai bị nhắc). Khoá "<ngày>@<ngày>#<lượt>". */
-  const dSlot = r.dayOn ? slotAt(r.dayTime, hhmm) : null;
+  /* v9.9 — Thứ Bảy có giờ riêng (daySatTime, mặc định 11:00) và chỉ nhắc 2 lần: đúng giờ đó và 1 giờ sau
+     (hạn lượt thứ hai = giờ + 74 phút để vẫn kịp trong chu kỳ chạy 15 phút). Các ngày khác giữ nguyên: nhắc lại mỗi giờ tới REPEAT_UNTIL. */
+  const isSat = dow0(date) === 5;
+  const dStart = isSat ? r.daySatTime : r.dayTime;
+  const dUntil = isSat ? (() => { const m = toMin(dStart) + 74; return `${pad(Math.min(23, Math.floor(m / 60)))}:${pad(m % 60)}`; })() : REPEAT_UNTIL;
+  const dSlot = r.dayOn ? slotAt(dStart, hhmm, dUntil) : null;
   if (dSlot !== null) out.push({ kind: "day", period: `${date}@${date}#${dSlot}`, slot: dSlot, from: date, to: date });
   const wSlot = r.weekOn && dow0(date) + 1 === r.weekDow ? slotAt(r.weekTime, hhmm) : null;
   if (wSlot !== null) {
