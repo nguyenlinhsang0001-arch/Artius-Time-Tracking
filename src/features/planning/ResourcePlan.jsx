@@ -6,10 +6,10 @@ import { fmt, mondayOf } from "../../core/date.jsx";
 import { dbTsSent, ensureMonths, useDataTick, weekDone } from "../../core/db.jsx";
 import { ROLES, isResigned } from "../../core/domain.jsx";
 import { CTRL, Panel, btnGhost, btnPrimary } from "../../core/ui.jsx";
-import { HALF, actualByCell, prunePlan, weekIndexOf, weeksOfYear } from "./planCalc.js";
+import { actualByCell, prunePlan, weekIndexOf, weeksOfYear } from "./planCalc.js";
 import { PlanGrid } from "./PlanGrid.jsx";
 import { PlanOverview } from "./PlanOverview.jsx";
-import { SQL_HINT, isMissingTable, listSnapshots, loadPlan, savePlan, snapshotPlan } from "./planStore.js";
+import { SQL_HINT, errMsg, isMissingTable, listSnapshots, loadPlan, savePlan, snapshotPlan } from "./planStore.js";
 
 const DEFAULT_AVAIL = 0.8;
 
@@ -17,7 +17,6 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
   const tick = useDataTick();
   const thisYear = new Date().getFullYear();
   const [year, setYear] = useState(thisYear);
-  const [half, setHalf] = useState(() => (weekIndexOf(weeksOfYear(thisYear), fmt(mondayOf(new Date()))) >= HALF ? 1 : 0));
   const [mode, setMode] = useState("in");
   const [plan, setPlan] = useState({});
   const [dirty, setDirty] = useState(false);
@@ -29,9 +28,10 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
 
   const avail = Number(cfg.planning?.availability) > 0 ? Number(cfg.planning.availability) : DEFAULT_AVAIL;
   const weeks = useMemo(() => weeksOfYear(year), [year]);
-  const view = useMemo(() => weeks.slice(half * HALF, half * HALF + HALF), [weeks, half]);
-  const nowIdxAll = weekIndexOf(weeks, fmt(mondayOf(new Date())));
-  const nowIdx = view.findIndex((w) => w.i >= nowIdxAll);
+  /* v12.1 — cả năm trên MỘT lưới, cuộn ngang liền mạch. Trước đây tách nửa đầu / nửa sau,
+     dự án vắt qua ranh giới bị cắt làm đôi nên khó theo dõi. */
+  const view = weeks;
+  const nowIdx = weekIndexOf(weeks, fmt(mondayOf(new Date())));
 
   const projects = useMemo(() => (cfg.projects || []).filter((p) => p.active), [cfg.projects]);
   const staff = useMemo(() => (cfg.employees || []).filter((e) => !isResigned(e)), [cfg.employees]);
@@ -48,7 +48,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
     setBusy(true); setErr("");
     loadPlan(year)
       .then((p) => { if (alive) { setPlan(p); setDirty(false); } })
-      .catch((e) => { if (alive) setErr(isMissingTable(e) ? SQL_HINT : `Chưa tải được kế hoạch — ${e?.message || e}`); })
+      .catch((e) => { if (alive) setErr(isMissingTable(e) ? SQL_HINT : `Chưa tải được kế hoạch — ${errMsg(e)}`); })
       .finally(() => alive && setBusy(false));
     listSnapshots(year).then((s) => alive && setSnaps(s)).catch(() => {});
     return () => { alive = false; };
@@ -96,7 +96,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
       savedAt.current = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
       flash("Đã lưu kế hoạch.");
     } catch (e) {
-      flash(isMissingTable(e) ? SQL_HINT : `Chưa lưu được — ${e?.message || e}`, "err");
+      flash(isMissingTable(e) ? SQL_HINT : `Chưa lưu được — ${errMsg(e)}`, "err");
     } finally { setBusy(false); }
   }, [plan, year, flash]);
 
@@ -105,7 +105,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
       await snapshotPlan(year, `Chốt ${new Date().toLocaleDateString("vi-VN")}`, prunePlan(plan));
       setSnaps(await listSnapshots(year));
       flash("Đã chốt bản kế hoạch. Từ giờ phần so với thực tế dùng bản này.");
-    } catch (e) { flash(isMissingTable(e) ? SQL_HINT : `Chưa chốt được — ${e?.message || e}`, "err"); }
+    } catch (e) { flash(isMissingTable(e) ? SQL_HINT : `Chưa chốt được — ${errMsg(e)}`, "err"); }
   }, [plan, year, flash]);
 
   const setAvail = async (v) => {
@@ -114,7 +114,6 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
   };
 
   const years = [thisYear - 1, thisYear, thisYear + 1];
-  const seg = (on) => `${CTRL} whitespace-nowrap px-3.5 text-[13px] ${on ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`;
 
   return (
     <div className="space-y-3 md:space-y-4">
@@ -138,14 +137,10 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
 
       <Panel flush
         title={mode === "in" ? "Lưới kế hoạch nguồn lực" : "Tổng quan nguồn lực"}
-        sub={<>Năm {year} · tuần {half * HALF + 1}–{half * HALF + view.length} · đơn vị là số người (1 / 0,5 / 0,25)</>}
+        sub={<>Năm {year} · {weeks.length} tuần · đơn vị là số người (1 / 0,5 / 0,25)</>}
         right={busy ? <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} /> : null}>
 
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
-          <div className="flex rounded-md border border-slate-700">
-            <button onClick={() => setHalf(0)} className={seg(half === 0)}>Tuần 1–{HALF}</button>
-            <button onClick={() => setHalf(1)} className={seg(half === 1)}>Tuần {HALF + 1}–{weeks.length}</button>
-          </div>
           <select value={year} onChange={(e) => setYear(Number(e.target.value))} aria-label="Năm" className="h-11 w-32 rounded-md border border-slate-700 bg-slate-900 px-3 text-sm text-slate-100">
             {years.map((y) => <option key={y} value={y}>Năm {y}</option>)}
           </select>
@@ -170,7 +165,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
         {mode === "in" ? (
           <PlanGrid plan={plan} onChange={(p) => { setPlan(p); setDirty(true); }}
             projects={projects} roles={roles} weeks={view} nWeeks={weeks.length}
-            cap={cap} head={head} readOnly={readOnly} />
+            cap={cap} head={head} readOnly={readOnly} nowIndex={nowIdx} year={year} />
         ) : (
           <PlanOverview plan={plan} projects={projects} roles={roles} weeks={view}
             cap={cap} availability={avail}

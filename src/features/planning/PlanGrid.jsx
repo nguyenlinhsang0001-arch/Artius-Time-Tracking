@@ -1,10 +1,13 @@
-/* ARTIUS TIME v12 — Lưới nhập kế hoạch nguồn lực.
+/* ARTIUS TIME v12.1 — Lưới nhập kế hoạch nguồn lực, CẢ NĂM trên một bảng, cuộn ngang liền mạch.
    Hàng = dự án × vai trò, cột = tuần, ô = số người. Dưới cùng là khối Cần / CÒN của mọi vai trò,
-   và một dải CÒN dính đáy bảng chạy theo vai trò đang gõ để không phải cuộn xuống cuối mới thấy hậu quả. */
-import React, { useMemo, useRef, useState } from "react";
+   và một dải CÒN dính đáy chạy theo vai trò đang gõ để không phải cuộn xuống cuối mới thấy hậu quả.
+
+   53 cột × hàng chục dòng là vài nghìn ô nhập, nên mỗi dòng dự án × vai trò được bọc React.memo:
+   gõ một ô chỉ vẽ lại đúng dòng đó, không vẽ lại cả lưới. */
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Trash2 } from "lucide-react";
 import { btnGhost } from "../../core/ui.jsx";
-import { cellOf, copyWeek, leftOf, needOf, rolesUsedIn, setCell } from "./planCalc.js";
+import { copyWeek, leftOf, needOf, setCell } from "./planCalc.js";
 
 const f = (n) => (!n ? "" : String(+Number(n).toFixed(2)).replace(".", ","));
 const f0 = (n) => String(+Number(n).toFixed(2)).replace(".", ",");
@@ -12,21 +15,71 @@ const parse = (s) => {
   const v = parseFloat(String(s).replace(",", "."));
   return Number.isFinite(v) && v >= 0 ? Math.min(v, 99) : 0;
 };
+const LEFT1 = 150, LEFT2 = 150;   // bề ngang hai cột khoá cứng bên trái
 
-export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, head, readOnly = false }) {
+/* một dòng dự án × vai trò — chỉ vẽ lại khi mảng số của chính nó đổi */
+const Row = React.memo(function Row({ pid, rid, label, values, weeks, nowIndex, readOnly, onCell, onFocus, onDrop }) {
+  return (
+    <tr className="border-b border-slate-900/70">
+      <td className="sticky left-0 z-20 bg-slate-950 px-2 py-0.5" />
+      <td className="sticky z-20 bg-slate-950 px-2 py-0.5" style={{ left: LEFT1 }}>
+        <span className="font-mono text-slate-400">{label}</span>
+        {!readOnly && (
+          <button type="button" title="Bỏ vai trò này khỏi dự án" onClick={() => onDrop(pid, rid)}
+            className="ml-1.5 align-middle text-slate-700 hover:text-rose-400"><Trash2 size={11} /></button>
+        )}
+      </td>
+      {weeks.map((w, k) => {
+        const v = Number(values?.[w.i]) || 0;
+        const past = nowIndex >= 0 && w.i < nowIndex;
+        return (
+          <td key={w.i} className={`border-l border-slate-900 p-0 ${past ? "bg-slate-950/70" : ""}`}
+            style={v > 0.001 ? { background: `rgba(45,212,191,${(Math.min(v, 2) / 2 * 0.3 + 0.05).toFixed(2)})` } : undefined}>
+            <input data-cell data-col={k} readOnly={readOnly} value={f(v)} placeholder="·"
+              onFocus={(e) => { onFocus(rid, w.i); e.target.select(); }}
+              onChange={(e) => onCell(pid, rid, w.i, parse(e.target.value))}
+              className="w-full border-0 bg-transparent py-1 text-center font-mono text-[12px] text-slate-100 outline-none placeholder:text-slate-800 focus:rounded-sm focus:bg-teal-950 focus:ring-[1.5px] focus:ring-teal-500" />
+          </td>
+        );
+      })}
+    </tr>
+  );
+});
+
+export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, head, readOnly = false, nowIndex = -1, year }) {
   const [active, setActive] = useState(null);     // { rid, wi }
   const [selWeek, setSelWeek] = useState(null);
   const wrap = useRef(null);
+  const nowCell = useRef(null);
+  const planRef = useRef(plan); planRef.current = plan;
+  const changeRef = useRef(onChange); changeRef.current = onChange;
+
   const pids = useMemo(() => projects.map((p) => p.id), [projects]);
   const roleById = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles]);
   const nCol = weeks.length;
 
-  /* vai trò hiện cho từng dự án: những vai trò đã có số, giữ đúng thứ tự danh sách vai trò của công ty */
-  const rowsOf = (pid) => { const used = new Set(rolesUsedIn(plan, pid)); return roles.filter((r) => used.has(r.id)); };
-  const addRole = (pid, rid) => { if (rid) onChange(setCell(plan, pid, rid, weeks[0].i, 0.0001, nWeeks)); };
-  const dropRole = (pid, rid) => {
-    const next = { ...plan, [pid]: { ...(plan[pid] || {}) } };
-    delete next[pid][rid]; onChange(next);
+  /* mở lưới là nhảy tới tuần hiện tại, đỡ phải cuộn tay qua mấy chục cột */
+  useEffect(() => {
+    const el = nowCell.current;
+    if (el) el.scrollIntoView({ inline: "center", block: "nearest" });
+  }, [year]);
+
+  const onCell = useCallback((pid, rid, wi, v) => {
+    changeRef.current(setCell(planRef.current, pid, rid, wi, v, nWeeks));
+  }, [nWeeks]);
+  const onFocusCell = useCallback((rid, wi) => setActive({ rid, wi }), []);
+  const onDrop = useCallback((pid, rid) => {
+    const next = { ...planRef.current, [pid]: { ...(planRef.current[pid] || {}) } };
+    delete next[pid][rid];
+    changeRef.current(next);
+  }, []);
+  /* thêm vai trò = tạo một dòng toàn 0 để gõ. Lưu mà vẫn trống thì dòng tự biến mất (prunePlan). */
+  const addRole = (pid, rid) => {
+    if (!rid) return;
+    const cur = planRef.current;
+    const next = { ...cur, [pid]: { ...(cur[pid] || {}) } };
+    if (!next[pid][rid]) next[pid][rid] = Array(nWeeks).fill(0);
+    changeRef.current(next);
   };
 
   /* phím mũi tên: mọi ô nhập nằm trong một lưới đều nCol cột nên nhảy theo chỉ số là đủ */
@@ -44,17 +97,20 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
   };
 
   const stripRole = active?.rid ? roleById.get(active.rid) : null;
+  const totalRoles = roles.filter((r) => (cap.get(r.id) || 0) > 0 || weeks.some((w) => needOf(plan, pids, r.id, w.i) > 0));
 
   return (
     <div>
       {!readOnly && (
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
-          <button type="button" disabled={selWeek == null || selWeek >= weeks[weeks.length - 1].i}
+          <button type="button" disabled={selWeek == null || selWeek >= nWeeks - 1}
             onClick={() => { onChange(copyWeek(plan, pids, selWeek, selWeek + 1, nWeeks)); setSelWeek(selWeek + 1); }}
             className={`${btnGhost} disabled:opacity-40`}><Copy size={14} /> Chép tuần đang chọn sang tuần sau</button>
           <span className={`text-xs ${selWeek == null ? "text-slate-600" : "text-teal-400"}`}>
-            {selWeek == null ? "Bấm số tuần trên đầu cột để chọn" : `Đang chọn ${weeks.find((w) => w.i === selWeek)?.m && `T${weeks.find((w) => w.i === selWeek).m}`} tuần ${weeks.find((w) => w.i === selWeek)?.w}`}
+            {selWeek == null ? "Bấm số tuần trên đầu cột để chọn" : (() => { const w = weeks.find((x) => x.i === selWeek); return `Đang chọn T${w?.m} tuần ${w?.w}`; })()}
           </span>
+          <button type="button" onClick={() => nowCell.current?.scrollIntoView({ inline: "center", block: "nearest" })}
+            className={`ml-auto ${btnGhost}`}>Về tuần này</button>
         </div>
       )}
 
@@ -62,37 +118,45 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
         <table className="text-[12px]">
           <thead>
             <tr>
-              <th className="sticky left-0 top-0 z-30 w-[150px] bg-slate-900 px-2 py-1 text-left text-[11px] uppercase tracking-wider text-slate-500">Dự án</th>
-              <th className="sticky top-0 z-30 w-[92px] bg-slate-900 px-2 py-1 text-left text-[11px] uppercase tracking-wider text-slate-500" style={{ left: 150 }}>Vai trò</th>
+              <th className="sticky left-0 top-0 z-30 bg-slate-900 px-2 py-1 text-left text-[11px] uppercase tracking-wider text-slate-500" style={{ width: LEFT1 }}>Dự án</th>
+              <th className="sticky top-0 z-30 w-[92px] bg-slate-900 px-2 py-1 text-left text-[11px] uppercase tracking-wider text-slate-500" style={{ left: LEFT2 }}>Vai trò</th>
               {weeks.map((w, k) => (
-                <th key={w.i} className={`sticky top-0 z-25 border-l border-slate-800 bg-slate-900 px-1 py-1 text-center text-[11px] font-medium ${k === 0 || weeks[k - 1].m !== w.m ? "text-teal-400" : "text-slate-700"}`}>
+                <th key={w.i} className={`sticky top-0 z-20 border-l border-slate-800 bg-slate-900 px-1 py-1 text-center text-[11px] font-medium ${k === 0 || weeks[k - 1].m !== w.m ? "text-teal-400" : "text-slate-700"}`}>
                   {k === 0 || weeks[k - 1].m !== w.m ? `T${w.m}` : ""}
                 </th>
               ))}
             </tr>
             <tr>
               <th className="sticky left-0 top-[26px] z-30 bg-slate-900 px-2 py-1" />
-              <th className="sticky top-[26px] z-30 bg-slate-900 px-2 py-1" style={{ left: 150 }} />
-              {weeks.map((w) => (
-                <th key={w.i} onClick={() => !readOnly && setSelWeek(w.i)}
-                  className={`sticky top-[26px] z-25 border-l border-slate-800 px-1 py-1 text-center text-[10px] font-normal ${readOnly ? "bg-slate-900 text-slate-600" : selWeek === w.i ? "cursor-pointer bg-teal-900 text-teal-200" : "cursor-pointer bg-slate-900 text-slate-500 hover:text-teal-400"}`}>
-                  {w.w}
-                </th>
-              ))}
+              <th className="sticky top-[26px] z-30 bg-slate-900 px-2 py-1" style={{ left: LEFT2 }} />
+              {weeks.map((w) => {
+                const isNow = w.i === nowIndex;
+                return (
+                  <th key={w.i} ref={isNow ? nowCell : null} onClick={() => !readOnly && setSelWeek(w.i)}
+                    title={isNow ? "Tuần này" : undefined}
+                    className={`sticky top-[26px] z-20 border-l border-slate-800 px-1 py-1 text-center text-[10px] font-normal ${readOnly ? "bg-slate-900 text-slate-600"
+                      : selWeek === w.i ? "cursor-pointer bg-teal-900 text-teal-200"
+                        : isNow ? "cursor-pointer bg-slate-800 font-semibold text-teal-300"
+                          : "cursor-pointer bg-slate-900 text-slate-500 hover:text-teal-400"}`}>
+                    {w.w}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
 
           <tbody>
             {projects.map((p) => {
-              const rws = rowsOf(p.id);
-              const free = roles.filter((r) => !rws.some((x) => x.id === r.id));
+              const used = new Set(Object.keys(plan[p.id] || {}));   // có dòng là hiện, kể cả khi chưa gõ số nào
+              const rws = roles.filter((r) => used.has(r.id));
+              const free = roles.filter((r) => !used.has(r.id));
               return (
                 <React.Fragment key={p.id}>
                   <tr>
                     <td className="sticky left-0 z-20 border-t border-slate-700 bg-slate-950 px-2 py-1.5 font-semibold text-slate-100">
                       {p.code ? `${p.code} ` : ""}{p.name}
                     </td>
-                    <td className="sticky z-20 border-t border-slate-700 bg-slate-950 px-2 py-1.5" style={{ left: 150 }}>
+                    <td className="sticky z-20 border-t border-slate-700 bg-slate-950 px-2 py-1.5" style={{ left: LEFT2 }}>
                       {!readOnly && free.length > 0 && (
                         <select value="" onChange={(e) => addRole(p.id, e.target.value)}
                           aria-label={`Thêm vai trò cho ${p.name}`}
@@ -104,68 +168,43 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
                     </td>
                     <td className="border-t border-slate-700" colSpan={nCol} />
                   </tr>
-
                   {rws.map((r) => (
-                    <tr key={r.id} className="border-b border-slate-900/70">
-                      <td className="sticky left-0 z-20 bg-slate-950 px-2 py-0.5" />
-                      <td className="sticky z-20 bg-slate-950 px-2 py-0.5" style={{ left: 150 }}>
-                        <span className="font-mono text-slate-400">{r.id}</span>
-                        {!readOnly && (
-                          <button type="button" title="Bỏ vai trò này khỏi dự án" onClick={() => dropRole(p.id, r.id)}
-                            className="ml-1.5 align-middle text-slate-700 hover:text-rose-400"><Trash2 size={11} /></button>
-                        )}
-                      </td>
-                      {weeks.map((w, k) => {
-                        const v = cellOf(plan, p.id, r.id, w.i);
-                        return (
-                          <td key={w.i} className="border-l border-slate-900 p-0"
-                            style={v > 0.001 ? { background: `rgba(45,212,191,${(Math.min(v, 2) / 2 * 0.3 + 0.05).toFixed(2)})` } : undefined}>
-                            <input data-cell data-col={k} readOnly={readOnly} value={f(v)} placeholder="·"
-                              onFocus={(e) => { setActive({ rid: r.id, wi: w.i }); e.target.select(); }}
-                              onChange={(e) => onChange(setCell(plan, p.id, r.id, w.i, parse(e.target.value), nWeeks))}
-                              className="w-full border-0 bg-transparent py-1 text-center font-mono text-[12px] text-slate-100 outline-none placeholder:text-slate-800 focus:rounded-sm focus:bg-teal-950 focus:ring-[1.5px] focus:ring-teal-500" />
-                          </td>
-                        );
-                      })}
-                    </tr>
+                    <Row key={r.id} pid={p.id} rid={r.id} label={r.id} values={plan[p.id]?.[r.id]}
+                      weeks={weeks} nowIndex={nowIndex} readOnly={readOnly}
+                      onCell={onCell} onFocus={onFocusCell} onDrop={onDrop} />
                   ))}
                 </React.Fragment>
               );
             })}
 
             {/* khối tổng của mọi vai trò */}
-            <tr><td className="sticky left-0 z-20 bg-slate-900 px-2 pt-4" /><td className="sticky z-20 bg-slate-900 pt-4" style={{ left: 150 }} /><td colSpan={nCol} /></tr>
+            <tr><td className="sticky left-0 z-20 bg-slate-900 px-2 pt-4" /><td className="sticky z-20 bg-slate-900 pt-4" style={{ left: LEFT2 }} /><td colSpan={nCol} /></tr>
             <tr>
               <td className="sticky left-0 z-20 border-y border-slate-600 bg-slate-950 px-2 py-1.5 font-semibold text-teal-300">TỔNG TOÀN CÔNG TY</td>
-              <td className="sticky z-20 border-y border-slate-600 bg-slate-950" style={{ left: 150 }} />
+              <td className="sticky z-20 border-y border-slate-600 bg-slate-950" style={{ left: LEFT2 }} />
               <td className="border-y border-slate-600" colSpan={nCol} />
             </tr>
-            {roles.map((r) => {
-              if (!(cap.get(r.id) > 0) && !weeks.some((w) => needOf(plan, pids, r.id, w.i) > 0)) return null;
-              return (
-                <React.Fragment key={r.id}>
-                  <tr className="border-b border-slate-900">
-                    <td className="sticky left-0 z-20 bg-slate-950 px-2 py-0.5 text-slate-300">{r.name}</td>
-                    <td className="sticky z-20 bg-slate-950 px-2 py-0.5 font-mono text-slate-400" style={{ left: 150 }}>
-                      {r.id} · {head.get(r.id) || 0}
-                    </td>
-                    {weeks.map((w) => {
-                      const nd = needOf(plan, pids, r.id, w.i);
-                      return <td key={w.i} className={`border-l border-slate-900 px-1 text-center font-mono ${nd ? "text-slate-100" : "text-slate-800"}`}>{nd ? f0(nd) : "0"}</td>;
-                    })}
-                  </tr>
-                  <tr className="border-b border-slate-800">
-                    <td className="sticky left-0 z-20 bg-slate-950 px-2 py-0.5 text-[11px] text-slate-600">còn lại</td>
-                    <td className="sticky z-20 bg-slate-950 px-2 py-0.5 text-[11px] text-slate-600" style={{ left: 150 }}>CÒN</td>
-                    {weeks.map((w) => {
-                      const lf = leftOf(plan, pids, r.id, w.i, cap);
-                      return <td key={w.i} className="border-l border-slate-900 px-1 text-center font-mono font-semibold"
-                        style={lf < -0.001 ? { background: "#f87171", color: "#450a0a" } : lf > 0.001 ? { background: "#fde68a", color: "#451a03" } : { background: "#1e293b", color: "#64748b" }}>{f0(lf)}</td>;
-                    })}
-                  </tr>
-                </React.Fragment>
-              );
-            })}
+            {totalRoles.map((r) => (
+              <React.Fragment key={r.id}>
+                <tr className="border-b border-slate-900">
+                  <td className="sticky left-0 z-20 bg-slate-950 px-2 py-0.5 text-slate-300">{r.name}</td>
+                  <td className="sticky z-20 bg-slate-950 px-2 py-0.5 font-mono text-slate-400" style={{ left: LEFT2 }}>{r.id} · {head.get(r.id) || 0}</td>
+                  {weeks.map((w) => {
+                    const nd = needOf(plan, pids, r.id, w.i);
+                    return <td key={w.i} className={`border-l border-slate-900 px-1 text-center font-mono ${nd ? "text-slate-100" : "text-slate-800"}`}>{nd ? f0(nd) : "0"}</td>;
+                  })}
+                </tr>
+                <tr className="border-b border-slate-800">
+                  <td className="sticky left-0 z-20 bg-slate-950 px-2 py-0.5 text-[11px] text-slate-600">còn lại</td>
+                  <td className="sticky z-20 bg-slate-950 px-2 py-0.5 text-[11px] text-slate-600" style={{ left: LEFT2 }}>CÒN</td>
+                  {weeks.map((w) => {
+                    const lf = leftOf(plan, pids, r.id, w.i, cap);
+                    return <td key={w.i} className="border-l border-slate-900 px-1 text-center font-mono font-semibold"
+                      style={lf < -0.001 ? { background: "#f87171", color: "#450a0a" } : lf > 0.001 ? { background: "#fde68a", color: "#451a03" } : { background: "#1e293b", color: "#64748b" }}>{f0(lf)}</td>;
+                  })}
+                </tr>
+              </React.Fragment>
+            ))}
 
             {/* dải dính đáy: Cần và CÒN của vai trò đang gõ */}
             {stripRole && (
@@ -174,21 +213,21 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
                   <td className="sticky left-0 z-30 border-t-2 border-teal-800 px-2 py-0.5 text-[11px] text-teal-500/80" style={{ bottom: 22, background: "#041f1c" }}>
                     cần — <span className="text-teal-300">{stripRole.id} · {stripRole.name}</span>
                   </td>
-                  <td className="sticky z-30 border-t-2 border-teal-800 px-2 py-0.5 font-mono text-[11px] text-teal-500/80" style={{ left: 150, bottom: 22, background: "#041f1c" }}>
+                  <td className="sticky z-30 border-t-2 border-teal-800 px-2 py-0.5 font-mono text-[11px] text-teal-500/80" style={{ left: LEFT2, bottom: 22, background: "#041f1c" }}>
                     {head.get(stripRole.id) || 0} người
                   </td>
                   {weeks.map((w) => {
                     const nd = needOf(plan, pids, stripRole.id, w.i);
-                    return <td key={w.i} className="sticky z-20 border-l border-slate-900 px-1 text-center font-mono text-slate-300"
+                    return <td key={w.i} className="sticky z-10 border-l border-slate-900 px-1 text-center font-mono text-slate-300"
                       style={{ bottom: 22, background: "#041f1c", outline: w.i === active.wi ? "1.5px solid #14b8a6" : "none" }}>{nd ? f0(nd) : "0"}</td>;
                   })}
                 </tr>
                 <tr>
                   <td className="sticky left-0 z-30 px-2 py-0.5 text-[11px] text-slate-500" style={{ bottom: 0, background: "#041f1c" }}>còn lại</td>
-                  <td className="sticky z-30 px-2 py-0.5 text-[11px] text-slate-500" style={{ left: 150, bottom: 0, background: "#041f1c" }}>CÒN</td>
+                  <td className="sticky z-30 px-2 py-0.5 text-[11px] text-slate-500" style={{ left: LEFT2, bottom: 0, background: "#041f1c" }}>CÒN</td>
                   {weeks.map((w) => {
                     const lf = leftOf(plan, pids, stripRole.id, w.i, cap);
-                    return <td key={w.i} className="sticky z-20 border-l border-slate-900 px-1 text-center font-mono font-semibold"
+                    return <td key={w.i} className="sticky z-10 border-l border-slate-900 px-1 text-center font-mono font-semibold"
                       style={{ bottom: 0, outline: w.i === active.wi ? "1.5px solid #14b8a6" : "none", ...(lf < -0.001 ? { background: "#f87171", color: "#450a0a" } : lf > 0.001 ? { background: "#fde68a", color: "#451a03" } : { background: "#1e293b", color: "#64748b" }) }}>{f0(lf)}</td>;
                   })}
                 </tr>
@@ -201,6 +240,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
       <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-slate-800 px-3 py-2.5 text-xs text-slate-400 md:px-4">
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: "#fde68a" }} />CÒN dư người</span>
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: "#f87171" }} />CÒN âm — thiếu người</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-slate-950" />tuần đã qua</span>
         {!readOnly && <span className="text-slate-600">Mũi tên để di chuyển · Enter xuống dòng · Esc nhả ô</span>}
       </div>
     </div>

@@ -1,6 +1,12 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.0
+   ARTIUS — Quản lý giờ công theo dự án · v12.1
+   Mới ở v12.1 — Kế hoạch → Nhập liệu: bỏ hai nút "Tuần 1–26 / 27–53", cả năm nằm trên MỘT lưới cuộn ngang
+     liền mạch (dự án vắt qua giữa năm không còn bị cắt làm đôi). Mở lưới là tự nhảy tới tuần hiện tại,
+     có nút "Về tuần này"; cột tuần hiện tại tô đậm, các tuần đã qua nền tối hơn.
+     Mỗi dòng dự án × vai trò bọc React.memo — gõ một ô chỉ vẽ lại đúng dòng đó, không vẽ lại cả lưới,
+     vì 53 cột nhân vài chục dòng là vài nghìn ô nhập.
+     Thêm vai trò vào dự án nay tạo một dòng trống để gõ ngay (trước đây bấm xong không thấy dòng nào hiện ra).
    Mới ở v12.0 — KẾ HOẠCH NGUỒN LỰC (features/planning/, tab "Kế hoạch" của Admin; BOD chỉ xem).
      Cần chạy supabase/v12_ke_hoach.sql một lần. Bật / tắt mục này ở Thiết lập.
      · Nhập liệu — lưới dự án × vai trò × tuần, đơn vị SỐ NGƯỜI (1 / 0,5 / 0,25) như file Excel đang dùng;
