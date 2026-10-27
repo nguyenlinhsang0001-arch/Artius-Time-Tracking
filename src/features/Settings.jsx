@@ -692,6 +692,15 @@ export function SettingsTab({ cfg, saveCfg, flash }) {
 
       <AccessPanel flash={flash} />
 
+      {/* v12 — bật / tắt mục Kế hoạch. Tắt thì tab biến mất khỏi menu, dữ liệu kế hoạch vẫn còn nguyên. */}
+      <Panel title="Kế hoạch nguồn lực" sub="Lưới số người theo dự án, vai trò và tuần — chỉ Admin nhập, BOD xem">
+        <div className="flex flex-wrap items-center gap-3">
+          <Toggle on={cfg.planning?.enabled !== false} onClick={() => saveCfg({ ...cfg, planning: { ...(cfg.planning || {}), enabled: cfg.planning?.enabled === false } })} />
+          <span className="text-sm text-slate-200">{cfg.planning?.enabled === false ? "Đang tắt" : "Đang bật"}</span>
+          <span className="text-xs text-slate-500">Lần đầu dùng cần chạy file supabase/v12_ke_hoach.sql trên Supabase.</span>
+        </div>
+      </Panel>
+
       <Panel title={`Ngày lễ, ngày nghỉ chung (${holidays.length})`}>
         <div className="ro-hide grid gap-2 md:flex md:items-end md:gap-3">
           <DateField label="Ngày" value={holDate} onChange={setHolDate} className="md:w-44" />

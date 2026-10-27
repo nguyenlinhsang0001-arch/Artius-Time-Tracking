@@ -1,6 +1,18 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v11.2
+   ARTIUS — Quản lý giờ công theo dự án · v12.0
+   Mới ở v12.0 — KẾ HOẠCH NGUỒN LỰC (features/planning/, tab "Kế hoạch" của Admin; BOD chỉ xem).
+     Cần chạy supabase/v12_ke_hoach.sql một lần. Bật / tắt mục này ở Thiết lập.
+     · Nhập liệu — lưới dự án × vai trò × tuần, đơn vị SỐ NGƯỜI (1 / 0,5 / 0,25) như file Excel đang dùng;
+       nửa năm một lần, cột trái khoá cứng, phím mũi tên di chuyển, Enter xuống dòng, chép tuần sang tuần sau.
+       Dải Cần / CÒN dính đáy bảng chạy theo vai trò đang gõ, nên thấy ngay hậu quả mà không phải cuộn xuống cuối.
+     · Tổng quan — việc cần xử lý 12 tuần tới, bản đồ tải vai trò × tuần (bấm ô để xem dự án nào chiếm),
+       quân số cần so với đang có, và kế hoạch so với giờ đã chấm theo dự án × vai trò.
+     · Năng lực = số người × HỆ SỐ SẴN SÀNG (mặc định 80%, đổi trong tab Kế hoạch). Không nhân hệ số thì dòng CÒN
+       luôn đẹp hơn thực tế, vì mỗi người còn mất giờ cho họp, hỗ trợ việc chung, trống việc và nghỉ phép.
+     · "Chốt bản" chụp lại lưới tại một thời điểm, để so với thực tế trên bản đã chốt thay vì bản vừa sửa.
+     · Kế hoạch so thực tế chỉ tính tuần ĐÃ QUA và mọi nhân sự đều đã gửi giờ; tuần còn thiếu người gửi bị bỏ hẳn.
+     · Module tải rời (file JS riêng, chỉ tải khi mở tab) và có vỏ bắt lỗi riêng — hỏng thì chỉ hỏng tab này.
    Mới ở v11.2 — "Giờ ngoài dự án" → khung Năng lực kỳ này tách làm hai thanh: thanh trên chia GIỜ ĐÃ CHẤM
      (Vào dự án / Việc chung / Trống việc / Vắng mặt) nên luôn đọc được; thanh dưới mảnh cho biết đã chấm được
      bao nhiêu phần giờ chuẩn của kỳ, dưới 60% thì cảnh báo tỉ lệ ở trên chưa phản ánh cả kỳ.
@@ -295,7 +307,7 @@
 /* ARTIUS TIME v11 — tách từ App.jsx, nội dung giữ nguyên. */
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
-  Clock, Users, FolderKanban, LayoutDashboard, AlertTriangle, LogOut, Settings, CheckCircle2, Loader2, ListChecks, RotateCcw, ClipboardList, User, Eye,
+  Clock, Users, FolderKanban, LayoutDashboard, AlertTriangle, LogOut, Settings, CheckCircle2, Loader2, ListChecks, RotateCcw, ClipboardList, User, Eye, CalendarDays,
 } from "lucide-react";
 import { LIGHT_CSS } from "./lightTheme.js";
 import { supabase } from "./storage.js";
@@ -316,6 +328,7 @@ import { Tasks } from "./features/Tasks.jsx";
 import { EmployeeArea } from "./features/Timesheet.jsx";
 import { AdminTimesheet } from "./features/TimesheetBoard.jsx";
 import { Dashboard } from "./features/dashboard/Dashboard.jsx";
+import { PlanPane } from "./features/planning/PlanPane.jsx";
 
 /* ============================================================ */
 /* v2.2 — Màn hình hỏng (lỗi khi vẽ giao diện) thì hiện thông báo + nút tải lại thay vì trang trắng. */
@@ -588,12 +601,16 @@ export function AppMain() {
     </div>
   );
 
+  /* v12 — tab Kế hoạch bật / tắt trong Thiết lập; tắt thì tab biến mất, phần còn lại chạy như chưa có gì */
+  const planOn = cfg?.planning?.enabled !== false;
   const railItems = me?.type === "admin"
     ? [["dash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList], ["proj", "Dự án", FolderKanban],
-       ["emp", "Nhân sự", Users], ["task", "Tác vụ", ListChecks], ["set", "Thiết lập", Settings]]
+       ["emp", "Nhân sự", Users], ["task", "Tác vụ", ListChecks],
+       ...(planOn ? [["plan", "Kế hoạch", CalendarDays]] : []), ["set", "Thiết lập", Settings]]
     : me?.type === "bod"
       ? [["dash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList], ["proj", "Dự án", FolderKanban],
-         ["emp", "Nhân sự", Users], ["task", "Tác vụ", ListChecks], ["set", "Thiết lập", Settings],
+         ["emp", "Nhân sự", Users], ["task", "Tác vụ", ListChecks],
+         ...(planOn ? [["plan", "Kế hoạch", CalendarDays]] : []), ["set", "Thiết lập", Settings],
          ...(me.empId ? [["ts", "Chấm công", Clock], ["eset", "Cài đặt", Settings]] : [])]
     : me?.type === "head"
       ? [["ts", "Chấm công", Clock], ["edash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList], ["proj", "Dự án", FolderKanban], ["emp", "Nhân sự", Users], ["eset", "Cài đặt", Settings]]   // v9.3: + Dự án, Nhân sự (phòng mình)
@@ -760,6 +777,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
                 {tab === "emp" && <ReadOnlyView><Employees cfg={cfg} saveCfg={bodSave} flash={flash} readOnly onSupport={bodSave} /></ReadOnlyView>}
                 {tab === "task" && <ReadOnlyView><Tasks cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
                 {tab === "set" && <ReadOnlyView><SettingsTab cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
+                {tab === "plan" && <PlanPane cfg={cfg} saveCfg={bodSave} flash={flash} readOnly />}
                 {tab === "ts" && me.empId && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} />}
                 {tab === "eset" && me.empId && <EmployeeSettings cfg={cfg} empId={me.empId} onSignOut={signOut} />}
               </>
@@ -771,6 +789,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
                 {tab === "proj" && <Projects cfg={cfg} saveCfg={saveCfg} flash={flash} onSupport={supportSave} />}
                 {tab === "emp" && <Employees cfg={cfg} saveCfg={saveCfg} flash={flash} onSupport={supportSave} />}
                 {tab === "task" && <Tasks cfg={cfg} saveCfg={saveCfg} flash={flash} />}
+                {tab === "plan" && <PlanPane cfg={cfg} saveCfg={saveCfg} flash={flash} />}
                 {tab === "set" && <SettingsTab cfg={cfg} saveCfg={saveCfg} flash={flash} />}
               </>
             ) : (
