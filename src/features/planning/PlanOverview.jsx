@@ -5,6 +5,12 @@ import { X } from "lucide-react";
 import { cellOf, leftOf, loadOf, needOf, planVsActual, shortages, verdictOf } from "./planCalc.js";
 
 const f0 = (n) => String(+Number(n).toFixed(2)).replace(".", ",");
+/* v12.2 — cột khoá cứng ép bề ngang và cắt gọn như lưới nhập, để tên vai trò dài không đẩy cao dòng
+   và không làm lệch bố cục trên màn hình laptop. */
+const FRZ = 230, CW = 34;
+const Frz = ({ children, py = "py-1", title }) => (
+  <div className={`truncate px-3 ${py}`} style={{ width: FRZ }} title={title}>{children}</div>
+);
 const bg = (p) => (p > 100 ? `rgba(153,27,27,${Math.min(1, 0.55 + (p - 100) / 120)})` : p >= 85 ? "#854d0e" : p >= 60 ? "#115e59" : p > 0 ? "#1e293b" : "#0b1220");
 
 export function PlanOverview({ plan, projects, roles, weeks, cap, actual, okWeeks, nowIndex, availability }) {
@@ -75,16 +81,16 @@ export function PlanOverview({ plan, projects, roles, weeks, cap, actual, okWeek
           <table className="text-[12px]">
             <thead>
               <tr>
-                <th className="sticky left-0 top-0 z-30 w-56 bg-slate-900 px-3 py-1 text-left text-[11px] uppercase tracking-wider text-slate-500">Vai trò</th>
+                <th className="sticky left-0 top-0 z-30 bg-slate-900 p-0 text-left"><Frz><span className="text-[11px] uppercase tracking-wider text-slate-500">Vai trò</span></Frz></th>
                 {weeks.map((w, k) => (
-                  <th key={w.i} className={`sticky top-0 z-25 border-l border-slate-800 bg-slate-900 px-1 py-1 text-center text-[11px] font-medium ${k === 0 || weeks[k - 1].m !== w.m ? "text-teal-400" : "text-slate-700"}`}>
+                  <th key={w.i} style={{ minWidth: CW, top: 0 }} className={`sticky z-20 border-l border-slate-800 bg-slate-900 px-1 py-1 text-center text-[11px] font-medium ${k === 0 || weeks[k - 1].m !== w.m ? "text-teal-400" : "text-slate-700"}`}>
                     {k === 0 || weeks[k - 1].m !== w.m ? `T${w.m}` : ""}
                   </th>
                 ))}
               </tr>
               <tr>
-                <th className="sticky left-0 top-[26px] z-30 bg-slate-900 px-3 py-1" />
-                {weeks.map((w) => <th key={w.i} className="sticky top-[26px] z-25 border-l border-slate-800 bg-slate-900 px-1 py-1 text-center text-[10px] font-normal text-slate-600">{w.w}</th>)}
+                <th className="sticky left-0 top-[26px] z-30 bg-slate-900 p-0"><Frz>&nbsp;</Frz></th>
+                {weeks.map((w) => <th key={w.i} style={{ minWidth: CW, top: 26 }} className="sticky z-20 border-l border-slate-800 bg-slate-900 px-1 py-1 text-center text-[10px] font-normal text-slate-600">{w.w}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -92,21 +98,23 @@ export function PlanOverview({ plan, projects, roles, weeks, cap, actual, okWeek
                 <React.Fragment key={r.id}>
                   {(idx === 0 || shown[idx - 1].dept !== r.dept) && r.dept && (
                     <tr>
-                      <td className="sticky left-0 z-20 border-y border-slate-800 bg-slate-950 px-3 py-1 text-[10.5px] uppercase tracking-wider text-slate-500">{r.dept}</td>
+                      <td className="sticky left-0 z-20 border-y border-slate-800 bg-slate-950 p-0"><Frz><span className="text-[10.5px] uppercase tracking-wider text-slate-500">{r.dept}</span></Frz></td>
                       <td className="border-y border-slate-800 bg-slate-950" colSpan={weeks.length} />
                     </tr>
                   )}
                   <tr>
-                    <td className="sticky left-0 z-20 bg-slate-900 px-3 py-1">
-                      <span className="font-mono text-slate-300">{r.id}</span> <span className="text-slate-500">{r.name}</span>{" "}
-                      <span className="text-slate-600">· {f0(cap.get(r.id) || 0)}</span>
+                    <td className="sticky left-0 z-20 bg-slate-900 p-0">
+                      <Frz title={`${r.id} · ${r.name}`}>
+                        <span className="font-mono text-slate-300">{r.id}</span> <span className="text-slate-500">{r.name}</span>{" "}
+                        <span className="text-slate-600">· {f0(cap.get(r.id) || 0)}</span>
+                      </Frz>
                     </td>
                     {weeks.map((w) => {
                       const p = Math.round(loadOf(plan, pids, r.id, w.i, cap));
                       return (
                         <td key={w.i} onClick={() => setDrill({ rid: r.id, wi: w.i })}
                           className={`cursor-pointer border-l border-slate-900 px-1 py-1 text-center font-mono text-[11px] ${p > 100 ? "font-semibold text-rose-100" : p >= 60 ? "text-slate-100" : "text-slate-600"}`}
-                          style={{ background: bg(p) }}>{p || ""}</td>
+                          style={{ minWidth: CW, background: bg(p) }}>{p || ""}</td>
                       );
                     })}
                   </tr>

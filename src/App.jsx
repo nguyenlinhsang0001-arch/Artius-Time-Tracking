@@ -1,6 +1,14 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.1
+   ARTIUS — Quản lý giờ công theo dự án · v12.2
+   Mới ở v12.2 — Sửa bố cục lưới Kế hoạch trên màn hình nhỏ và laptop.
+     v12.1 dùng HAI cột khoá cứng và neo cột thứ hai ở một con số đặt sẵn (left: 150px), trong khi bề ngang
+     thật của cột thứ nhất do trình duyệt tự tính từ nội dung — tên dự án dài thì cột nở, ngắn thì co.
+     Hai con số đó không khớp nên khi cuộn ngang hở một khoảng cho cột tuần lọt qua, và tên dự án dài
+     bị xuống ba dòng làm mỗi dòng cao gấp ba.
+     Nay gộp còn MỘT cột khoá cứng (dự án và vai trò chung một cột, rộng cố định 230px, tên cắt gọn một dòng,
+     rê chuột xem đủ); mỗi cột tuần rộng cố định 34px. Không còn con số nào phải khớp với con số nào.
+     Bản đồ tải ở chế độ Tổng quan áp dụng cùng cách.
    Mới ở v12.1 — Kế hoạch → Nhập liệu: bỏ hai nút "Tuần 1–26 / 27–53", cả năm nằm trên MỘT lưới cuộn ngang
      liền mạch (dự án vắt qua giữa năm không còn bị cắt làm đôi). Mở lưới là tự nhảy tới tuần hiện tại,
      có nút "Về tuần này"; cột tuần hiện tại tô đậm, các tuần đã qua nền tối hơn.
