@@ -333,7 +333,7 @@ function ThemeToggle() {
   );
 }
 
-const APP_VERSION = "v10.0";
+const APP_VERSION = "v10.1";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -5655,7 +5655,8 @@ function Dashboard({ cfg, saveCfg, flash }) {
   /* v5.6 — Dashboard tách hai tab: "Dự án" (tiến độ từ trước tới nay, không theo kỳ) và "Nhân sự" (theo kỳ).
      Bỏ ô lọc Dự án / Giai đoạn chung ở đầu trang — mỗi tab có bộ lọc riêng, chỉ tác động lên chính tab đó. */
   const fProj = "all", fPhase = "all";
-  const [dTab, setDTab0] = useState(() => { try { return localStorage.getItem("artius.dashTab") === "proj" ? "proj" : "ppl"; } catch { return "ppl"; } });
+  // v10.1: ba tab — Dự án | Nhân sự | Ma trận
+  const [dTab, setDTab0] = useState(() => { try { const v = localStorage.getItem("artius.dashTab"); return v === "proj" || v === "mtx" ? v : "ppl"; } catch { return "ppl"; } });
   const setDTab = (t) => { setDTab0(t); try { localStorage.setItem("artius.dashTab", t); } catch { /* bỏ qua */ } };
   const [q, setQ] = useState("");              // tìm theo tên nhân sự
   const [rebuilding, setRebuilding] = useState(false);
@@ -5945,12 +5946,13 @@ function Dashboard({ cfg, saveCfg, flash }) {
   }, [agg, projMapById]);
 
   const nProjActive = cfg.projects.filter((p) => p.active).length;
+  const nStaff = cfg.employees.filter((e) => !isResigned(e)).length;
   const segBtn = (on) => `${CTRL} whitespace-nowrap px-3 text-[13px] ${on ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`;
   return (
     <div className="space-y-3 md:space-y-4">
       {/* v5.6 — chuyển tab Dự án | Nhân sự */}
       <div className="flex rounded-xl border border-slate-800 bg-slate-900 p-1 md:inline-flex">
-        {[["proj", "Dự án", nProjActive], ["ppl", "Nhân sự", cfg.employees.filter((e) => !isResigned(e)).length]].map(([k, l, n]) => (
+        {[["proj", "Dự án", nProjActive], ["ppl", "Nhân sự", nStaff], ["mtx", "Ma trận", nStaff]].map(([k, l, n]) => (
           <button key={k} onClick={() => setDTab(k)} aria-pressed={dTab === k}
             className={`${CTRL} flex flex-1 items-center justify-center gap-2 rounded-lg px-6 text-sm font-medium md:flex-none ${dTab === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>
             {l}<span className={`rounded-full px-1.5 font-mono text-[11px] ${dTab === k ? "bg-teal-900/60 text-teal-300" : "bg-slate-800 text-slate-500"}`}>{n}</span>
@@ -5964,8 +5966,8 @@ function Dashboard({ cfg, saveCfg, flash }) {
         </Panel>
       )}
 
-      {dTab === "ppl" && (
-        <Panel title="Nhân sự theo kỳ" flush
+      {(dTab === "ppl" || dTab === "mtx") && (
+        <Panel title={dTab === "mtx" ? "Ma trận giờ công" : "Nhân sự theo kỳ"} flush
           sub={<>{QUICK.find(([k]) => k === quickOn)?.[1] || "Kỳ tuỳ chọn"} · {dLabel(from)} – {dLabel(to)} · giờ chuẩn của kỳ <span className="font-mono text-amber-400">{fmtH(stdBase)} h</span>{stdToday > 0 && <span className="text-slate-500"> (hôm nay tính khi đã gửi)</span>}</>}
           right={loading ? <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} /> : null}>
           {/* thanh công cụ của tab: kỳ, bộ phận, tìm người, tải lại, Excel — chỉ tác động lên tab Nhân sự */}
@@ -5999,7 +6001,7 @@ function Dashboard({ cfg, saveCfg, flash }) {
             <StaffAllocation matrix={agg.matrix} otByEmp={agg.otByEmp} effortByEmp={agg.effortByEmp} idleByEmp={agg.idleByEmp} std={stdBase} stdOf={stdForEmp} cfg={cfg}
               staff={cfg.employees.filter((e) => !isResigned(e) && matchEmp(e.id))}
               empName={empName} projMapById={projMapById} detail={agg.detail}
-              projDetail={data.detail} taskLabel={taskLabel} />
+              projDetail={data.detail} taskLabel={taskLabel} view={dTab === "mtx" ? "matrix" : "people"} />
           )}
         </Panel>
       )}
@@ -6744,8 +6746,8 @@ const allocState = (t, o, c, i, sd, lim) => {
   if (s >= (sd * lim.under) / 100) return "ok";
   return s + i >= (sd * lim.under) / 100 ? "idle" : "lo";
 };
-function StaffAllocation({ matrix, otByEmp, effortByEmp, idleByEmp = new Map(), staff, std, stdOf, cfg, empName, projMapById, detail = [], projDetail = [], taskLabel }) {
-  const [view, setView] = useState("people");   // "people" | "matrix"
+function StaffAllocation({ matrix, otByEmp, effortByEmp, idleByEmp = new Map(), staff, std, stdOf, cfg, empName, projMapById, detail = [], projDetail = [], taskLabel, view = "people" }) {
+  /* v10.1: "Theo người" / "Ma trận" không còn là nút bên trong khung — đã tách thành hai tab riêng ở Dashboard */
   const [tip, setTip] = useState(null);         // v5.5: { eid, k, x, y } — thẻ khi rê chuột vào dự án trong phần chi tiết
   /* v5.5 — tác vụ theo người × dự án (theo kỳ và bộ lọc), và tổng giờ từng dự án trong kỳ (mọi nhân sự, không theo bộ lọc bộ phận / tên) */
   const byEP = useMemo(() => {
@@ -6855,12 +6857,6 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, idleByEmp = new Map(), 
             <option value="extra">Sắp xếp: phát sinh nhiều nhất</option>
             <option value="name">Sắp xếp: tên A → Z</option>
           </select>
-        </div>
-        <div className="ml-auto flex rounded-md border border-slate-700">
-          {[["people", "Theo người"], ["matrix", "Ma trận"]].map(([k, l]) => (
-            <button key={k} onClick={() => setView(k)}
-              className={`${CTRL} whitespace-nowrap px-3.5 text-[13px] ${view === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>{l}</button>
-          ))}
         </div>
       </div>
 
