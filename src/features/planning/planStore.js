@@ -3,8 +3,15 @@
    xoá sạch bảng kế hoạch cũng không mất một giờ công nào. Cần chạy supabase/v12_ke_hoach.sql một lần. */
 import { supabase } from "../../storage.js";
 
-/* lỗi do chưa chạy file SQL — để báo cho Admin bằng tiếng người thay vì chữ của database */
-export const isMissingTable = (e) => /artius_plan|relation|schema cache|function|does not exist/i.test(String(e?.message || e || ""));
+/* Lỗi do CHƯA CHẠY file SQL thì báo bằng tiếng người. Còn lỗi do QUYỀN thì hiện nguyên câu
+   mà hàm SQL đã raise ("Chỉ Admin được…"), vì đó mới là thông tin người dùng cần.
+   Cùng cách nhận biết với artius_support_set / artius_emp_projects_set trong App.jsx. */
+const DENIED = /Admin|đăng nhập|bị khoá|không hợp lệ/;
+export const isMissingTable = (e) => {
+  const m = String(e?.message || e || "");
+  return /artius_plan|relation|schema cache|function|does not exist/i.test(m) && !DENIED.test(m);
+};
+export const errMsg = (e) => String(e?.message || e || "");
 export const SQL_HINT = "Chưa bật được: Admin cần chạy file supabase/v12_ke_hoach.sql trên Supabase.";
 
 export const loadPlan = async (year) => {
@@ -30,7 +37,7 @@ export const savePlan = async (year, plan) => {
 /* Chốt bản kế hoạch: chụp lại nguyên trạng để về sau so với thực tế trên bản ĐÃ CHỐT,
    tránh chuyện sửa kế hoạch cho khớp thực tế rồi báo cáo nào cũng đẹp. */
 export const snapshotPlan = async (year, label, plan) => {
-  const { error } = await supabase.from("artius_plan_snapshot").insert({ year, label, data: plan });
+  const { error } = await supabase.rpc("artius_plan_snapshot_add", { p_year: year, p_label: label, p_data: plan });
   if (error) throw error;
 };
 export const listSnapshots = async (year) => {
