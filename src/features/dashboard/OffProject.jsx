@@ -54,19 +54,21 @@ export function OffProject({ cfg, detail, staff, stdOf, empName, taskLabel }) {
   /* năng lực của kỳ: giờ chuẩn của từng người đang lọt bộ lọc */
   const capStd = useMemo(() => staff.reduce((a, e) => a + (stdOf ? stdOf(e.id) : 0), 0), [staff, stdOf]);
   const logged = agg.proj + agg.off;
-  const notLogged = Math.max(0, capStd - logged);
   const overStd = Math.max(0, logged - capStd);
-  const base = Math.max(capStd, logged) || 1;
+  const base = logged || 1;
 
   if (!detail.length) return <p className="px-4 py-6 text-sm text-slate-500">Chưa có giờ công nào đã gửi trong kỳ này.</p>;
 
+  /* v11.2 — hai thanh thay vì một. Thanh trên chia GIỜ ĐÃ CHẤM nên luôn đọc được dù ít người chấm;
+     thanh dưới cho biết đã chấm được bao nhiêu phần giờ chuẩn của kỳ, tức tỉ lệ ở trên đáng tin tới đâu.
+     Bản v11.1 lấy giờ chuẩn làm mẫu số nên khi bảng công còn thưa, khúc "Chưa chấm" chiếm gần hết thanh. */
   const segs = [
     [agg.proj, "#60a5fa", "Vào dự án"],
     [agg.sum.common, KIND.common[1], KIND.common[0]],
     [agg.sum.idle, KIND.idle[1], KIND.idle[0]],
     [agg.sum.leave, KIND.leave[1], KIND.leave[0]],
-    [notLogged, "#334155", "Chưa chấm"],
   ].filter(([v]) => v > 0.05);
+  const fill = pct(logged, capStd);   // đã chấm bao nhiêu % giờ chuẩn của kỳ
 
   const Kpi = ({ l, v, sub, cls = "text-slate-50" }) => (
     <div className="bg-slate-900 px-3 py-2.5">
@@ -104,7 +106,7 @@ export function OffProject({ cfg, detail, staff, stdOf, empName, taskLabel }) {
         <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span className="text-sm text-slate-100">Năng lực kỳ này</span>
           <span className="text-xs text-slate-500">
-            giờ chuẩn <span className="font-mono text-amber-400">{fmtH(capStd)} h</span> của {staff.length} người — đi về đâu
+            <span className="font-mono text-slate-300">{fmtH(logged)} h</span> đã chấm — đi về đâu
           </span>
           {overStd > 0.05 && <span className="text-xs text-teal-400">vượt giờ chuẩn {fmtH(overStd)} h (OT / cố gắng)</span>}
         </div>
@@ -123,6 +125,23 @@ export function OffProject({ cfg, detail, staff, stdOf, empName, taskLabel }) {
               <span className="h-2.5 w-2.5 rounded-sm" style={{ background: color }} />{label} <span className="font-mono text-slate-500">{fmtH(v)} h</span>
             </span>
           ))}
+        </div>
+        {/* v11.2 — thanh thứ hai: đã chấm được bao nhiêu phần giờ chuẩn của kỳ */}
+        <div className="mt-3">
+          <div className="mb-1 flex flex-wrap items-baseline gap-x-2 text-[11px] text-slate-500">
+            <span>So với giờ chuẩn của kỳ</span>
+            <span className="font-mono text-amber-400">{fmtH(capStd)} h</span>
+            <span>của {staff.length} người</span>
+            <span className={`ml-auto font-mono ${fill < 60 ? "text-amber-400" : "text-slate-400"}`}>đã chấm {fill}%</span>
+          </div>
+          <div className="flex h-[8px] overflow-hidden rounded-full bg-slate-800">
+            <i className="h-full bg-slate-500" style={{ width: `${Math.min(100, fill)}%` }} />
+          </div>
+          {fill < 60 && (
+            <p className="mt-1 text-[11px] text-amber-500/80">
+              Mới chấm {fill}% giờ chuẩn của kỳ — các tỉ lệ ở trên tính trên phần đã chấm, chưa phản ánh cả kỳ.
+            </p>
+          )}
         </div>
         <p className="mt-2 text-[11px] text-slate-600">
           Phần không phải “Vào dự án” là năng lực không đổ được vào dự án nào. Khi so kế hoạch với giờ thực tế, phải trừ phần này ra trước, nếu không mọi dự án đều trông như dùng ít người hơn dự trù.

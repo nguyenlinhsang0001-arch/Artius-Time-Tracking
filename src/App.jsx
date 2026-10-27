@@ -1,6 +1,10 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v11.1
+   ARTIUS — Quản lý giờ công theo dự án · v11.2
+   Mới ở v11.2 — "Giờ ngoài dự án" → khung Năng lực kỳ này tách làm hai thanh: thanh trên chia GIỜ ĐÃ CHẤM
+     (Vào dự án / Việc chung / Trống việc / Vắng mặt) nên luôn đọc được; thanh dưới mảnh cho biết đã chấm được
+     bao nhiêu phần giờ chuẩn của kỳ, dưới 60% thì cảnh báo tỉ lệ ở trên chưa phản ánh cả kỳ.
+     Bản v11.1 lấy giờ chuẩn làm mẫu số chung nên khi bảng công còn thưa, khúc "Chưa chấm" chiếm gần hết thanh.
    Mới ở v11.1 — Dashboard quản lý thêm tab thứ tư "Giờ ngoài dự án" (features/dashboard/OffProject.jsx):
      giờ chấm vào việc chung của công ty, trống việc và vắng mặt — phần năng lực của kỳ không đổ được vào dự án nào.
      Khung "Năng lực kỳ này" chia giờ chuẩn của kỳ thành Vào dự án / Việc chung / Trống việc / Vắng mặt / Chưa chấm;
