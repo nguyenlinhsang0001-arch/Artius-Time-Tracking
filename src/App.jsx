@@ -1,6 +1,11 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v11.0
+   ARTIUS — Quản lý giờ công theo dự án · v11.1
+   Mới ở v11.1 — Dashboard quản lý thêm tab thứ tư "Giờ ngoài dự án" (features/dashboard/OffProject.jsx):
+     giờ chấm vào việc chung của công ty, trống việc và vắng mặt — phần năng lực của kỳ không đổ được vào dự án nào.
+     Khung "Năng lực kỳ này" chia giờ chuẩn của kỳ thành Vào dự án / Việc chung / Trống việc / Vắng mặt / Chưa chấm;
+     xem theo Tác vụ (bung ra: ai chấm bao nhiêu) hoặc theo Người (bung ra: từng tác vụ). Dùng chung bộ lọc kỳ,
+     bộ phận và tìm người với tab Nhân sự. Không đổi dữ liệu, không thêm bảng mới — đọc từ giờ đã gửi sẵn có.
    Mới ở v11.0 — TÁCH FILE, không đổi giao diện và không đổi dữ liệu. src/App.jsx (9.900 dòng) chia thành:
      core/   — tầng lõi, CHỈ được gọi, không bao giờ gọi ngược ra ngoài (quy tắc chống vòng lặp import):
        theme.jsx  giao diện Sáng/Tối   db.jsx  DB trong bộ nhớ, hàng đợi gọi server, bảng công

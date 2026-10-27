@@ -9,6 +9,7 @@ import { DEFAULT_PHASE, DEPTS, LEAVE_TASKS, NO_PROJECT, OT_TASKS, PHASES, budget
 import { CTRL, DateRangeField, Panel, btnGhost, btnPrimary, inputCls, selectCls } from "../../core/ui.jsx";
 import { ALLOC_ST, allocLimits, allocState } from "../../shared/alloc.jsx";
 import { ProjectProgress } from "./ProjectProgress.jsx";
+import { OffProject } from "./OffProject.jsx";
 import { StaffAllocation } from "./StaffAllocation.jsx";
 
 /* ============================ DASHBOARD (QUẢN LÝ) ============================ */
@@ -24,7 +25,7 @@ export function Dashboard({ cfg, saveCfg, flash }) {
      Bỏ ô lọc Dự án / Giai đoạn chung ở đầu trang — mỗi tab có bộ lọc riêng, chỉ tác động lên chính tab đó. */
   const fProj = "all", fPhase = "all";
   // v10.1: ba tab — Dự án | Nhân sự | Ma trận
-  const [dTab, setDTab0] = useState(() => { try { const v = localStorage.getItem("artius.dashTab"); return v === "proj" || v === "mtx" ? v : "ppl"; } catch { return "ppl"; } });
+  const [dTab, setDTab0] = useState(() => { try { const v = localStorage.getItem("artius.dashTab"); return v === "proj" || v === "mtx" || v === "off" ? v : "ppl"; } catch { return "ppl"; } });
   const setDTab = (t) => { setDTab0(t); try { localStorage.setItem("artius.dashTab", t); } catch { /* bỏ qua */ } };
   const [q, setQ] = useState("");              // tìm theo tên nhân sự
   const [rebuilding, setRebuilding] = useState(false);
@@ -322,7 +323,8 @@ export function Dashboard({ cfg, saveCfg, flash }) {
     <div className="space-y-3 md:space-y-4">
       {/* v5.6 — chuyển tab Dự án | Nhân sự */}
       <div className="flex rounded-xl border border-slate-800 bg-slate-900 p-1 md:inline-flex">
-        {[["proj", "Dự án", nProjActive], ["ppl", "Nhân sự", nStaff], ["mtx", "Ma trận", nStaff]].map(([k, l, n]) => (
+        {/* v11.1: thêm tab "Giờ ngoài dự án" */}
+        {[["proj", "Dự án", nProjActive], ["ppl", "Nhân sự", nStaff], ["mtx", "Ma trận", nStaff], ["off", "Giờ ngoài dự án", nStaff]].map(([k, l, n]) => (
           <button key={k} onClick={() => setDTab(k)} aria-pressed={dTab === k}
             className={`${CTRL} flex flex-1 items-center justify-center gap-2 rounded-lg px-6 text-sm font-medium md:flex-none ${dTab === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>
             {l}<span className={`rounded-full px-1.5 font-mono text-[11px] ${dTab === k ? "bg-teal-900/60 text-teal-300" : "bg-slate-800 text-slate-500"}`}>{n}</span>
@@ -336,8 +338,8 @@ export function Dashboard({ cfg, saveCfg, flash }) {
         </Panel>
       )}
 
-      {(dTab === "ppl" || dTab === "mtx") && (
-        <Panel title={dTab === "mtx" ? "Ma trận giờ công" : "Nhân sự theo kỳ"} flush
+      {(dTab === "ppl" || dTab === "mtx" || dTab === "off") && (
+        <Panel title={dTab === "mtx" ? "Ma trận giờ công" : dTab === "off" ? "Giờ ngoài dự án" : "Nhân sự theo kỳ"} flush
           sub={<>{QUICK.find(([k]) => k === quickOn)?.[1] || "Kỳ tuỳ chọn"} · {dLabel(from)} – {dLabel(to)} · giờ chuẩn của kỳ <span className="font-mono text-amber-400">{fmtH(stdBase)} h</span>{stdToday > 0 && <span className="text-slate-500"> (hôm nay tính khi đã gửi)</span>}</>}
           right={loading ? <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} /> : null}>
           {/* thanh công cụ của tab: kỳ, bộ phận, tìm người, tải lại, Excel — chỉ tác động lên tab Nhân sự */}
@@ -367,7 +369,12 @@ export function Dashboard({ cfg, saveCfg, flash }) {
               <button onClick={exportExcel} className={`flex-1 sm:flex-none ${btnPrimary}`}><Download size={15} /> Excel</button>
             </div>
           </div>
-          {!agg ? <p className="px-4 py-6 text-sm text-slate-500">Đang tải…</p> : (
+          {!agg ? <p className="px-4 py-6 text-sm text-slate-500">Đang tải…</p> : dTab === "off" ? (
+            /* v11.1 — việc chung, trống việc, vắng mặt: năng lực của kỳ không đổ được vào dự án nào */
+            <OffProject cfg={cfg} detail={agg.detail} stdOf={stdForEmp}
+              staff={cfg.employees.filter((e) => !isResigned(e) && matchEmp(e.id))}
+              empName={empName} taskLabel={taskLabel} />
+          ) : (
             <StaffAllocation matrix={agg.matrix} otByEmp={agg.otByEmp} effortByEmp={agg.effortByEmp} idleByEmp={agg.idleByEmp} std={stdBase} stdOf={stdForEmp} cfg={cfg}
               staff={cfg.employees.filter((e) => !isResigned(e) && matchEmp(e.id))}
               empName={empName} projMapById={projMapById} detail={agg.detail}
