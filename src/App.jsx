@@ -6774,6 +6774,12 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, idleByEmp = new Map(), 
     }
     return new Map([...m].map(([eid, mm]) => [eid, [...mm.values()].sort((a, b) => (a.ot - b.ot) || b.h - a.h)]));
   }, [byEP]);
+  /* v10.1 — giờ chờ việc của từng ô ma trận (người × dự án); tác vụ Chờ việc chấm dưới "Khác" nên hiện ra ở cột đó */
+  const idleCell = useMemo(() => {
+    const m = new Map();
+    for (const d of detail) if (isIdleTask(d.taskId)) { const k = `${d.empId}|${d.projectId}`; m.set(k, (m.get(k) || 0) + d.hours); }
+    return m;
+  }, [detail]);
   const projTot = useMemo(() => {
     const m = new Map();
     for (const d of projDetail) { const k = isLeaveTask(d.taskId) ? NO_PROJECT : d.projectId; m.set(k, (m.get(k) || 0) + d.hours); }
@@ -7011,9 +7017,13 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, idleByEmp = new Map(), 
                       </td>
                       {cols.map((k) => {
                         const v = x.mm.get(k);
+                        const idl = idleCell.get(`${x.eid}|${k}`) || 0;   // v10.1
                         return v ? (
-                          <td key={k} className="h-10 text-center font-mono text-slate-50" style={{ background: `${color.get(k)}${hex(0.14 + 0.6 * (v / maxV))}` }}
-                            title={`${empName(x.eid)}\n${code(k)} · ${name(k)}\n${fmtH(v)} giờ · ${Math.round((v / x.t) * 100)}% thời gian của người này`}>{fmtH(v)}</td>
+                          <td key={k} className="h-10 px-1 text-center font-mono text-slate-50" style={{ background: `${color.get(k)}${hex(0.14 + 0.6 * (v / maxV))}` }}
+                            title={`${empName(x.eid)}\n${code(k)} · ${name(k)}\n${fmtH(v)} giờ · ${Math.round((v / x.t) * 100)}% thời gian của người này${idl > 0 ? `\nTrong đó chờ việc: ${fmtH(idl)} giờ` : ""}`}>
+                            <div className="leading-tight">{fmtH(v)}</div>
+                            {idl > 0 && <div className="text-[10px] font-normal leading-tight text-slate-200/75">chờ {fmtH(idl)}</div>}
+                          </td>
                         ) : <td key={k} className="h-10 text-center text-slate-700">·</td>;
                       })}
                       <td className="px-3 text-right font-mono text-slate-100">{fmtH(x.t)}</td>
@@ -7026,7 +7036,15 @@ function StaffAllocation({ matrix, otByEmp, effortByEmp, idleByEmp = new Map(), 
               <tfoot>
                 <tr className="border-t border-slate-700 font-mono text-slate-300">
                   <td className="sticky left-0 z-10 bg-slate-900 px-3 py-2 font-sans text-xs text-slate-400 md:px-4">Tổng dự án</td>
-                  {cols.map((k) => <td key={k} className="py-2 text-center">{fmtH(list.reduce((a, x) => a + (x.mm.get(k) || 0), 0))}</td>)}
+                  {cols.map((k) => {
+                    const idl = list.reduce((a, x) => a + (idleCell.get(`${x.eid}|${k}`) || 0), 0);   // v10.1
+                    return (
+                      <td key={k} className="py-2 text-center">
+                        <div className="leading-tight">{fmtH(list.reduce((a, x) => a + (x.mm.get(k) || 0), 0))}</div>
+                        {idl > 0 && <div className="text-[10px] font-normal leading-tight text-slate-500">chờ {fmtH(idl)}</div>}
+                      </td>
+                    );
+                  })}
                   <td className="px-3 py-2 text-right text-slate-100">{fmtH(list.reduce((a, x) => a + x.t, 0))}</td><td /><td />
                 </tr>
               </tfoot>
