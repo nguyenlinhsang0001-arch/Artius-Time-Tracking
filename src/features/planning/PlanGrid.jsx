@@ -8,12 +8,12 @@
 
    Bề ngang cột khoá và cột tuần đều đặt cứng, tên dự án cắt gọn một dòng (rê chuột xem đủ) — nhờ vậy
    chiều cao mỗi dòng không đổi và màn hình laptop không bị tên dài đẩy cao gấp ba. */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GripVertical, Trash2 } from "lucide-react";
 import { moveInList } from "../../shared/rowDrag.jsx";
 import { btnGhost } from "../../core/ui.jsx";
 import { isLight } from "../../core/theme.jsx";
-import { leftOf, needOf, setCell } from "./planCalc.js";
+import { cellOf, leftOf, needOf, setCell, setMany } from "./planCalc.js";
 
 const FRZ = 230;   // bề ngang mặc định của cột khoá cứng; kéo ở mép tiêu đề để đổi (150–520), nhớ riêng từng máy
 const FRZ_MIN = 150, FRZ_MAX = 520, FRZ_KEY = "artius:planFrz";
@@ -53,10 +53,12 @@ const leftStyle = (lf) => {
 const stripBg = () => (isLight() ? "#ccfbf1" : "#041f1c");
 
 /* ô nhập: giữ chữ đang gõ riêng (để gõ được "0," rồi "0,5"), chỉ đẩy số đã hiểu lên lưới */
-const Cell = ({ k, v, readOnly, onType, onFocus }) => {
+const Cell = ({ r, k, v, readOnly, onType, onFocus }) => {
   const [txt, setTxt] = useState(null);
+  /* số trong ô đổi từ nơi khác (dán, điền vùng, Ctrl + D) thì bỏ chữ đang giữ để hiện số mới */
+  useEffect(() => { if (txt !== null && parse(txt) !== v) setTxt(null); }, [v]);   // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <input data-cell data-col={k} readOnly={readOnly} inputMode="decimal" placeholder="·"
+    <input data-cell data-row={r} data-col={k} readOnly={readOnly} inputMode="decimal" placeholder="·"
       value={txt ?? f(v)}
       onFocus={(e) => { onFocus(); e.target.select(); }}
       onBlur={() => setTxt(null)}
@@ -69,7 +71,7 @@ const Cell = ({ k, v, readOnly, onType, onFocus }) => {
 };
 
 /* một dòng dự án × vai trò — chỉ vẽ lại khi mảng số của chính nó đổi */
-const Row = React.memo(function Row({ pid, rid, label, values, weeks, nowIndex, readOnly, onCell, onFocus, onDrop, dnd }) {
+const Row = React.memo(function Row({ r, pid, rid, label, values, weeks, nowIndex, readOnly, onCell, onFocus, onDrop, dnd }) {
   const dropProps = readOnly ? {} : {
     onDragOver: (e) => dnd.over(e, pid, rid),
     onDragLeave: (e) => e.currentTarget.removeAttribute("data-drop"),
@@ -99,7 +101,7 @@ const Row = React.memo(function Row({ pid, rid, label, values, weeks, nowIndex, 
         return (
           <td key={w.i} style={{ minWidth: CW, ...(v > 0.001 ? { background: `rgba(45,212,191,${(Math.min(v, 2) / 2 * 0.3 + 0.05).toFixed(2)})` } : null) }}
             className={`border-l border-slate-900 p-0 ${w.ms ? "mo" : ""} ${past ? "bg-slate-950/70" : ""}`}>
-            <Cell k={k} v={v} readOnly={readOnly} onFocus={() => onFocus(rid, w.i)} onType={(x) => onCell(pid, rid, w.i, x)} />
+            <Cell r={r} k={k} v={v} readOnly={readOnly} onFocus={() => onFocus(rid, w.i, r, k)} onType={(x) => onCell(pid, rid, w.i, x, r, k)} />
           </td>
         );
       })}
@@ -138,9 +140,114 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
 
   useEffect(() => { nowCell.current?.scrollIntoView({ inline: "center", block: "nearest" }); }, [scrollKey]);
 
-  const onCell = useCallback((pid, rid, wi, v) => {
+  /* ---------- chọn nhiều ô (kéo chuột / Shift + mũi tên / Shift + bấm) ----------
+     sel = { a: ô neo (ô đang gõ), f: góc kia }. Vùng chọn vẽ bằng MỘT khung phủ lên lưới,
+     không tô từng ô, nên đổi vùng chọn không làm vẽ lại cả nghìn ô nhập. */
+  const [sel, setSel] = useState(null);
+  const selRef = useRef(sel); selRef.current = sel;
+  const rowsRef = useRef([]);                 // các dòng đang hiện, đúng thứ tự: [{ pid, rid }]
+  const weeksRef = useRef(weeks); weeksRef.current = weeks;
+  const dragSel = useRef(false);
+  const keepSel = useRef(false);
+  const box = (s) => s && { r0: Math.min(s.a.r, s.f.r), r1: Math.max(s.a.r, s.f.r), c0: Math.min(s.a.c, s.f.c), c1: Math.max(s.a.c, s.f.c) };
+  const isMulti = (s) => !!s && (s.a.r !== s.f.r || s.a.c !== s.f.c);
+  const valAt = (r, c) => { const row = rowsRef.current[r]; return row ? cellOf(planRef.current, row.pid, row.rid, weeksRef.current[c].i) : 0; };
+  const itemsOf = (b, fn) => {
+    const out = [];
+    for (let r = b.r0; r <= b.r1; r++) {
+      const row = rowsRef.current[r]; if (!row) continue;
+      for (let c = b.c0; c <= b.c1; c++) if (weeksRef.current[c]) out.push({ pid: row.pid, rid: row.rid, wi: weeksRef.current[c].i, v: fn(r, c) });
+    }
+    return out;
+  };
+  const applyMany = (items) => { if (items.length) changeRef.current(setMany(planRef.current, items, nWeeks)); };
+
+  const onCell = useCallback((pid, rid, wi, v, r, c) => {
+    const s = selRef.current;
+    if (isMulti(s)) {   // đang chọn nhiều ô mà gõ vào trong vùng → điền cả vùng một lượt
+      const b = box(s);
+      if (r >= b.r0 && r <= b.r1 && c >= b.c0 && c <= b.c1) { applyMany(itemsOf(b, () => v)); return; }
+    }
     changeRef.current(setCell(planRef.current, pid, rid, wi, v, nWeeks));
-  }, [nWeeks]);
+  }, [nWeeks]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Ctrl + D giống Excel: chọn một dòng → lấy số của dòng ngay trên; chọn nhiều dòng → dòng đầu vùng chép xuống các dòng dưới */
+  const fillDown = () => {
+    const s = selRef.current; if (!s) return;
+    const b = box(s);
+    if (b.r0 === b.r1) { if (b.r0 > 0) applyMany(itemsOf(b, (r, c) => valAt(b.r0 - 1, c))); }
+    else applyMany(itemsOf({ ...b, r0: b.r0 + 1 }, (r, c) => valAt(b.r0, c)));
+  };
+  const tsvOf = (b) => {
+    const lines = [];
+    for (let r = b.r0; r <= b.r1; r++) {
+      const cells = [];
+      for (let c = b.c0; c <= b.c1; c++) { const v = valAt(r, c); cells.push(v ? f0(v) : ""); }
+      lines.push(cells.join("\t"));
+    }
+    return lines.join("\n");
+  };
+  const onCopy = (e) => {
+    if (!e.target.closest?.("input[data-cell]") || !selRef.current) return;
+    e.preventDefault();
+    e.clipboardData.setData("text/plain", tsvOf(box(selRef.current)));
+  };
+  const onCut = (e) => {
+    if (readOnly) return;
+    onCopy(e);
+    if (selRef.current) applyMany(itemsOf(box(selRef.current), () => 0));
+  };
+  const onPaste = (e) => {
+    if (readOnly || !e.target.closest?.("input[data-cell]") || !selRef.current) return;
+    const text = e.clipboardData.getData("text/plain");
+    if (text == null || text === "") return;
+    e.preventDefault();
+    const lines = text.replace(/\r/g, "").split("\n");
+    if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+    const grid = lines.map((l) => l.split("\t"));
+    const s = selRef.current, b = box(s);
+    if (grid.length === 1 && grid[0].length === 1 && isMulti(s)) {   // một số dán vào cả vùng đang chọn
+      const v = parse(grid[0][0]); applyMany(itemsOf(b, () => v)); return;
+    }
+    const nR = rowsRef.current.length;
+    const r1 = Math.min(nR - 1, b.r0 + grid.length - 1);
+    const c1 = Math.min(nCol - 1, b.c0 + Math.max(...grid.map((x) => x.length)) - 1);
+    applyMany(itemsOf({ r0: b.r0, r1, c0: b.c0, c1 }, (r, c) => parse(grid[r - b.r0]?.[c - b.c0] ?? "")));
+    keepSel.current = true; setSel({ a: { r: b.r0, c: b.c0 }, f: { r: r1, c: c1 } });
+    setTimeout(() => { keepSel.current = false; }, 0);
+  };
+  const cellAt = (t) => { const el = t?.closest?.("input[data-cell]"); return el ? { el, r: Number(el.dataset.row), c: Number(el.dataset.col) } : null; };
+  const onPointerDown = (e) => {
+    const x = cellAt(e.target); if (!x || e.button !== 0) return;
+    if (e.shiftKey && selRef.current) {   // Shift + bấm: kéo dài vùng từ ô neo
+      e.preventDefault();
+      setSel({ a: selRef.current.a, f: { r: x.r, c: x.c } });
+      return;
+    }
+    dragSel.current = true;
+    setSel({ a: { r: x.r, c: x.c }, f: { r: x.r, c: x.c } });
+    const up = () => { dragSel.current = false; window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointerup", up);
+  };
+  const onPointerOver = (e) => {
+    if (!dragSel.current) return;
+    const x = cellAt(e.target); if (!x) return;
+    const s = selRef.current;
+    if (s && (s.f.r !== x.r || s.f.c !== x.c)) setSel({ a: s.a, f: { r: x.r, c: x.c } });
+  };
+
+  /* khung phủ vùng chọn: đo theo hai ô góc */
+  const [ov, setOv] = useState(null);
+  useLayoutEffect(() => {
+    const W = wrap.current;
+    if (!W || !isMulti(sel)) { setOv(null); return; }
+    const b = box(sel);
+    const q = (r, c) => W.querySelector(`input[data-row="${r}"][data-col="${c}"]`)?.closest("td");
+    const A = q(b.r0, b.c0), B = q(b.r1, b.c1);
+    if (!A || !B) { setOv(null); return; }
+    const wr = W.getBoundingClientRect(), ra = A.getBoundingClientRect(), rb = B.getBoundingClientRect();
+    setOv({ left: ra.left - wr.left + W.scrollLeft, top: ra.top - wr.top + W.scrollTop, width: rb.right - ra.left, height: rb.bottom - ra.top });
+  }, [sel, frz]);   // eslint-disable-line react-hooks/exhaustive-deps
   /* kéo thả đổi vị trí vai trò — chỉ trong cùng một dự án */
   const dnd = useMemo(() => ({
     start: (e, pid, rid) => {
@@ -170,7 +277,10 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
       dnd.end();
     },
   }), []);  // eslint-disable-line react-hooks/exhaustive-deps
-  const onFocusCell = useCallback((rid, wi) => setActive({ rid, wi }), []);
+  const onFocusCell = useCallback((rid, wi, r, c) => {
+    setActive({ rid, wi });
+    if (!keepSel.current && !dragSel.current) setSel({ a: { r, c }, f: { r, c } });
+  }, []);
   const onDrop = useCallback((pid, rid) => {
     const next = { ...planRef.current, [pid]: { ...(planRef.current[pid] || {}) } };
     delete next[pid][rid];
@@ -187,7 +297,24 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
 
   const onKey = (e) => {
     const el = e.target.closest("input[data-cell]"); if (!el) return;
-    if (e.key === "Escape") { el.blur(); return; }
+    if (e.key === "Escape") { setSel(null); el.blur(); return; }
+    if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {   // chặn luôn phím tắt đánh dấu trang của trình duyệt
+      e.preventDefault();
+      if (!readOnly) fillDown();
+      return;
+    }
+    const s = selRef.current;
+    if (!readOnly && isMulti(s) && (e.key === "Delete" || e.key === "Backspace")) {
+      e.preventDefault(); applyMany(itemsOf(box(s), () => 0)); return;
+    }
+    const DIR = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] };
+    if (e.shiftKey && e.key in DIR && s) {   // Shift + mũi tên: kéo dài vùng chọn, ô neo đứng yên
+      e.preventDefault();
+      const [dr, dc] = DIR[e.key];
+      const f = { r: Math.max(0, Math.min(rowsRef.current.length - 1, s.f.r + dr)), c: Math.max(0, Math.min(nCol - 1, s.f.c + dc)) };
+      setSel({ a: s.a, f });
+      return;
+    }
     const STEP = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -nCol, ArrowDown: nCol, Enter: nCol };
     if (!(e.key in STEP)) return;
     const col = Number(el.dataset.col);
@@ -197,6 +324,16 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
     const t = all[all.indexOf(el) + STEP[e.key]];
     if (t) { e.preventDefault(); t.focus(); t.select(); }
   };
+
+  /* thứ tự dòng đang hiện — dùng chung cho chọn vùng, dán, Ctrl + D */
+  const rowList = [];
+  const rowsOfProject = new Map();
+  for (const p of projects) {
+    const used = new Set(Object.keys(plan[p.id] || {}));
+    const rws = sortRoles(roles.filter((r) => used.has(r.id)), order[p.id]);
+    rowsOfProject.set(p.id, rws.map((r) => ({ r, idx: rowList.push({ pid: p.id, rid: r.id }) - 1 })));
+  }
+  rowsRef.current = rowList;
 
   const stripRole = active?.rid ? roleById.get(active.rid) : null;
   const totalRoles = roles.filter((r) => (cap.get(r.id) || 0) > 0 || weeks.some((w) => needOf(plan, pids, r.id, w.i) > 0));
@@ -212,7 +349,9 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
       </div>
 
       <style>{DROP_CSS + MO_CSS}</style>
-      <div ref={wrap} onKeyDown={onKey} className="overflow-auto" style={{ maxHeight: "64vh", "--frz": `${frz}px` }}>
+      <div ref={wrap} onKeyDown={onKey} onCopy={onCopy} onCut={onCut} onPaste={onPaste}
+        onPointerDown={readOnly ? undefined : onPointerDown} onPointerOver={readOnly ? undefined : onPointerOver}
+        className="relative overflow-auto" style={{ maxHeight: "64vh", "--frz": `${frz}px` }}>
         <table className="text-[12px]">
           <thead>
             <tr>
@@ -247,7 +386,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
           <tbody>
             {projects.map((p) => {
               const used = new Set(Object.keys(plan[p.id] || {}));
-              const rws = sortRoles(roles.filter((r) => used.has(r.id)), order[p.id]);
+              const rws = rowsOfProject.get(p.id) || [];
               const free = roles.filter((r) => !used.has(r.id));
               const name = `${p.code ? `${p.code} ` : ""}${p.name}`;
               return (
@@ -270,8 +409,8 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
                     </td>
                     <td className="border-t border-slate-700" colSpan={nCol} />
                   </tr>
-                  {rws.map((r) => (
-                    <Row key={r.id} pid={p.id} rid={r.id} label={r.id} values={plan[p.id]?.[r.id]}
+                  {rws.map(({ r, idx }) => (
+                    <Row key={r.id} r={idx} pid={p.id} rid={r.id} label={r.id} values={plan[p.id]?.[r.id]}
                       weeks={weeks} nowIndex={nowIndex} readOnly={readOnly}
                       onCell={onCell} onFocus={onFocusCell} onDrop={onDrop} dnd={dnd} />
                   ))}
@@ -343,6 +482,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
             )}
           </tbody>
         </table>
+        {ov && <div aria-hidden className="pointer-events-none absolute z-10 rounded-sm border-2 border-teal-400 bg-teal-400/10" style={ov} />}
       </div>
 
       <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-slate-800 px-3 py-2.5 text-xs text-slate-400 md:px-4">
@@ -351,6 +491,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-slate-950" />tuần đã qua</span>
         <span className="text-slate-600">Tên dự án dài được cắt gọn — rê chuột để xem đủ</span>
         {!readOnly && <span className="text-slate-600">Mũi tên để di chuyển · Enter xuống dòng · Esc nhả ô</span>}
+        {!readOnly && <span className="text-slate-600">Kéo chuột hoặc Shift + mũi tên để chọn nhiều ô, gõ số là điền cả vùng · Ctrl + C / Ctrl + V · Ctrl + D lấy theo dòng trên · Delete xoá vùng</span>}
       </div>
     </div>
   );

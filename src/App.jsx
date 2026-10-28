@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.10
+   ARTIUS — Quản lý giờ công theo dự án · v12.11
+   Mới ở v12.11 — Kế hoạch → Nhập liệu: chọn nhiều ô (kéo chuột, Shift + mũi tên, Shift + bấm) rồi gõ số là điền cả vùng;
+     Ctrl + C / Ctrl + X / Ctrl + V với vùng ô (dán thẳng từ Excel được, một số dán vào cả vùng đang chọn); Delete xoá vùng;
+     Ctrl + D giống Excel: một dòng → lấy số dòng ngay trên, nhiều dòng → dòng đầu vùng chép xuống.
    Mới ở v12.10 — Kế hoạch: (1) mỗi tháng đúng 4 cột tuần, mỗi năm 48 cột, không còn tuần 5 (tuần thứ 5 thật của tháng gộp
      vào cột 4 khi so với giờ thực tế); dữ liệu đời cũ lưu theo 52–53 tuần ISO tự đổi sang 48 cột lúc tải, lưu lại là thành
      định dạng mới; (2) nút "Xuất Excel" xuất cả lưới, tổng theo vai trò (cần / năng lực / CÒN), kế hoạch so với thực tế và các bản chốt.

@@ -132,6 +132,18 @@ export const setCell = (plan, pid, rid, wi, v, nWeeks) => {
   next[pid][rid] = arr;   // giữ dòng cả khi toàn 0 — dòng trống chỉ bị bỏ lúc lưu (prunePlan), để gõ 0 không làm mất vai trò
   return next;
 };
+/* ghi nhiều ô một lượt (dán, điền cả vùng, Ctrl + D): mỗi dòng chỉ chép mảng một lần */
+export const setMany = (plan, items, nWeeks) => {
+  const next = { ...plan };
+  const copied = new Set();
+  for (const { pid, rid, wi, v } of items) {
+    if (!copied.has(pid)) { next[pid] = { ...(next[pid] || {}) }; copied.add(pid); }
+    const key = `${pid}|${rid}`;
+    if (!copied.has(key)) { next[pid][rid] = (next[pid][rid] || Array(nWeeks).fill(0)).slice(); copied.add(key); }
+    next[pid][rid][wi] = Number(v) || 0;
+  }
+  return next;
+};
 /* bỏ mảng rỗng trước khi lưu */
 export const prunePlan = (plan) => {
   const out = {};
