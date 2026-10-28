@@ -90,7 +90,7 @@ export function PlanOverview({ plan, projects, roles, weeks, cap, actual, okWeek
                 <th className="sticky left-0 top-0 z-30 bg-slate-900 p-0 text-left"><Frz><span className="text-[11px] uppercase tracking-wider text-slate-500">Vai trò</span></Frz></th>
                 {weeks.map((w, k) => (
                   <th key={w.i} style={{ minWidth: CW, top: 0 }} className={`sticky z-20 border-l border-slate-800 bg-slate-900 px-1 py-1 text-center text-[11px] font-medium ${k === 0 || weeks[k - 1].m !== w.m ? "text-teal-400" : "text-slate-700"}`}>
-                    {k === 0 || weeks[k - 1].m !== w.m ? `T${w.m}` : ""}
+                    {k === 0 || weeks[k - 1].m !== w.m ? `T${w.m}${w.m === 1 || k === 0 ? `·${String(w.y).slice(2)}` : ""}` : ""}
                   </th>
                 ))}
               </tr>

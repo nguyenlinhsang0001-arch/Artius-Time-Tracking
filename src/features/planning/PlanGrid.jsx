@@ -9,11 +9,11 @@
    Bề ngang cột khoá và cột tuần đều đặt cứng, tên dự án cắt gọn một dòng (rê chuột xem đủ) — nhờ vậy
    chiều cao mỗi dòng không đổi và màn hình laptop không bị tên dài đẩy cao gấp ba. */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Copy, GripVertical, Trash2 } from "lucide-react";
+import { GripVertical, Trash2 } from "lucide-react";
 import { moveInList } from "../../shared/rowDrag.jsx";
 import { btnGhost } from "../../core/ui.jsx";
 import { isLight } from "../../core/theme.jsx";
-import { copyWeek, leftOf, needOf, setCell } from "./planCalc.js";
+import { leftOf, needOf, setCell } from "./planCalc.js";
 
 const FRZ = 230;   // bề ngang mặc định của cột khoá cứng; kéo ở mép tiêu đề để đổi (150–520), nhớ riêng từng máy
 const FRZ_MIN = 150, FRZ_MAX = 520, FRZ_KEY = "artius:planFrz";
@@ -106,9 +106,8 @@ const Row = React.memo(function Row({ pid, rid, label, values, weeks, nowIndex, 
   );
 });
 
-export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, head, readOnly = false, nowIndex = -1, year }) {
+export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, head, readOnly = false, nowIndex = -1, scrollKey }) {
   const [active, setActive] = useState(null);     // { rid, wi }
-  const [selWeek, setSelWeek] = useState(null);
   const wrap = useRef(null);
   const [order, setOrder] = useState(readOrd);
   const orderRef = useRef(order); orderRef.current = order;
@@ -136,7 +135,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
   const roleById = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles]);
   const nCol = weeks.length;
 
-  useEffect(() => { nowCell.current?.scrollIntoView({ inline: "center", block: "nearest" }); }, [year]);
+  useEffect(() => { nowCell.current?.scrollIntoView({ inline: "center", block: "nearest" }); }, [scrollKey]);
 
   const onCell = useCallback((pid, rid, wi, v) => {
     changeRef.current(setCell(planRef.current, pid, rid, wi, v, nWeeks));
@@ -200,22 +199,15 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
 
   const stripRole = active?.rid ? roleById.get(active.rid) : null;
   const totalRoles = roles.filter((r) => (cap.get(r.id) || 0) > 0 || weeks.some((w) => needOf(plan, pids, r.id, w.i) > 0));
+  const yearStart = (k) => k > 0 && weeks[k].y !== weeks[k - 1].y;   // cột đầu của năm sau
   const wkTh = (extra) => `sticky z-20 border-l border-slate-800 bg-slate-900 px-1 py-1 text-center ${extra}`;
 
   return (
     <div>
-      {!readOnly && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
-          <button type="button" disabled={selWeek == null || selWeek >= nWeeks - 1}
-            onClick={() => { onChange(copyWeek(plan, pids, selWeek, selWeek + 1, nWeeks)); setSelWeek(selWeek + 1); }}
-            className={`${btnGhost} disabled:opacity-40`}><Copy size={14} /> Chép tuần đang chọn sang tuần sau</button>
-          <span className={`text-xs ${selWeek == null ? "text-slate-600" : "text-teal-400"}`}>
-            {selWeek == null ? "Bấm số tuần trên đầu cột để chọn" : (() => { const w = weeks.find((x) => x.i === selWeek); return `Đang chọn T${w?.m} tuần ${w?.w}`; })()}
-          </span>
-          <button type="button" onClick={() => nowCell.current?.scrollIntoView({ inline: "center", block: "nearest" })}
-            className={`ml-auto ${btnGhost}`}>Về tuần này</button>
-        </div>
-      )}
+      <div className="flex items-center justify-end border-b border-slate-800 px-3 py-2.5 md:px-4">
+        <button type="button" onClick={() => nowCell.current?.scrollIntoView({ inline: "center", block: "nearest" })}
+          className={btnGhost}>Về tuần này</button>
+      </div>
 
       <style>{DROP_CSS}</style>
       <div ref={wrap} onKeyDown={onKey} className="overflow-auto" style={{ maxHeight: "64vh", "--frz": `${frz}px` }}>
@@ -229,9 +221,9 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
                   className="absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none border-r-2 border-slate-600 hover:border-teal-500" />
               </th>
               {weeks.map((w, k) => (
-                <th key={w.i} style={{ minWidth: CW, top: 0 }}
-                  className={wkTh(`text-[11px] font-medium ${k === 0 || weeks[k - 1].m !== w.m ? "text-teal-400" : "text-slate-700"}`)}>
-                  {k === 0 || weeks[k - 1].m !== w.m ? `T${w.m}` : ""}
+                <th key={w.i} style={{ minWidth: CW, top: 0 }} title={yearStart(k) ? `Từ đây là năm ${w.y}` : undefined}
+                  className={wkTh(`text-[11px] font-medium ${yearStart(k) ? "border-l-2 border-l-teal-500" : ""} ${k === 0 || weeks[k - 1].m !== w.m ? "text-teal-400" : "text-slate-700"}`)}>
+                  {k === 0 || weeks[k - 1].m !== w.m ? `T${w.m}${w.m === 1 || k === 0 ? `·${String(w.y).slice(2)}` : ""}` : ""}
                 </th>
               ))}
             </tr>
@@ -240,12 +232,9 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
               {weeks.map((w) => {
                 const isNow = w.i === nowIndex;
                 return (
-                  <th key={w.i} ref={isNow ? nowCell : null} onClick={() => !readOnly && setSelWeek(w.i)}
+                  <th key={w.i} ref={isNow ? nowCell : null}
                     title={isNow ? "Tuần này" : undefined} style={{ minWidth: CW, top: 26 }}
-                    className={`sticky z-20 border-l border-slate-800 px-1 py-1 text-center text-[10px] font-normal ${readOnly ? "bg-slate-900 text-slate-600"
-                      : selWeek === w.i ? "cursor-pointer bg-teal-900 text-teal-200"
-                        : isNow ? "cursor-pointer bg-slate-800 font-semibold text-teal-300"
-                          : "cursor-pointer bg-slate-900 text-slate-500 hover:text-teal-400"}`}>
+                    className={`sticky z-20 border-l border-slate-800 px-1 py-1 text-center text-[10px] ${isNow ? "bg-slate-800 font-semibold text-teal-300" : "bg-slate-900 font-normal text-slate-500"}`}>
                     {w.w}
                   </th>
                 );

@@ -1,6 +1,10 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.7
+   ARTIUS — Quản lý giờ công theo dự án · v12.8
+   Mới ở v12.8 — Kế hoạch: (1) bỏ nút "Chép tuần đang chọn sang tuần sau" và việc bấm số tuần để chọn;
+     (2) hiện HAI NĂM LIỀN NHAU trên một lưới cuộn ngang (chọn cặp 2025–2026 hoặc 2026–2027, mặc định cặp có năm nay);
+     đầu năm sau có vạch xanh và nhãn tháng 1 ghi năm (T1·27). Khi lưu, lưới tách lại và ghi từng năm như cũ nên không cần SQL.
+     Sửa luôn cách chia tuần: năm 2025 trước đây thừa tuần 53 trùng với tuần 1 của 2026; nay hai năm nối liền không trùng tuần.
    Mới ở v12.7 — Sửa hai lỗi nhập lưới Kế hoạch: (1) gõ được số lẻ 0,5 / 0,25 / 0,75 (ô giữ chữ đang gõ, trước đây
      gõ "0," bị hiểu thành 0 và xoá mất dấu phẩy); (2) gõ 0 vào ô không còn làm mất cả dòng vai trò —
      dòng toàn 0 chỉ bị bỏ lúc lưu.

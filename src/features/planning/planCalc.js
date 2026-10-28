@@ -6,21 +6,46 @@
 import { addDays, fmt, mondayOf, weeklyTarget } from "../../core/date.jsx";
 import { isLeaveTask, isResigned } from "../../core/domain.jsx";
 
-export const HALF = 26;   // lưới hiện nửa năm một lần
-
 /* ---------- Tuần trong năm ----------
    Theo chuẩn ISO: tuần 1 là tuần chứa ngày 4 tháng 1. Nhãn hiện "T<tháng> · <tuần thứ mấy trong tháng>"
    cho giống cách đọc của file Excel. */
 export const weeksOfYear = (year) => {
   const first = mondayOf(new Date(year, 0, 4));
+  const next = mondayOf(new Date(year + 1, 0, 4));   // tuần 1 của năm sau: dừng trước đó để hai năm nối liền, không trùng tuần
   const out = [];
-  for (let i = 0; i < 53; i++) {
-    const d = addDays(first, i * 7);
-    if (i >= 52 && d.getFullYear() !== year) break;
+  for (let d = first, i = 0; d < next; d = addDays(d, 7), i++) {
     const m = d.getMonth() + 1;
-    out.push({ i, monday: fmt(d), m, w: out.filter((x) => x.m === m).length + 1 });
+    out.push({ i, monday: fmt(d), m, w: out.filter((x) => x.m === m).length + 1, y: year });
   }
   return out;
+};
+/* hai năm liền nhau trên MỘT lưới: chỉ số tuần nối tiếp, w.y là năm của tuần đó */
+export const weeksOfPair = (start) => {
+  const a = weeksOfYear(start), b = weeksOfYear(start + 1);
+  return [...a, ...b.map((w) => ({ ...w, i: w.i + a.length }))];
+};
+/* ghép / tách lưới theo năm: dữ liệu vẫn lưu từng năm một ở Supabase */
+export const joinYears = (p1, p2, n1, n2) => {
+  const out = {};
+  const pad = (arr, n) => Array.from({ length: n }, (_, i) => Number(arr?.[i]) || 0);
+  for (const pid of new Set([...Object.keys(p1 || {}), ...Object.keys(p2 || {})])) {
+    out[pid] = {};
+    for (const rid of new Set([...Object.keys(p1?.[pid] || {}), ...Object.keys(p2?.[pid] || {})]))
+      out[pid][rid] = [...pad(p1?.[pid]?.[rid], n1), ...pad(p2?.[pid]?.[rid], n2)];
+  }
+  return out;
+};
+export const splitYears = (plan, n1, n2) => {
+  const a = {}, b = {};
+  for (const pid of Object.keys(plan || {})) {
+    a[pid] = {}; b[pid] = {};
+    for (const rid of Object.keys(plan[pid] || {})) {
+      const arr = plan[pid][rid] || [];
+      a[pid][rid] = arr.slice(0, n1);
+      b[pid][rid] = arr.slice(n1, n1 + n2);
+    }
+  }
+  return [a, b];
 };
 export const weekIndexOf = (weeks, monday) => weeks.findIndex((w) => w.monday === monday);
 
@@ -64,17 +89,6 @@ export const setCell = (plan, pid, rid, wi, v, nWeeks) => {
   const arr = (next[pid][rid] || Array(nWeeks).fill(0)).slice();
   arr[wi] = Number(v) || 0;
   next[pid][rid] = arr;   // giữ dòng cả khi toàn 0 — dòng trống chỉ bị bỏ lúc lưu (prunePlan), để gõ 0 không làm mất vai trò
-  return next;
-};
-export const copyWeek = (plan, projectIds, from, to, nWeeks) => {
-  const next = { ...plan };
-  for (const pid of projectIds) {
-    const byRole = next[pid]; if (!byRole) continue;
-    next[pid] = { ...byRole };
-    for (const r of Object.keys(next[pid])) {
-      const arr = next[pid][r].slice(); arr[to] = arr[from]; next[pid][r] = arr;
-    }
-  }
   return next;
 };
 /* bỏ mảng rỗng trước khi lưu */
