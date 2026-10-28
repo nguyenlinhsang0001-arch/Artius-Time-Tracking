@@ -1,6 +1,8 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.20
+   ARTIUS — Quản lý giờ công theo dự án · v12.21
+   Mới ở v12.21 — Thanh bên (Admin / BOD): Kế hoạch lên ngay dưới Dashboard, trên Bảng công; Tác vụ gộp vào mục Nhân sự
+     thành tab con (Nhân sự | Tác vụ). Trưởng phòng và nhân viên không đổi.
    Mới ở v12.20 — Tab "Nhân sự" và "Giờ ngoài dự án" chuyển từ Dashboard sang tab Bảng công (thanh tab con:
      Bảng công | Nhân sự | Giờ ngoài dự án), áp dụng cho Admin và BOD. Dashboard còn Dự án | Ma trận. Trưởng phòng không đổi.
    Mới ở v12.19 — BOD sửa được toàn bộ mục Kế hoạch như Admin: lưới, chốt bản, ẩn dự án, gộp vai trò, khối tổng, hệ số
@@ -682,13 +684,13 @@ export function AppMain() {
   /* v12 — tab Kế hoạch bật / tắt trong Thiết lập; tắt thì tab biến mất, phần còn lại chạy như chưa có gì */
   const planOn = cfg?.planning?.enabled !== false;
   const railItems = me?.type === "admin"
-    ? [["dash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList], ["proj", "Dự án", FolderKanban],
-       ["emp", "Nhân sự", Users], ["task", "Tác vụ", ListChecks],
-       ...(planOn ? [["plan", "Kế hoạch", CalendarDays]] : []), ["set", "Thiết lập", Settings]]
+    ? [["dash", "Dashboard", LayoutDashboard], ...(planOn ? [["plan", "Kế hoạch", CalendarDays]] : []),   // v12.21: Kế hoạch lên trên Bảng công
+       ["sheet", "Bảng công", ClipboardList], ["proj", "Dự án", FolderKanban],
+       ["emp", "Nhân sự", Users], ["set", "Thiết lập", Settings]]   // v12.21: Tác vụ gộp vào Nhân sự (tab con)
     : me?.type === "bod"
-      ? [["dash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList], ["proj", "Dự án", FolderKanban],
-         ["emp", "Nhân sự", Users], ["task", "Tác vụ", ListChecks],
-         ...(planOn ? [["plan", "Kế hoạch", CalendarDays]] : []), ["set", "Thiết lập", Settings],
+      ? [["dash", "Dashboard", LayoutDashboard], ...(planOn ? [["plan", "Kế hoạch", CalendarDays]] : []),
+         ["sheet", "Bảng công", ClipboardList], ["proj", "Dự án", FolderKanban],
+         ["emp", "Nhân sự", Users], ["set", "Thiết lập", Settings],
          ...(me.empId ? [["ts", "Chấm công", Clock], ["eset", "Cài đặt", Settings]] : [])]
     : me?.type === "head"
       ? [["ts", "Chấm công", Clock], ["edash", "Dashboard", LayoutDashboard], ["sheet", "Bảng công", ClipboardList], ["proj", "Dự án", FolderKanban], ["emp", "Nhân sự", Users], ["eset", "Cài đặt", Settings]]   // v9.3: + Dự án, Nhân sự (phòng mình)
@@ -783,7 +785,7 @@ export function AppMain() {
             <div className="flex min-w-0 items-center">
               <InstallButton />
               <span className={hasAcct ? "hidden md:contents" : "contents"}><ThemeToggle /></span>
-              {me?.type === "bod" && ["dash", "sheet", "proj", "emp", "task", "set"].includes(tab) && (
+              {me?.type === "bod" && ["dash", "sheet", "proj", "emp", "set"].includes(tab) && (
                 <span className="ml-3 inline-flex shrink-0 items-center gap-1.5 rounded-md border border-violet-900 bg-violet-950/60 px-2 py-1 text-[11px] text-violet-200" title="Tài khoản BOD xem được mục này nhưng không chỉnh sửa được">
                   <Eye size={12} /> Chế độ chỉ xem
                 </span>
@@ -852,8 +854,8 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
                 {tab === "sheet" && <SheetArea cfg={cfg} saveCfg={bodSave} flash={flash}><AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} readOnly onSupport={bodSave} /></SheetArea>}
                 {/* v7.7 — BOD xem được mọi mục quản lý nhưng không sửa: mọi lệnh lưu cấu hình bị chặn bởi bodSave */}
                 {tab === "proj" && <ReadOnlyView><Projects cfg={cfg} saveCfg={bodSave} flash={flash} onSupport={bodSave} supportRo /></ReadOnlyView>}
-                {tab === "emp" && <ReadOnlyView><Employees cfg={cfg} saveCfg={bodSave} flash={flash} readOnly onSupport={bodSave} /></ReadOnlyView>}
-                {tab === "task" && <ReadOnlyView><Tasks cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
+                {tab === "emp" && <EmpArea emp={<ReadOnlyView><Employees cfg={cfg} saveCfg={bodSave} flash={flash} readOnly onSupport={bodSave} /></ReadOnlyView>}
+                  task={<ReadOnlyView><Tasks cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>} />}
                 {tab === "set" && <ReadOnlyView><SettingsTab cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
                 {tab === "plan" && <PlanPane cfg={cfg} saveCfg={bodPlanSave} flash={flash} />}
                 {tab === "ts" && me.empId && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} />}
@@ -865,8 +867,8 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
                 {tab === "dash" && <Dashboard cfg={cfg} saveCfg={saveCfg} flash={flash} tabs={DASH_TABS} />}
                 {tab === "sheet" && <SheetArea cfg={cfg} saveCfg={saveCfg} flash={flash}><AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} onSupport={supportSave} pastLockSave={saveCfg} /></SheetArea>}
                 {tab === "proj" && <Projects cfg={cfg} saveCfg={saveCfg} flash={flash} onSupport={supportSave} />}
-                {tab === "emp" && <Employees cfg={cfg} saveCfg={saveCfg} flash={flash} onSupport={supportSave} />}
-                {tab === "task" && <Tasks cfg={cfg} saveCfg={saveCfg} flash={flash} />}
+                {tab === "emp" && <EmpArea emp={<Employees cfg={cfg} saveCfg={saveCfg} flash={flash} onSupport={supportSave} />}
+                  task={<Tasks cfg={cfg} saveCfg={saveCfg} flash={flash} />} />}
                 {tab === "plan" && <PlanPane cfg={cfg} saveCfg={saveCfg} flash={flash} />}
                 {tab === "set" && <SettingsTab cfg={cfg} saveCfg={saveCfg} flash={flash} />}
               </>
@@ -975,6 +977,26 @@ function SheetArea({ cfg, saveCfg, flash, children }) {
       </div>
       <div className={sub === "sheet" ? "" : "hidden"}>{children}</div>
       {sub !== "sheet" && <Dashboard key={sub} cfg={cfg} saveCfg={saveCfg} flash={flash} tabs={[sub]} hideBar />}
+    </div>
+  );
+}
+
+/* v12.21 — mục Nhân sự của Admin / BOD gộp thêm Tác vụ: thanh tab con Nhân sự | Tác vụ (cả hai giữ trong bộ nhớ khi chuyển qua lại) */
+const EMP_TABS = [["emp", "Nhân sự"], ["task", "Tác vụ"]];
+function EmpArea({ emp, task }) {
+  const [sub, setSub0] = useState(() => { try { return localStorage.getItem("artius.empTab") === "task" ? "task" : "emp"; } catch { return "emp"; } });
+  const [seen, setSeen] = useState(() => new Set([sub]));
+  const setSub = (t) => { setSub0(t); setSeen((s) => new Set([...s, t])); try { localStorage.setItem("artius.empTab", t); } catch { /* bỏ qua */ } };
+  return (
+    <div className="space-y-3 md:space-y-4">
+      <div className="flex rounded-xl border border-slate-800 bg-slate-900 p-1 md:inline-flex">
+        {EMP_TABS.map(([k, l]) => (
+          <button key={k} onClick={() => setSub(k)} aria-pressed={sub === k}
+            className={`${CTRL} flex flex-1 items-center justify-center rounded-lg px-6 text-sm font-medium md:flex-none ${sub === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>{l}</button>
+        ))}
+      </div>
+      {seen.has("emp") && <div className={sub === "emp" ? "" : "hidden"}>{emp}</div>}
+      {seen.has("task") && <div className={sub === "task" ? "" : "hidden"}>{task}</div>}
     </div>
   );
 }
