@@ -340,7 +340,7 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
 
       {/* v12.22 — Tổng quan nguồn lực: một biểu đồ cho cả công ty lẫn từng vai trò theo tuần. Chỉ đọc, lưới nhập vẫn ở tab Kế hoạch. */}
       {dTab === "res" && (
-        <Panel title="Tổng quan nguồn lực" sub="Thiếu / dư người theo tuần — trên vạch 0 là thiếu, dưới là dư, mỗi đoạn màu là một vai trò" flush>
+        <Panel title="Tổng quan nguồn lực" flush>
           <ResourcePane cfg={cfg} />
         </Panel>
       )}

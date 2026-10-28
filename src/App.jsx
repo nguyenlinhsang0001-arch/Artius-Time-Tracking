@@ -1,10 +1,19 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.22
+   ARTIUS — Quản lý giờ công theo dự án · v12.23
+   Mới ở v12.23 — Tổng quan nguồn lực, chỉnh phần nhìn: bỏ dòng phụ đề dưới tiêu đề, bỏ dòng chú thích dưới chân
+     biểu đồ và bỏ hai nhãn trục "THIẾU người" / "DƯ người".
+     Biểu đồ vẽ đúng bề ngang thật của khung (đo bằng ResizeObserver) thay vì để viewBox kéo giãn — trước đây viewBox
+     980 đơn vị bị kéo ra ~1900px nên cỡ chữ bị nhân gần gấp đôi; nay cỡ chữ là pixel thật trên mọi màn hình:
+     tháng 10,5px · tuần 9px · số thiếu trên đỉnh cột 9,5px.
+     Số tuần chuyển lên nằm ngay dưới số tháng ở đầu biểu đồ (trước nằm ở đáy); nhãn tháng canh giữa khối tuần của
+     chính nó nên không còn dính nhau kiểu "T10·26T11"; tuần đang chọn thì số tuần sáng lên.
+
    Mới ở v12.22 — Dashboard thêm tab "Tổng quan nguồn lực", đứng đầu thanh tab (features/dashboard/ResourceOverview.jsx
      + ResourcePane.jsx, tải rời và có vỏ bắt lỗi riêng như PlanPane):
-     một biểu đồ cột chồng hai chiều cho cả công ty lẫn từng vai trò theo tuần — trên vạch 0 là người THIẾU,
-     dưới là người DƯ, mỗi đoạn màu là một vai trò; không bù trừ hai bên nên vai trò đang dư không che vai trò đang thiếu.
+     một biểu đồ cột chồng hai chiều cho cả công ty lẫn từng vai trò theo tuần — trên vạch 0 là người thiếu,
+     dưới là người dư, mỗi đoạn màu là một vai trò; không bù trừ hai bên nên vai trò đang dư không che vai trò đang thiếu.
+     Biểu đồ để trần, không nhãn trục và không dòng chú thích dưới chân.
      Bấm một cột để xem chi tiết tuần đó (cần / có từng vai trò, % quân số của vai trò thiếu, dự án đang chiếm).
      Đổi đơn vị Số người / % quân số công ty; xem 12 · 24 · 36 tuần kể từ tuần hiện tại; chip bật tắt từng vai trò.
      Vạch 0 tự đặt theo tỉ lệ thiếu / dư đang có nên biểu đồ không để trống nửa dưới; khung chi tiết bên phải rộng 420px,

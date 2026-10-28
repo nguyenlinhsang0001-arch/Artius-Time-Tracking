@@ -8,7 +8,7 @@
    Màn này CHỈ ĐỌC. Lưới nhập vẫn nằm ở tab Kế hoạch; ở đây không sửa được ô nào.
    Số liệu lấy đúng cùng nguồn và cùng quy tắc với tab Kế hoạch (planCalc.js / planStore.js):
    quân số = số người của vai trò × hệ số sẵn sàng, dự án tạm ẩn và vai trò gộp đều áp dụng y hệt. */
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { ROLES, isResigned } from "../../core/domain.jsx";
 import { isLight } from "../../core/theme.jsx";
@@ -25,8 +25,7 @@ const f0 = (n) => String(+Number(n).toFixed(2)).replace(".", ",");
 const PALETTE = ["#14b8a6", "#f59e0b", "#6366f1", "#ec4899", "#0ea5e9", "#84cc16", "#f43f5e",
   "#a855f7", "#eab308", "#3b82f6", "#fb923c", "#22c55e", "#d946ef", "#2dd4bf", "#94a3b8"];
 
-const SHORT = "#ef4444";                                  /* màu phần thiếu của dòng tổng */
-const freeFill = () => (isLight() ? "#cbd5e1" : "#475569"); /* màu phần dư của dòng tổng */
+const SHORT = "#ef4444";   /* màu chữ số tổng thiếu trên đỉnh cột */
 
 export default function ResourceOverview({ cfg }) {
   const tick = useDataTick();
@@ -37,6 +36,10 @@ export default function ResourceOverview({ cfg }) {
   const [unit, setUnit] = useState("abs");   /* abs = số người · pct = % quân số công ty */
   const [pick, setPick] = useState(null);    /* chỉ số cột tuần đang soi */
   const [off, setOff] = useState(() => new Set());   /* vai trò đang tắt */
+  /* Bề ngang thật của khung vẽ. SVG vẽ đúng số pixel này thay vì để viewBox kéo giãn:
+     kéo giãn thì cỡ chữ bị nhân theo bề ngang màn hình, màn rộng chữ phóng to gấp đôi. */
+  const wrapRef = useRef(null);
+  const [cw, setCw] = useState(0);
 
   const start = new Date().getFullYear();
   const weeks = useMemo(() => weeksOfPair(start), [start]);
@@ -80,6 +83,18 @@ export default function ResourceOverview({ cfg }) {
       .finally(() => alive && setBusy(false));
     return () => { alive = false; };
   }, [start]);
+  /* đo khung vẽ; chạy lại khi vừa tải xong vì lúc đang tải chưa có thẻ nào để đo */
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const read = () => setCw(Math.round(el.getBoundingClientRect().width));
+    read();
+    if (typeof ResizeObserver !== "function") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [busy, err]);
+
   /* gộp vai trò con vào vai trò cha (vd TL-2D → 2D) — đổi thiết lập gộp là thấy ngay, khỏi tải lại */
   const plan = useMemo(() => foldMerged(rawPlan, (rid) => merge[rid] || rid).plan, [rawPlan, merge]);
 
@@ -121,7 +136,10 @@ export default function ResourceOverview({ cfg }) {
   );
 
   /* ---------------------------- biểu đồ ---------------------------- */
-  const W = 980, H = 300, L = 46, R = 14, T = 24, B = 40;
+  /* W = bề ngang thật, nên mọi fontSize dưới đây là pixel thật trên màn hình, không bị phóng to.
+     T chừa chỗ cho hai dòng nhãn xếp chồng ở đầu biểu đồ: tháng ở trên, tuần ngay dưới. */
+  const W = Math.max(520, cw || 1100), H = 300, L = 10, R = 12, T = 44, B = 10;
+  const FS_MONTH = 10.5, FS_WEEK = 9, FS_TOTAL = 9.5;
   const n = view.length, step = (W - L - R) / Math.max(n, 1);
   const PH = H - T - B;                 /* chiều cao vùng vẽ */
   const PADU = 16, PADD = 14;           /* chừa chỗ cho nhãn số trên đỉnh cột và nhãn tuần */
@@ -163,7 +181,7 @@ export default function ResourceOverview({ cfg }) {
     });
     const tot = shortAt(w.i, live);
     if (tot > 0.02) bars.push(
-      <text key={`t${w.i}`} x={x + bw / 2} y={yU - 6} fontSize="10.5" textAnchor="middle" fill={SHORT}>
+      <text key={`t${w.i}`} x={x + bw / 2} y={yU - 5} fontSize={FS_TOTAL} textAnchor="middle" fill={SHORT}>
         {unit === "abs" ? f0(tot) : `${Math.round(val(tot))}%`}
       </text>);
     if (w.i === sel) bars.push(
@@ -173,13 +191,25 @@ export default function ResourceOverview({ cfg }) {
       fill="transparent" style={{ cursor: "pointer" }} onClick={() => setPick(w.i)} />);
   });
 
-  const ticks = view.map((w, k) => (k === 0 || view[k - 1].m !== w.m) && (
-    <g key={`m${w.i}`}>
-      <line x1={L + k * step} y1={T} x2={L + k * step} y2={H - B} stroke={grid} />
-      <text x={L + k * step + 4} y={T - 10} fontSize="11" fill="#0d9488">
-        {`T${w.m}${w.m === 1 || k === 0 ? `·${String(w.y).slice(2)}` : ""}`}
-      </text>
-    </g>
+  /* Nhãn tháng ở trên, số tuần ngay dưới, cùng nằm trên đầu biểu đồ.
+     Tháng canh giữa khối tuần của nó, không dính vào tháng kế bên như khi canh trái. */
+  const ticks = view.map((w, k) => {
+    const first = k === 0 || view[k - 1].m !== w.m;
+    if (!first) return null;
+    let span = 1;
+    while (k + span < n && view[k + span].m === w.m) span++;
+    return (
+      <g key={`m${w.i}`}>
+        <line x1={L + k * step} y1={T - 14} x2={L + k * step} y2={H - B} stroke={grid} />
+        <text x={L + (k + span / 2) * step} y={16} fontSize={FS_MONTH} textAnchor="middle" fill="#0d9488">
+          {`T${w.m}${w.m === 1 || k === 0 ? `·${String(w.y).slice(2)}` : ""}`}
+        </text>
+      </g>
+    );
+  });
+  const wkLabels = view.map((w, k) => (
+    <text key={`w${w.i}`} x={L + k * step + step / 2} y={30} fontSize={FS_WEEK} textAnchor="middle"
+      fill={w.i === sel ? axis : mute}>{w.w}</text>
   ));
 
   /* ---------------------------- khung chi tiết ---------------------------- */
@@ -229,23 +259,17 @@ export default function ResourceOverview({ cfg }) {
 
       {/* v12.22 — khung chi tiết rộng hơn phần biểu đồ cần: tên dự án viết đủ, không cắt bớt */}
       <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_420px]">
-        {/* biểu đồ */}
-        <div className="p-3 md:p-4">
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
-            {ticks}
-            {bars}
-            <line x1={L} y1={mid} x2={W - R} y2={mid} stroke={axis} strokeWidth="1.3" />
-            <text x={6} y={T + 10} fontSize="10.5" fill={SHORT}>THIẾU người</text>
-            <text x={6} y={H - B - 4} fontSize="10.5" fill={mute}>DƯ người</text>
-            {view.map((w, k) => (
-              <text key={`w${w.i}`} x={L + k * step + step / 2} y={H - 14} fontSize="9" textAnchor="middle" fill={mute}>{w.w}</text>
-            ))}
-          </svg>
-          <p className="mt-1 text-[11px] text-slate-500">
-            {unit === "abs"
-              ? "Chiều cao phần trên vạch 0 là tổng số người công ty còn thiếu tuần đó; mỗi đoạn màu là một vai trò. Phần dưới vạch 0 là vai trò đang rảnh."
-              : "Phần trăm tính trên tổng quân số công ty nên các đoạn cộng được với nhau. Mức căng của riêng từng vai trò xem ở khung bên phải."}
-          </p>
+        {/* biểu đồ — vẽ đúng bề ngang đo được, không để viewBox phóng to chữ */}
+        <div className="min-w-0 p-3 md:p-4">
+          {/* lớp đo không có đệm, để bề ngang đo được đúng bằng chỗ SVG được phép vẽ */}
+          <div ref={wrapRef} className="min-w-0">
+            <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+              {ticks}
+              {wkLabels}
+              {bars}
+              <line x1={L} y1={mid} x2={W - R} y2={mid} stroke={axis} strokeWidth="1.3" />
+            </svg>
+          </div>
         </div>
 
         {/* chi tiết tuần đang soi */}
