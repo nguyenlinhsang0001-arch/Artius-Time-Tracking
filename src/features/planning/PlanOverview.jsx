@@ -2,6 +2,7 @@
    Bốn khối: việc cần xử lý · bản đồ tải vai trò × tuần · quân số cần so với đang có · kế hoạch so với giờ đã chấm. */
 import React, { useMemo, useState } from "react";
 import { X } from "lucide-react";
+import { isLight } from "../../core/theme.jsx";
 import { cellOf, leftOf, loadOf, needOf, planVsActual, shortages, verdictOf } from "./planCalc.js";
 
 const f0 = (n) => String(+Number(n).toFixed(2)).replace(".", ",");
@@ -11,7 +12,12 @@ const FRZ = 230, CW = 34;
 const Frz = ({ children, py = "py-1", title }) => (
   <div className={`truncate px-3 ${py}`} style={{ width: FRZ }} title={title}>{children}</div>
 );
-const bg = (p) => (p > 100 ? `rgba(153,27,27,${Math.min(1, 0.55 + (p - 100) / 120)})` : p >= 85 ? "#854d0e" : p >= 60 ? "#115e59" : p > 0 ? "#1e293b" : "#0b1220");
+const bg = (p) => isLight()
+  ? (p > 100 ? "#fca5a5" : p >= 85 ? "#fde68a" : p >= 60 ? "#99f6e4" : p > 0 ? "#e2e8f0" : "#f8fafc")
+  : (p > 100 ? `rgba(153,27,27,${Math.min(1, 0.55 + (p - 100) / 120)})` : p >= 85 ? "#854d0e" : p >= 60 ? "#115e59" : p > 0 ? "#1e293b" : "#0b1220");
+const LEGEND = () => (isLight()
+  ? [["#e2e8f0", "< 60% rảnh"], ["#99f6e4", "60–85%"], ["#fde68a", "85–100% căng"], ["#fca5a5", "> 100% thiếu"]]
+  : [["#1e293b", "< 60% rảnh"], ["#115e59", "60–85%"], ["#854d0e", "85–100% căng"], ["#991b1b", "> 100% thiếu"]]);
 
 export function PlanOverview({ plan, projects, roles, weeks, cap, actual, okWeeks, nowIndex, availability }) {
   const [drill, setDrill] = useState(null);
@@ -73,7 +79,7 @@ export function PlanOverview({ plan, projects, roles, weeks, cap, actual, okWeek
           <p className="mt-0.5 text-xs text-slate-500">Ô là phần trăm tải. Bấm một ô để xem dự án nào đang chiếm vai trò đó</p>
         </div>
         <div className="flex flex-wrap gap-x-5 gap-y-1 border-b border-slate-800 px-4 py-2 text-xs text-slate-400">
-          {[["#1e293b", "< 60% rảnh"], ["#115e59", "60–85%"], ["#854d0e", "85–100% căng"], ["#991b1b", "> 100% thiếu"]].map(([c, l]) => (
+          {LEGEND().map(([c, l]) => (
             <span key={l} className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: c }} />{l}</span>
           ))}
         </div>
@@ -113,7 +119,7 @@ export function PlanOverview({ plan, projects, roles, weeks, cap, actual, okWeek
                       const p = Math.round(loadOf(plan, pids, r.id, w.i, cap));
                       return (
                         <td key={w.i} onClick={() => setDrill({ rid: r.id, wi: w.i })}
-                          className={`cursor-pointer border-l border-slate-900 px-1 py-1 text-center font-mono text-[11px] ${p > 100 ? "font-semibold text-rose-100" : p >= 60 ? "text-slate-100" : "text-slate-600"}`}
+                          className={`cursor-pointer border-l border-slate-900 px-1 py-1 text-center font-mono text-[11px] ${p > 100 ? (isLight() ? "font-semibold text-red-950" : "font-semibold text-rose-100") : p >= 60 ? "text-slate-100" : "text-slate-600"}`}
                           style={{ minWidth: CW, background: bg(p) }}>{p || ""}</td>
                       );
                     })}
@@ -166,7 +172,7 @@ export function PlanOverview({ plan, projects, roles, weeks, cap, actual, okWeek
                 <svg viewBox={`0 0 ${Wd} ${H}`} className="w-full">
                   {[0, 1, 2, 3, 4].map((i) => {
                     const v = (max * i) / 4;
-                    return <g key={i}><line x1={L} x2={Wd - R} y1={y(v)} y2={y(v)} stroke="#1e293b" />
+                    return <g key={i}><line x1={L} x2={Wd - R} y1={y(v)} y2={y(v)} stroke={isLight() ? "#e2e8f0" : "#1e293b"} />
                       <text x={L - 5} y={y(v) + 4} fill="#64748b" fontSize="10" textAnchor="end">{Math.round(v)}</text></g>;
                   })}
                   {horizon.map((w, i) => {
@@ -177,8 +183,8 @@ export function PlanOverview({ plan, projects, roles, weeks, cap, actual, okWeek
                       {i % 2 === 0 && <text x={L + i * step + step / 2} y={H - 12} fill="#64748b" fontSize="10" textAnchor="middle">{`T${w.m}·${w.w}`}</text>}
                     </g>;
                   })}
-                  <line x1={L} x2={Wd - R} y1={y(totCap)} y2={y(totCap)} stroke="#f8fafc" strokeWidth="2" strokeDasharray="6 4" />
-                  <text x={Wd - R} y={y(totCap) - 6} fill="#f8fafc" fontSize="10" textAnchor="end">{`năng lực ${f0(totCap)}`}</text>
+                  <line x1={L} x2={Wd - R} y1={y(totCap)} y2={y(totCap)} stroke={isLight() ? "#0f172a" : "#f8fafc"} strokeWidth="2" strokeDasharray="6 4" />
+                  <text x={Wd - R} y={y(totCap) - 6} fill={isLight() ? "#0f172a" : "#f8fafc"} fontSize="10" textAnchor="end">{`năng lực ${f0(totCap)}`}</text>
                 </svg>
               );
             })()}

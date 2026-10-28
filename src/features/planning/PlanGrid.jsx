@@ -11,6 +11,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Trash2 } from "lucide-react";
 import { btnGhost } from "../../core/ui.jsx";
+import { isLight } from "../../core/theme.jsx";
 import { copyWeek, leftOf, needOf, setCell } from "./planCalc.js";
 
 const FRZ = 230;   // bề ngang cột khoá cứng
@@ -26,6 +27,15 @@ const parse = (s) => {
 const Frz = ({ children, cls = "", py = "py-0.5", title }) => (
   <div className={`truncate px-2 ${py} ${cls}`} style={{ width: FRZ }} title={title}>{children}</div>
 );
+
+/* màu đặt thẳng bằng style không đi qua LIGHT_CSS nên phải tự chọn theo giao diện (App vẽ lại khi đổi Sáng/Tối) */
+const leftStyle = (lf) => {
+  const L = isLight();
+  if (lf < -0.001) return { background: "#f87171", color: "#450a0a" };
+  if (lf > 0.001) return { background: "#fde68a", color: "#451a03" };
+  return L ? { background: "#e2e8f0", color: "#64748b" } : { background: "#1e293b", color: "#64748b" };
+};
+const stripBg = () => (isLight() ? "#ccfbf1" : "#041f1c");
 
 /* một dòng dự án × vai trò — chỉ vẽ lại khi mảng số của chính nó đổi */
 const Row = React.memo(function Row({ pid, rid, label, values, weeks, nowIndex, readOnly, onCell, onFocus, onDrop }) {
@@ -215,7 +225,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
                   {weeks.map((w) => {
                     const lf = leftOf(plan, pids, r.id, w.i, cap);
                     return <td key={w.i} className="border-l border-slate-900 px-1 text-center font-mono font-semibold"
-                      style={{ minWidth: CW, ...(lf < -0.001 ? { background: "#f87171", color: "#450a0a" } : lf > 0.001 ? { background: "#fde68a", color: "#451a03" } : { background: "#1e293b", color: "#64748b" }) }}>{f0(lf)}</td>;
+                      style={{ minWidth: CW, ...leftStyle(lf) }}>{f0(lf)}</td>;
                   })}
                 </tr>
               </React.Fragment>
@@ -225,27 +235,27 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
             {stripRole && (
               <>
                 <tr>
-                  <td className="sticky left-0 z-30 border-t-2 border-teal-800 p-0" style={{ bottom: 22, background: "#041f1c" }}>
+                  <td className="sticky left-0 z-30 border-t-2 border-teal-800 p-0" style={{ bottom: 22, background: stripBg() }}>
                     <Frz title={`${stripRole.id} · ${stripRole.name}`}>
-                      <span className="text-[11px] text-teal-500/80">cần — </span>
+                      <span className={`text-[11px] ${isLight() ? "text-teal-800" : "text-teal-500/80"}`}>cần — </span>
                       <span className="text-[11px] text-teal-300">{stripRole.id} · {stripRole.name}</span>
-                      <span className="font-mono text-[11px] text-teal-500/80"> · {head.get(stripRole.id) || 0}</span>
+                      <span className={`font-mono text-[11px] ${isLight() ? "text-teal-800" : "text-teal-500/80"}`}> · {head.get(stripRole.id) || 0}</span>
                     </Frz>
                   </td>
                   {weeks.map((w) => {
                     const nd = needOf(plan, pids, stripRole.id, w.i);
                     return <td key={w.i} className="sticky z-10 border-l border-slate-900 px-1 text-center font-mono text-slate-300"
-                      style={{ minWidth: CW, bottom: 22, background: "#041f1c", outline: w.i === active.wi ? "1.5px solid #14b8a6" : "none" }}>{nd ? f0(nd) : "0"}</td>;
+                      style={{ minWidth: CW, bottom: 22, background: stripBg(), outline: w.i === active.wi ? "1.5px solid #14b8a6" : "none" }}>{nd ? f0(nd) : "0"}</td>;
                   })}
                 </tr>
                 <tr>
-                  <td className="sticky left-0 z-30 p-0" style={{ bottom: 0, background: "#041f1c" }}>
+                  <td className="sticky left-0 z-30 p-0" style={{ bottom: 0, background: stripBg() }}>
                     <Frz><span className="pl-4 text-[11px] text-slate-500">còn lại</span></Frz>
                   </td>
                   {weeks.map((w) => {
                     const lf = leftOf(plan, pids, stripRole.id, w.i, cap);
                     return <td key={w.i} className="sticky z-10 border-l border-slate-900 px-1 text-center font-mono font-semibold"
-                      style={{ minWidth: CW, bottom: 0, outline: w.i === active.wi ? "1.5px solid #14b8a6" : "none", ...(lf < -0.001 ? { background: "#f87171", color: "#450a0a" } : lf > 0.001 ? { background: "#fde68a", color: "#451a03" } : { background: "#1e293b", color: "#64748b" }) }}>{f0(lf)}</td>;
+                      style={{ minWidth: CW, bottom: 0, outline: w.i === active.wi ? "1.5px solid #14b8a6" : "none", ...leftStyle(lf) }}>{f0(lf)}</td>;
                   })}
                 </tr>
               </>

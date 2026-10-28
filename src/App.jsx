@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.2
+   ARTIUS — Quản lý giờ công theo dự án · v12.3
+   Mới ở v12.3 — Sửa lỗi hiển thị lưới Kế hoạch ở giao diện Sáng.
+     Dải "cần / còn lại" dính đáy, các ô CÒN bằng 0 và bản đồ tải ở Tổng quan đặt màu thẳng bằng mã hex nên
+     không đi qua bảng đảo màu của giao diện Sáng, còn nguyên nền xanh đen. Nay chọn màu theo giao diện đang dùng.
    Mới ở v12.2 — Sửa bố cục lưới Kế hoạch trên màn hình nhỏ và laptop.
      v12.1 dùng HAI cột khoá cứng và neo cột thứ hai ở một con số đặt sẵn (left: 150px), trong khi bề ngang
      thật của cột thứ nhất do trình duyệt tự tính từ nội dung — tên dự án dài thì cột nở, ngắn thì co.
