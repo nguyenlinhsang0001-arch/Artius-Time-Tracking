@@ -41,6 +41,9 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
   /* v12.14 — dự án tạm ẩn: lưu trong thiết lập chung (mọi người thấy như nhau), không tính vào tổng / tổng quan / Excel */
   const hidden = useMemo(() => new Set(cfg.planning?.hidden || []), [cfg.planning?.hidden]);
   const shownProjects = useMemo(() => projects.filter((p) => !hidden.has(p.id)), [projects, hidden]);
+  /* vai trò bị ẩn ở khối tổng: không hiện ở Tổng quan và Excel (thiết lập chung planning.totals) */
+  const totals = cfg.planning?.totals;
+  const onTotals = async (t) => { await saveCfg({ ...cfg, planning: { ...(cfg.planning || {}), totals: t } }); };
   const toggleHide = async (pid) => {
     const cur = new Set(cfg.planning?.hidden || []);
     const off = !cur.has(pid);
@@ -56,6 +59,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
     return { head: h, cap: new Map([...h].map(([k, v]) => [k, +(v * avail).toFixed(2)])) };
   }, [staff, avail]);
   const roles = useMemo(() => ROLES.map((r) => ({ ...r })), [cfg.roles, tick]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const statRoles = useMemo(() => { const h = new Set(totals?.hidden || []); return roles.filter((r) => !h.has(r.id)); }, [roles, totals]);
 
   /* dự án chưa có dòng nào → điền sẵn các vai trò cơ bản (dòng toàn 0, chưa tính là "đã sửa").
      Chỉ chạy lúc tải: gỡ bớt vai trò rồi lưu thì giữ nguyên, trừ khi gỡ hết thì lần mở sau điền lại. */
@@ -181,7 +185,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
   const onExport = async () => {
     try {
       const { exportPlanXlsx } = await import("./planExport.js");
-      await exportPlanXlsx({ plan: prunePlan(plan), projects: shownProjects, roles, weeks, cap, head, actual, okWeeks: ts?.okWeeks || new Set(), realWeeks, start, snaps, avail });
+      await exportPlanXlsx({ plan: prunePlan(plan), projects: shownProjects, roles: statRoles, weeks, cap, head, actual, okWeeks: ts?.okWeeks || new Set(), realWeeks, start, snaps, avail });
       flash("Đã xuất Excel kế hoạch.");
     } catch (e) { flash(`Chưa xuất được — ${errMsg(e)}`, "err"); }
   };
@@ -248,10 +252,10 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
 
         {mode === "in" ? (
           <PlanGrid plan={plan} onChange={(p) => { setPlan(p); setDirty(true); }}
-            projects={projects} hidden={hidden} onToggleHide={readOnly ? undefined : toggleHide} roles={roles} weeks={view} nWeeks={weeks.length}
+            projects={projects} hidden={hidden} onToggleHide={readOnly ? undefined : toggleHide} totals={totals} onTotals={readOnly ? undefined : onTotals} roles={roles} weeks={view} nWeeks={weeks.length}
             cap={cap} head={head} readOnly={readOnly} nowIndex={nowIdx} scrollKey={start} />
         ) : (
-          <PlanOverview plan={plan} projects={shownProjects} roles={roles} weeks={view}
+          <PlanOverview plan={plan} projects={shownProjects} roles={statRoles} weeks={view}
             cap={cap} availability={avail}
             actual={actual} realWeeks={realWeeks} okWeeks={ts?.okWeeks || new Set()} nowIndex={nowIdx < 0 ? 0 : nowIdx} />
         )}

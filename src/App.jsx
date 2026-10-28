@@ -1,6 +1,8 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.14
+   ARTIUS — Quản lý giờ công theo dự án · v12.15
+   Mới ở v12.15 — Kế hoạch, khối TỔNG TOÀN CÔNG TY: Admin thêm vai trò (dấu + ở tiêu đề khối), ẩn vai trò (con mắt cuối dòng —
+     ẩn luôn ở Tổng quan và Excel), kéo ⋮⋮ đổi thứ tự dòng. Lưu trong thiết lập chung (planning.totals), mọi người thấy như nhau.
    Mới ở v12.14 — Kế hoạch: (1) kéo thả dự án đổi vị trí (cầm ⋮⋮ ở dòng tên dự án; thứ tự riêng từng máy);
      (2) nút con mắt tạm ẩn một dự án: thu gọn, mờ, KHÔNG tính vào dòng tổng / Tổng quan / Excel, số đã nhập giữ nguyên;
      lưu trong thiết lập chung (planning.hidden) nên mọi người thấy như nhau; (3) nút "+ vai trò" thu lại thành dấu +.

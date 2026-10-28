@@ -112,7 +112,7 @@ const Row = React.memo(function Row({ r, pid, rid, label, values, weeks, nowInde
   );
 });
 
-export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new Set(), onToggleHide, roles, weeks, nWeeks, cap, head, readOnly = false, nowIndex = -1, scrollKey }) {
+export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new Set(), onToggleHide, totals, onTotals, roles, weeks, nWeeks, cap, head, readOnly = false, nowIndex = -1, scrollKey }) {
   const [active, setActive] = useState(null);     // { rid, wi }
   const wrap = useRef(null);
   const [order, setOrder] = useState(readOrd);
@@ -379,7 +379,38 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
   rowsRef.current = rowList;
 
   const stripRole = active?.rid ? roleById.get(active.rid) : null;
-  const totalRoles = roles.filter((r) => (cap.get(r.id) || 0) > 0 || weeks.some((w) => needOf(plan, pids, r.id, w.i) > 0));
+  /* khối Tổng toàn công ty: vai trò tự hiện khi có người hoặc có nhu cầu; Admin thêm / ẩn / đổi thứ tự (thiết lập chung) */
+  const tcfg = totals || {};
+  const tHidden = new Set(tcfg.hidden || []), tAdded = new Set(tcfg.added || []);
+  const totalRoles = sortRoles(roles.filter((r) => !tHidden.has(r.id)
+    && (tAdded.has(r.id) || (cap.get(r.id) || 0) > 0 || weeks.some((w) => needOf(plan, pids, r.id, w.i) > 0))), tcfg.order);
+  const addableTot = roles.filter((r) => !totalRoles.some((x) => x.id === r.id));
+  const canTot = !readOnly && !!onTotals;
+  const hideTot = (rid) => onTotals({ ...tcfg, hidden: [...tHidden, rid], added: [...tAdded].filter((x) => x !== rid) });
+  const addTot = (rid) => rid && onTotals({ ...tcfg, hidden: [...tHidden].filter((x) => x !== rid), added: [...new Set([...tAdded, rid])] });
+  const tdnd = {
+    start: (e, rid) => {
+      drag.current = { tot: rid };
+      e.dataTransfer.effectAllowed = "move";
+      const tr = e.currentTarget.closest("tr");
+      try { e.dataTransfer.setData("text/plain", rid); if (tr) e.dataTransfer.setDragImage(tr, 20, 10); } catch { /* bỏ qua */ }
+      if (tr) setTimeout(() => tr.setAttribute("data-dragging", "1"), 0);
+    },
+    over: (e, rid) => {
+      const d = drag.current; if (!d?.tot || d.tot === rid) return;
+      e.preventDefault();
+      const tr = e.currentTarget, b = tr.getBoundingClientRect();
+      const v = e.clientY > b.top + b.height / 2 ? "after" : "before";
+      if (tr.getAttribute("data-drop") !== v) tr.setAttribute("data-drop", v);
+    },
+    drop: (e, rid) => {
+      const d = drag.current; if (!d?.tot || d.tot === rid) return;
+      e.preventDefault();
+      const after = e.currentTarget.getAttribute("data-drop") === "after";
+      onTotals({ ...tcfg, order: moveInList(totalRoles.map((r) => r.id), d.tot, rid, after) });
+      dnd.end();
+    },
+  };
   const yearStart = (k) => k > 0 && weeks[k].y !== weeks[k - 1].y;   // cột đầu của năm sau
   const wkTh = (extra) => `sticky z-20 border-l border-slate-800 bg-slate-900 px-1 py-1 text-center ${extra}`;
   const mo = (w, k) => (w.ms && !yearStart(k) ? " mo" : "");
@@ -487,17 +518,47 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
             <tr><td className="sticky left-0 z-20 bg-slate-900 p-0"><Frz py="pt-4">&nbsp;</Frz></td><td colSpan={nCol} /></tr>
             <tr>
               <td className="sticky left-0 z-20 border-y border-slate-600 bg-slate-950 p-0">
-                <Frz py="py-1.5"><span className="font-semibold text-teal-300">TỔNG TOÀN CÔNG TY</span></Frz>
+                <Frz py="py-1.5">
+                  <span className="flex items-center gap-1">
+                    <span className="font-semibold text-teal-300">TỔNG TOÀN CÔNG TY</span>
+                    {canTot && addableTot.length > 0 && (
+                      <span className="relative ml-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-slate-700 text-slate-400 hover:border-teal-600 hover:text-teal-300"
+                        title="Thêm / hiện lại vai trò ở khối tổng">
+                        <Plus size={13} />
+                        <select value="" onChange={(e) => addTot(e.target.value)} aria-label="Thêm vai trò vào khối tổng"
+                          className="absolute inset-0 cursor-pointer opacity-0">
+                          <option value="">Thêm vai trò…</option>
+                          {addableTot.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}{tHidden.has(r.id) ? " (đang ẩn)" : ""}</option>)}
+                        </select>
+                      </span>
+                    )}
+                  </span>
+                </Frz>
               </td>
               <td className="border-y border-slate-600" colSpan={nCol} />
             </tr>
             {totalRoles.map((r) => (
               <React.Fragment key={r.id}>
-                <tr className="border-b border-slate-900">
+                <tr className="border-b border-slate-900"
+                  {...(canTot ? { onDragOver: (e) => tdnd.over(e, r.id), onDragLeave: (e) => e.currentTarget.removeAttribute("data-drop"), onDrop: (e) => tdnd.drop(e, r.id) } : {})}>
                   <td className="sticky left-0 z-20 bg-slate-950 p-0">
                     <Frz title={`${r.id} · ${r.name}`}>
-                      <span className="font-mono text-slate-400">{r.id}</span> <span className="text-slate-300">{r.name}</span>{" "}
-                      <span className="text-slate-600">· {head.get(r.id) || 0}</span>
+                      <span className="flex items-center gap-1">
+                        {canTot && (
+                          <span draggable onDragStart={(e) => tdnd.start(e, r.id)} onDragEnd={dnd.end} title="Giữ và kéo để đổi vị trí dòng"
+                            className="inline-flex w-3 shrink-0 cursor-grab touch-none items-center justify-center text-slate-600 hover:text-slate-300 active:cursor-grabbing">
+                            <GripVertical size={12} />
+                          </span>
+                        )}
+                        <span className="truncate"><span className="font-mono text-slate-400">{r.id}</span> <span className="text-slate-300">{r.name}</span>{" "}
+                          <span className="text-slate-600">· {head.get(r.id) || 0}</span></span>
+                        {canTot && (
+                          <button type="button" onClick={() => hideTot(r.id)} title="Ẩn vai trò này khỏi khối tổng, Tổng quan và Excel"
+                            className="ml-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-600 hover:text-amber-400">
+                            <EyeOff size={12} />
+                          </button>
+                        )}
+                      </span>
                     </Frz>
                   </td>
                   {weeks.map((w) => {
