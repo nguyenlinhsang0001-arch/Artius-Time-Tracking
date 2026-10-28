@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.16
+   ARTIUS — Quản lý giờ công theo dự án · v12.17
+   Mới ở v12.17 — Nhân sự: ô "Tính vào Kế hoạch nguồn lực" trong khung sửa nhân sự (bỏ tích cho người thử việc…). Người bị bỏ
+     không tính vào quân số, giờ thực tế và điều kiện "tuần đủ giờ" của mục Kế hoạch; chấm công vẫn bình thường.
+     Danh sách nhân sự hiện nhãn "Không tính KH", bấm để tính lại.
    Mới ở v12.16 — Kế hoạch: nút "Gộp vai trò" (Admin) gộp vai trò con vào vai trò chính, vd TL-2D → 2D, TLTK → TK.
      Trong Kế hoạch, quân số, nhu cầu và giờ thực tế của vai trò con tính vào vai trò chính; dòng cũ của vai trò con trong
      dự án được cộng vào dòng vai trò chính rồi tự lưu. Vai trò ở tab Nhân sự không đổi. Thiết lập chung (planning.merge).

@@ -68,7 +68,8 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
     for (const [k, v] of Object.entries(merge)) m.set(v, [...(m.get(v) || []), k]);
     return m;
   }, [merge]);
-  const staff = useMemo(() => (cfg.employees || []).filter((e) => !isResigned(e)), [cfg.employees]);
+  /* v12.17 — người được bỏ khỏi kế hoạch ở tab Nhân sự (noPlan, vd thử việc): không tính quân số, giờ thực tế, cũng không làm tuần bị "chưa đủ giờ" */
+  const staff = useMemo(() => (cfg.employees || []).filter((e) => !isResigned(e) && !e.noPlan), [cfg.employees]);
   const planStaff = useMemo(() => staff.map((e) => (e.role && merge[e.role] ? { ...e, role: merge[e.role] } : e)), [staff, merge]);
   const { head, cap } = useMemo(() => {
     const h = new Map();

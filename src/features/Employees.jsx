@@ -95,6 +95,11 @@ export function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = n
   const projLabel = (p) => (p.code ? `[${p.code}] ${p.name}` : p.name);
   const empProjs = (e) => (Array.isArray(e.projects) ? e.projects : []).filter((pid) => cfg.projects.some((p) => p.id === pid));
   const setEmpProjs = (eid, list) => saveCfg({ ...cfg, employees: cfg.employees.map((x) => (x.id === eid ? { ...x, projects: list } : x)) });
+  // v12.17: có tính người này vào Kế hoạch nguồn lực (quân số, giờ thực tế) hay không
+  const setNoPlan = async (eid, on) => {
+    const ok = await saveCfg({ ...cfg, employees: cfg.employees.map((x) => { if (x.id !== eid) return x; const { noPlan, ...rest } = x; return on ? { ...rest, noPlan: true } : rest; }) });   // eslint-disable-line no-unused-vars
+    if (ok !== false) flash(on ? "Đã bỏ người này khỏi Kế hoạch nguồn lực." : "Đã tính lại người này vào Kế hoạch nguồn lực.");
+  };
   // v8.8: bật / tắt quyền Tất cả dự án (danh sách dự án đã chọn giữ nguyên để tắt lại thì quay về)
   const setAllProj = async (eid, on) => {
     const ok = await saveCfg({ ...cfg, employees: cfg.employees.map((x) => { if (x.id !== eid) return x; const { allProjects, ...rest } = x; return on ? { ...rest, allProjects: true } : rest; }) });   // eslint-disable-line no-unused-vars
@@ -181,7 +186,7 @@ export function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = n
     // sửa người đã có sẵn: KHÔNG tự gợi ý tên đăng nhập khi đổi họ tên, kẻo đổi tên một người chưa có tài khoản
     // lại vô tình điền tên đăng nhập và bị chặn vì thiếu mật khẩu
     setDlg({ kind: "emp", empId: e.id, accId: a?.id || null, hadAcc: !!a, autoUser: false,
-      f: { code: e.code || "", name: e.name, dept: e.dept, role: e.role || "", projects: Array.isArray(e.projects) ? e.projects : [], allProjects: !!e.allProjects, username: a?.username || "", password: a?.password || "", access: a ? accessOfAcc(a) : "emp" } });
+      f: { code: e.code || "", name: e.name, dept: e.dept, role: e.role || "", projects: Array.isArray(e.projects) ? e.projects : [], allProjects: !!e.allProjects, noPlan: !!e.noPlan, username: a?.username || "", password: a?.password || "", access: a ? accessOfAcc(a) : "emp" } });
   };
   const openAddAdmin = () => setDlg({ kind: "admin", empId: null, accId: null, hadAcc: false, autoUser: false, f: { username: "", password: genPassword(), access: "admin" } });
   const openEditAdmin = (a) => setDlg({ kind: "admin", empId: a.empId || null, accId: a.id, hadAcc: true, autoUser: false, f: { username: a.username, password: a.password, access: accessOfAcc(a) } });
@@ -205,7 +210,7 @@ export function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = n
       if (err) return flash(err, "err");
       setBusy(true);
       const id = dlg.empId || uid("e");
-      const row = { code, name, dept: f.dept, role: f.role || "", projects: (f.projects || []).filter((pid) => cfg.projects.some((p) => p.id === pid)), allProjects: !!f.allProjects };   // v6.9 · v8.8
+      const row = { code, name, dept: f.dept, role: f.role || "", projects: (f.projects || []).filter((pid) => cfg.projects.some((p) => p.id === pid)), allProjects: !!f.allProjects, noPlan: !!f.noPlan };   // v6.9 · v8.8 · v12.17
       const ok = await saveCfg({ ...cfg, employees: dlg.empId ? cfg.employees.map((e) => (e.id === id ? { ...e, ...row } : e)) : [...cfg.employees, { id, ...row }] });
       const accOk = ok !== false && (!wantsAcc || (await pushAccount(id, acc, f)));
       setBusy(false);
@@ -213,7 +218,7 @@ export function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = n
       // nhân sự đã lưu nhưng tài khoản lỗi: chuyển khung sang chế độ sửa người đó để sửa tiếp phần tài khoản
       if (!accOk) return setDlg({ ...dlg, empId: id });
       flash(dlg.empId ? "Đã cập nhật nhân sự." : "Đã thêm nhân sự.");
-      if (more) setDlg({ kind: "emp", empId: null, accId: null, hadAcc: false, autoUser: true, f: { code: "", name: "", dept: f.dept, role: "", projects: f.projects || [], allProjects: !!f.allProjects, username: "", password: genPassword(), access: "emp" } });
+      if (more) setDlg({ kind: "emp", empId: null, accId: null, hadAcc: false, autoUser: true, f: { code: "", name: "", dept: f.dept, role: "", projects: f.projects || [], allProjects: !!f.allProjects, noPlan: false, username: "", password: genPassword(), access: "emp" } });
       else setDlg(null);
       return;
     }
@@ -403,7 +408,14 @@ export function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = n
   const empRow = (e) => {
     const a = accByEmp.get(e.id);
     const dim = a?.disabled ? "text-slate-500" : "";
-    const roleEl = e.role ? <span className="rounded border border-slate-700 px-1.5 py-0.5 font-mono text-[10px] text-teal-300">{roleLabel(e.role) || e.role}</span> : null;
+    const roleTag = e.role ? <span className="rounded border border-slate-700 px-1.5 py-0.5 font-mono text-[10px] text-teal-300">{roleLabel(e.role) || e.role}</span> : null;
+    /* v12.17 — người không tính vào Kế hoạch nguồn lực (vd đang thử việc): hiện nhãn, bấm để bật lại */
+    const roleEl = e.noPlan ? (
+      <span className="inline-flex flex-wrap items-center gap-1">{roleTag}
+        <button type="button" onClick={() => setNoPlan(e.id, false)} title="Đang không tính vào Kế hoạch nguồn lực — bấm để tính lại"
+          className="ro-static rounded border border-amber-800 bg-amber-950 px-1.5 py-0.5 text-[10px] text-amber-300">Không tính KH</button>
+      </span>
+    ) : roleTag;
     // v6.9 (mẫu C): chip dự án có ✕ để gỡ; "+ Dự án" mở danh sách tích chọn
     const mine = empProjs(e);
     const projEl = e.allProjects ? (
@@ -703,6 +715,12 @@ export function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = n
                   {ROLES.filter((r) => r.dept === f.dept || r.id === f.role).map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
                 </select>
               </div>
+              {/* v12.17 — tính vào Kế hoạch nguồn lực: bỏ tích cho người đang thử việc… (không ảnh hưởng chấm công) */}
+              <button type="button" onClick={() => setF({ noPlan: !f.noPlan })}
+                className={`flex min-h-[36px] w-full items-center gap-2 rounded-md border px-2.5 text-left text-[13px] ${!f.noPlan ? "border-teal-700 bg-teal-950 text-teal-200" : "border-dashed border-amber-800 text-amber-300"}`}>
+                <span className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border ${!f.noPlan ? "border-teal-600 bg-teal-600 text-white" : "border-amber-700"}`}>{!f.noPlan && <Check size={12} />}</span>
+                Tính vào Kế hoạch nguồn lực <span className="text-xs opacity-70">— {f.noPlan ? "đang bỏ ra (vd thử việc): không tính quân số và giờ thực tế" : "quân số và giờ thực tế được tính"}</span>
+              </button>
               {/* v6.9 — dự án đang tham gia: nhân sự chỉ thấy và chấm được các dự án này (chưa chọn = chỉ chấm Việc chung / vắng mặt) */}
               <div>
                 <div className="mb-1.5 flex items-center justify-between text-xs text-slate-500">
