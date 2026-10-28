@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.13
+   ARTIUS — Quản lý giờ công theo dự án · v12.14
+   Mới ở v12.14 — Kế hoạch: (1) kéo thả dự án đổi vị trí (cầm ⋮⋮ ở dòng tên dự án; thứ tự riêng từng máy);
+     (2) nút con mắt tạm ẩn một dự án: thu gọn, mờ, KHÔNG tính vào dòng tổng / Tổng quan / Excel, số đã nhập giữ nguyên;
+     lưu trong thiết lập chung (planning.hidden) nên mọi người thấy như nhau; (3) nút "+ vai trò" thu lại thành dấu +.
    Mới ở v12.13 — Kế hoạch: TỰ LƯU sau khi ngừng gõ 2 giây (đầu lưới hiện Đang lưu… / Đã lưu lúc …); nút Lưu vẫn để ghi ngay.
      Đổi cặp năm thì lưu nốt phần dở trước; đóng tab khi còn số chưa lưu thì trình duyệt hỏi lại. Lỗi lưu hiện nguyên câu
      của Supabase. Chốt bản vẫn bấm tay.

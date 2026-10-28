@@ -9,8 +9,8 @@
    Bề ngang cột khoá và cột tuần đều đặt cứng, tên dự án cắt gọn một dòng (rê chuột xem đủ) — nhờ vậy
    chiều cao mỗi dòng không đổi và màn hình laptop không bị tên dài đẩy cao gấp ba. */
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { GripVertical, Trash2 } from "lucide-react";
-import { moveInList } from "../../shared/rowDrag.jsx";
+import { Eye, EyeOff, GripVertical, Plus, Trash2 } from "lucide-react";
+import { moveInList, sortByProjOrder } from "../../shared/rowDrag.jsx";
 import { btnGhost } from "../../core/ui.jsx";
 import { isLight } from "../../core/theme.jsx";
 import { cellOf, leftOf, needOf, setCell, setMany } from "./planCalc.js";
@@ -34,6 +34,8 @@ const Frz = ({ children, cls = "", py = "py-0.5", title }) => (
 
 /* thứ tự vai trò trong từng dự án do người dùng kéo thả — lưu riêng từng máy (như thứ tự dự án), không đụng dữ liệu kế hoạch */
 const ORD_KEY = "artius:planRoleOrder";
+const PORD_KEY = "artius:planProjOrder";   // thứ tự dự án trên lưới Kế hoạch (riêng từng máy, không đụng thứ tự ở tab Dự án)
+const readPOrd = () => { try { const a = JSON.parse(localStorage.getItem(PORD_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } };
 const readOrd = () => { try { const o = JSON.parse(localStorage.getItem(ORD_KEY) || "{}"); return o && typeof o === "object" ? o : {}; } catch { return {}; } };
 const sortRoles = (rws, ord) => {
   if (!ord?.length) return rws;
@@ -110,7 +112,7 @@ const Row = React.memo(function Row({ r, pid, rid, label, values, weeks, nowInde
   );
 });
 
-export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, head, readOnly = false, nowIndex = -1, scrollKey }) {
+export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new Set(), onToggleHide, roles, weeks, nWeeks, cap, head, readOnly = false, nowIndex = -1, scrollKey }) {
   const [active, setActive] = useState(null);     // { rid, wi }
   const wrap = useRef(null);
   const [order, setOrder] = useState(readOrd);
@@ -135,7 +137,12 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
   const rolesRef = useRef(roles); rolesRef.current = roles;
   const changeRef = useRef(onChange); changeRef.current = onChange;
 
-  const pids = useMemo(() => projects.map((p) => p.id), [projects]);
+  /* thứ tự dự án do kéo thả; dự án tạm ẩn vẫn nằm trên lưới (thu gọn) nhưng KHÔNG tính vào các dòng tổng */
+  const [pOrder, setPOrder] = useState(readPOrd);
+  const pOrderRef = useRef(pOrder); pOrderRef.current = pOrder;
+  const projects = useMemo(() => sortByProjOrder(allProjects, pOrder, (p) => p.id), [allProjects, pOrder]);
+  const projectsRef = useRef(projects); projectsRef.current = projects;
+  const pids = useMemo(() => projects.filter((p) => !hidden.has(p.id)).map((p) => p.id), [projects, hidden]);
   const roleById = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles]);
   const nCol = weeks.length;
 
@@ -278,6 +285,32 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
       dnd.end();
     },
   }), []);  // eslint-disable-line react-hooks/exhaustive-deps
+  /* kéo thả đổi vị trí dự án: cầm ⋮⋮ ở dòng tên dự án */
+  const pdnd = {
+    start: (e, pid) => {
+      drag.current = { proj: pid };
+      e.dataTransfer.effectAllowed = "move";
+      const tr = e.currentTarget.closest("tr");
+      try { e.dataTransfer.setData("text/plain", pid); if (tr) e.dataTransfer.setDragImage(tr, 20, 10); } catch { /* bỏ qua */ }
+      if (tr) setTimeout(() => tr.setAttribute("data-dragging", "1"), 0);
+    },
+    over: (e, pid) => {
+      const d = drag.current; if (!d?.proj || d.proj === pid) return;
+      e.preventDefault();
+      const tr = e.currentTarget, b = tr.getBoundingClientRect();
+      const v = e.clientY > b.top + b.height / 2 ? "after" : "before";
+      if (tr.getAttribute("data-drop") !== v) tr.setAttribute("data-drop", v);
+    },
+    drop: (e, pid) => {
+      const d = drag.current; if (!d?.proj || d.proj === pid) return;
+      e.preventDefault();
+      const after = e.currentTarget.getAttribute("data-drop") === "after";
+      const next = moveInList(projectsRef.current.map((p) => p.id), d.proj, pid, after);
+      setPOrder(next);
+      try { localStorage.setItem(PORD_KEY, JSON.stringify(next)); } catch { /* không lưu được: chỉ đổi cho phiên này */ }
+      dnd.end();
+    },
+  };
   const onFocusCell = useCallback((rid, wi, r, c) => {
     setActive({ rid, wi });
     if (!keepSel.current && !dragSel.current) setSel({ a: { r, c }, f: { r, c } });
@@ -338,6 +371,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
   const rowList = [];
   const rowsOfProject = new Map();
   for (const p of projects) {
+    if (hidden.has(p.id)) { rowsOfProject.set(p.id, []); continue; }   // dự án tạm ẩn: thu gọn, không có ô nhập
     const used = new Set(Object.keys(plan[p.id] || {}));
     const rws = sortRoles(roles.filter((r) => used.has(r.id)), order[p.id]);
     rowsOfProject.set(p.id, rws.map((r) => ({ r, idx: rowList.push({ pid: p.id, rid: r.id }) - 1 })));
@@ -398,21 +432,43 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
               const rws = rowsOfProject.get(p.id) || [];
               const free = roles.filter((r) => !used.has(r.id));
               const name = `${p.code ? `${p.code} ` : ""}${p.name}`;
+              const off = hidden.has(p.id);
               return (
                 <React.Fragment key={p.id}>
-                  <tr>
+                  <tr className={off ? "opacity-50" : ""}
+                    {...(readOnly ? {} : { onDragOver: (e) => pdnd.over(e, p.id), onDragLeave: (e) => e.currentTarget.removeAttribute("data-drop"), onDrop: (e) => pdnd.drop(e, p.id) })}>
                     <td className="sticky left-0 z-20 border-t border-slate-700 bg-slate-950 p-0">
-                      <Frz py="py-1" title={name}>
-                        <span className="flex items-center gap-2">
-                          <span className="truncate font-semibold text-slate-100">{name}</span>
-                          {!readOnly && free.length > 0 && (
-                            <select value="" onChange={(e) => addRole(p.id, e.target.value)}
-                              aria-label={`Thêm vai trò cho ${p.name}`}
-                              className="ml-auto h-6 w-[72px] shrink-0 rounded border border-slate-700 bg-slate-900 px-1 text-[10px] text-slate-400">
-                              <option value="">+ vai trò</option>
-                              {free.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
-                            </select>
+                      <Frz py="py-1" title={off ? `${name} — đang tạm ẩn, không tính vào tổng` : name}>
+                        <span className="flex items-center gap-1">
+                          {!readOnly && (
+                            <span draggable onDragStart={(e) => pdnd.start(e, p.id)} onDragEnd={dnd.end}
+                              title="Giữ và kéo để đổi vị trí dự án"
+                              className="inline-flex w-3 shrink-0 cursor-grab touch-none items-center justify-center text-slate-600 hover:text-slate-300 active:cursor-grabbing">
+                              <GripVertical size={13} />
+                            </span>
                           )}
+                          <span className={`truncate font-semibold ${off ? "text-slate-500 line-through" : "text-slate-100"}`}>{name}</span>
+                          <span className="ml-auto flex shrink-0 items-center gap-1">
+                            {!readOnly && !off && free.length > 0 && (
+                              <span className="relative inline-flex h-6 w-6 items-center justify-center rounded border border-slate-700 text-slate-400 hover:border-teal-600 hover:text-teal-300"
+                                title="Thêm vai trò">
+                                <Plus size={13} />
+                                <select value="" onChange={(e) => addRole(p.id, e.target.value)} aria-label={`Thêm vai trò cho ${p.name}`}
+                                  className="absolute inset-0 cursor-pointer opacity-0">
+                                  <option value="">Thêm vai trò…</option>
+                                  {free.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
+                                </select>
+                              </span>
+                            )}
+                            {!readOnly && onToggleHide && (
+                              <button type="button" onClick={() => onToggleHide(p.id)}
+                                title={off ? "Hiện lại và tính vào tổng" : "Tạm ẩn — không tính dự án này vào tổng"}
+                                className={`inline-flex h-6 w-6 items-center justify-center rounded border border-slate-700 hover:border-teal-600 hover:text-teal-300 ${off ? "text-amber-400" : "text-slate-500"}`}>
+                                {off ? <EyeOff size={13} /> : <Eye size={13} />}
+                              </button>
+                            )}
+                            {readOnly && off && <EyeOff size={13} className="text-amber-400" />}
+                          </span>
                         </span>
                       </Frz>
                     </td>

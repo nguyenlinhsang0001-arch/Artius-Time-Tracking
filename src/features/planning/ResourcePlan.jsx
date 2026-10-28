@@ -38,6 +38,17 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
   const nowIdx = slotIndexOf(start, new Date());
 
   const projects = useMemo(() => (cfg.projects || []).filter((p) => p.active), [cfg.projects]);
+  /* v12.14 — dự án tạm ẩn: lưu trong thiết lập chung (mọi người thấy như nhau), không tính vào tổng / tổng quan / Excel */
+  const hidden = useMemo(() => new Set(cfg.planning?.hidden || []), [cfg.planning?.hidden]);
+  const shownProjects = useMemo(() => projects.filter((p) => !hidden.has(p.id)), [projects, hidden]);
+  const toggleHide = async (pid) => {
+    const cur = new Set(cfg.planning?.hidden || []);
+    const off = !cur.has(pid);
+    if (off) cur.add(pid); else cur.delete(pid);
+    const ok = await saveCfg({ ...cfg, planning: { ...(cfg.planning || {}), hidden: [...cur] } });
+    const p = projects.find((x) => x.id === pid);
+    if (ok !== false) flash(off ? `Đã tạm ẩn ${p?.code || p?.name} — không tính vào tổng.` : `Đã hiện lại ${p?.code || p?.name}.`);
+  };
   const staff = useMemo(() => (cfg.employees || []).filter((e) => !isResigned(e)), [cfg.employees]);
   const { head, cap } = useMemo(() => {
     const h = new Map();
@@ -170,7 +181,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
   const onExport = async () => {
     try {
       const { exportPlanXlsx } = await import("./planExport.js");
-      await exportPlanXlsx({ plan: prunePlan(plan), projects, roles, weeks, cap, head, actual, okWeeks: ts?.okWeeks || new Set(), realWeeks, start, snaps, avail });
+      await exportPlanXlsx({ plan: prunePlan(plan), projects: shownProjects, roles, weeks, cap, head, actual, okWeeks: ts?.okWeeks || new Set(), realWeeks, start, snaps, avail });
       flash("Đã xuất Excel kế hoạch.");
     } catch (e) { flash(`Chưa xuất được — ${errMsg(e)}`, "err"); }
   };
@@ -237,10 +248,10 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
 
         {mode === "in" ? (
           <PlanGrid plan={plan} onChange={(p) => { setPlan(p); setDirty(true); }}
-            projects={projects} roles={roles} weeks={view} nWeeks={weeks.length}
+            projects={projects} hidden={hidden} onToggleHide={readOnly ? undefined : toggleHide} roles={roles} weeks={view} nWeeks={weeks.length}
             cap={cap} head={head} readOnly={readOnly} nowIndex={nowIdx} scrollKey={start} />
         ) : (
-          <PlanOverview plan={plan} projects={projects} roles={roles} weeks={view}
+          <PlanOverview plan={plan} projects={shownProjects} roles={roles} weeks={view}
             cap={cap} availability={avail}
             actual={actual} realWeeks={realWeeks} okWeeks={ts?.okWeeks || new Set()} nowIndex={nowIdx < 0 ? 0 : nowIdx} />
         )}
