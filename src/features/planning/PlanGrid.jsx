@@ -19,6 +19,7 @@ const FRZ = 230;   // bề ngang mặc định của cột khoá cứng; kéo �
 const FRZ_MIN = 150, FRZ_MAX = 520, FRZ_KEY = "artius:planFrz";
 const readFrz = () => { try { const v = Number(localStorage.getItem(FRZ_KEY)); return v >= FRZ_MIN && v <= FRZ_MAX ? v : FRZ; } catch { return FRZ; } };
 const CW = 34;     // bề ngang mỗi cột tuần
+const STEP_Q = 0.25;   // bước tăng / giảm của phím + / −
 const f = (n) => (!n ? "" : String(+Number(n).toFixed(2)).replace(".", ","));
 const f0 = (n) => String(+Number(n).toFixed(2)).replace(".", ",");
 const parse = (s) => {
@@ -304,6 +305,14 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
       return;
     }
     const s = selRef.current;
+    /* phím + / − : tăng / giảm 0,25 người cho ô đang đứng hoặc cả vùng đang chọn (không âm, tối đa 99) */
+    if (!readOnly && (e.key === "+" || e.key === "-") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      const d = e.key === "+" ? STEP_Q : -STEP_Q;
+      const b = s ? box(s) : { r0: Number(el.dataset.row), r1: Number(el.dataset.row), c0: Number(el.dataset.col), c1: Number(el.dataset.col) };
+      applyMany(itemsOf(b, (r, c) => Math.max(0, Math.min(99, Math.round((valAt(r, c) + d) / STEP_Q) * STEP_Q))));
+      return;
+    }
     if (!readOnly && isMulti(s) && (e.key === "Delete" || e.key === "Backspace")) {
       e.preventDefault(); applyMany(itemsOf(box(s), () => 0)); return;
     }
@@ -491,7 +500,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-slate-950" />tuần đã qua</span>
         <span className="text-slate-600">Tên dự án dài được cắt gọn — rê chuột để xem đủ</span>
         {!readOnly && <span className="text-slate-600">Mũi tên để di chuyển · Enter xuống dòng · Esc nhả ô</span>}
-        {!readOnly && <span className="text-slate-600">Kéo chuột hoặc Shift + mũi tên để chọn nhiều ô, gõ số là điền cả vùng · Ctrl + C / Ctrl + V · Ctrl + D lấy theo dòng trên · Delete xoá vùng</span>}
+        {!readOnly && <span className="text-slate-600">Kéo chuột hoặc Shift + mũi tên để chọn nhiều ô, gõ số là điền cả vùng · Ctrl + C / Ctrl + V · Ctrl + D lấy theo dòng trên · + / − tăng giảm 0,25 · Delete xoá vùng</span>}
       </div>
     </div>
   );

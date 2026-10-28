@@ -1,6 +1,7 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.11
+   ARTIUS — Quản lý giờ công theo dự án · v12.12
+   Mới ở v12.12 — Kế hoạch → Nhập liệu: phím + / − tăng / giảm 0,25 người cho ô đang đứng hoặc cả vùng đang chọn.
    Mới ở v12.11 — Kế hoạch → Nhập liệu: chọn nhiều ô (kéo chuột, Shift + mũi tên, Shift + bấm) rồi gõ số là điền cả vùng;
      Ctrl + C / Ctrl + X / Ctrl + V với vùng ô (dán thẳng từ Excel được, một số dán vào cả vùng đang chọn); Delete xoá vùng;
      Ctrl + D giống Excel: một dòng → lấy số dòng ngay trên, nhiều dòng → dòng đầu vùng chép xuống.
