@@ -1,7 +1,7 @@
 /* ARTIUS TIME v11 — tách từ App.jsx, nội dung giữ nguyên. */
 import React, { useState } from "react";
 import {
-  Plus, ChevronDown, Loader2, Check, X,
+  Plus, ChevronDown, Loader2, Check, X, Pencil,
 } from "lucide-react";
 import { addDays, dLabel, fmt, lastOfMonth, parseD, ymsBetween } from "../core/date.jsx";
 import { dbTs, useDataTick } from "../core/db.jsx";
@@ -113,11 +113,36 @@ export function SupportDialog({ cfg, emps, presetEmp = "", presetPid = "", onSav
     </div>
   );
 }
+/* v12.5 — sửa thẳng ngày bắt đầu / kết thúc của một đợt (thay vì chỉ +1 / +2 tuần). Giữ nguyên id nên ghi đè đúng đợt đó. */
+function RangeEdit({ x, onSave, onClose }) {
+  const [from, setFrom] = useState(x.from);
+  const [until, setUntil] = useState(x.until);
+  const [busy, setBusy] = useState(false);
+  const ok = from && until && until >= from && (from !== x.from || until !== x.until);
+  const save = async () => {
+    if (!ok || busy) return;
+    setBusy(true);
+    const done = await onSave({ ...x, from, until });
+    setBusy(false);
+    if (done !== false) onClose();
+  };
+  return (
+    <div className="mt-1.5 flex flex-wrap items-end gap-2">
+      <label className="text-[11px] text-slate-500">Từ ngày<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={`mt-0.5 ${inputCls} h-9`} /></label>
+      <label className="text-[11px] text-slate-500">Đến hết ngày<input type="date" min={from} value={until} onChange={(e) => setUntil(e.target.value)} className={`mt-0.5 ${inputCls} h-9`} /></label>
+      <button onClick={save} disabled={!ok || busy} className={`${btnPrimary} h-9 disabled:opacity-40`}>{busy ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />} Lưu</button>
+      <button onClick={onClose} disabled={busy} className={`${btnGhost} h-9`}>Huỷ</button>
+      {until < from && <span className="text-xs text-rose-400">Ngày kết thúc phải sau ngày bắt đầu</span>}
+    </div>
+  );
+}
+
 /* danh sách đợt hỗ trợ (đang mở / sắp tới / hết hạn ≤ 30 ngày) + nút Mở hỗ trợ · Gia hạn · Kết thúc */
 export function SupportPanel({ cfg, onSupport, readOnly = false, collapsible = false, note = "" }) {
   const dataTick = useDataTick();   // eslint-disable-line no-unused-vars
   const today = fmt(new Date());
   const [dlg, setDlg] = useState(false);
+  const [editId, setEditId] = useState(null);   // đợt đang sửa ngày
   const [open, setOpen] = useState(() => !collapsible || supportList(cfg).some((x) => x.until >= fmt(new Date())));   // có đợt đang mở thì mở sẵn
   const emps = cfg.employees.filter((e) => !isResigned(e) && !e.allProjects).sort((a, b) => a.name.localeCompare(b.name, "vi"));   // v8.8: người có Tất cả dự án không cần hỗ trợ
   const empMap = new Map(cfg.employees.map((e) => [e.id, e]));
@@ -152,10 +177,16 @@ export function SupportPanel({ cfg, onSupport, readOnly = false, collapsible = f
                   <div className="min-w-0 flex-1">
                     <div className="text-slate-100">{e?.name || "?"} <span className="text-slate-500">→</span> {pName(x.pid)}{x.phase ? <span className="text-slate-500"> · {x.phase}</span> : ""}</div>
                     <div className="text-xs text-slate-500">
-                      {dLabel(x.from)} → {dLabel(x.until)}
+                      {!readOnly ? (
+                        <button onClick={() => setEditId(editId === x.id ? null : x.id)} title="Sửa ngày bắt đầu / kết thúc"
+                          className="ro-hide inline-flex items-center gap-1 rounded px-1 text-slate-300 underline decoration-dotted underline-offset-2 hover:text-teal-300">
+                          {dLabel(x.from)} → {dLabel(x.until)} <Pencil size={11} />
+                        </button>
+                      ) : <>{dLabel(x.from)} → {dLabel(x.until)}</>}
                       {" · "}{gone ? <span>đã hết hạn</span> : wait ? <span className="text-sky-400">bắt đầu {dLabel(x.from)}</span> : <span className={soon ? "text-amber-400" : "text-violet-300"}>{left === 0 ? "hết hạn hôm nay" : `còn ${left} ngày`}</span>}
                       {" · "}{fmtH(h)} h{x.note ? ` · ${x.note}` : ""}
                     </div>
+                    {editId === x.id && !readOnly && <RangeEdit x={x} onSave={onSupport} onClose={() => setEditId(null)} />}
                   </div>
                   {!readOnly && !gone && (
                     <div className="ro-hide flex shrink-0 gap-1.5">
