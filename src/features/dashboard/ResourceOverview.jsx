@@ -121,9 +121,10 @@ export default function ResourceOverview({ cfg }) {
   );
 
   /* ---------------------------- biểu đồ ---------------------------- */
-  const W = 1180, H = 372, L = 56, R = 16, T = 26, B = 46;
+  const W = 980, H = 300, L = 46, R = 14, T = 24, B = 40;
   const n = view.length, step = (W - L - R) / Math.max(n, 1);
-  const mid = T + (H - T - B) * 0.58;   /* vạch 0 đặt thấp: phần thiếu cần nhiều chỗ hơn phần dư */
+  const PH = H - T - B;                 /* chiều cao vùng vẽ */
+  const PADU = 16, PADD = 14;           /* chừa chỗ cho nhãn số trên đỉnh cột và nhãn tuần */
   const FLOOR = 3;                      /* sàn hiển thị: đoạn rất mỏng vẫn phải thấy được */
 
   /* đổi giá trị (số người) sang đơn vị đang chọn */
@@ -131,8 +132,13 @@ export default function ResourceOverview({ cfg }) {
 
   let up = 0, dn = 0;
   for (const w of view) { up = Math.max(up, val(shortAt(w.i, live))); dn = Math.max(dn, val(freeAt(w.i, live))); }
-  const sc = Math.min((mid - T - 16) / Math.max(up, unit === "abs" ? 0.5 : 5),
-    (H - B - mid - 14) / Math.max(dn, unit === "abs" ? 0.5 : 5));
+  /* Vạch 0 đặt theo đúng tỉ lệ thiếu / dư đang có, thay vì cố định 58%:
+     chia sao cho hai nửa cùng một thang đo mà không nửa nào thừa chỗ trống — nhờ vậy biểu đồ gọn lại
+     thay vì để trống một mảng dưới vạch 0 như trước. */
+  const mid = T + (up + dn < 1e-6 ? PH * 0.6
+    : Math.min(PH * 0.85, Math.max(PH * 0.3, (up * PH - PADD * up + PADU * dn) / (up + dn))));
+  const sc = Math.min((mid - T - PADU) / Math.max(up, unit === "abs" ? 0.5 : 5),
+    (H - B - mid - PADD) / Math.max(dn, unit === "abs" ? 0.5 : 5));
 
   const axis = isLight() ? "#0f172a" : "#e2e8f0";
   const grid = isLight() ? "#e2e8f0" : "#1e293b";
@@ -198,7 +204,7 @@ export default function ResourceOverview({ cfg }) {
           ))}
         </div>
         <div className="flex overflow-hidden rounded-md border border-slate-700">
-          {[12, 24, 48].map((k) => (
+          {[12, 24, 36].map((k) => (
             <button key={k} onClick={() => setWin(k)} className={seg(win === k)}>{k} tuần</button>
           ))}
         </div>
@@ -221,7 +227,8 @@ export default function ResourceOverview({ cfg }) {
         })}
       </div>
 
-      <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_320px]">
+      {/* v12.22 — khung chi tiết rộng hơn phần biểu đồ cần: tên dự án viết đủ, không cắt bớt */}
+      <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_420px]">
         {/* biểu đồ */}
         <div className="p-3 md:p-4">
           <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
@@ -271,8 +278,15 @@ export default function ResourceOverview({ cfg }) {
           {who.length === 0
             ? <div className="border-t border-slate-800 py-1.5 text-[11.5px] text-slate-600">Tuần này không vai trò nào thiếu người</div>
             : who.map((o, k) => (
-              <div key={`${o.rid}${o.p.id}${k}`} className="grid grid-cols-[minmax(0,1fr)_48px] gap-2 border-t border-slate-800 py-1.5 text-[11.5px]">
-                <span className="truncate text-slate-400"><span className="font-mono" style={{ color: colorOf.get(o.rid) }}>{o.rid}</span> {o.p.code || o.p.name}</span>
+              /* tên dự án viết đủ và xuống dòng khi dài — mã dự án chỉ đi kèm, không thay cho tên */
+              <div key={`${o.rid}${o.p.id}${k}`} className="grid grid-cols-[34px_minmax(0,1fr)_44px] items-baseline gap-2 border-t border-slate-800 py-1.5 text-[11.5px]">
+                <span className="font-mono" style={{ color: colorOf.get(o.rid) }}>{o.rid}</span>
+                <span className="break-words text-slate-300">
+                  {o.p.name || o.p.code}
+                  {o.p.code && o.p.name && o.p.name !== o.p.code && (
+                    <span className="ml-1.5 font-mono text-[10.5px] text-slate-600">{o.p.code}</span>
+                  )}
+                </span>
                 <span className="text-right font-mono text-slate-300">{f0(o.v)}</span>
               </div>
             ))}

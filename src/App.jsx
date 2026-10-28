@@ -6,7 +6,9 @@
      một biểu đồ cột chồng hai chiều cho cả công ty lẫn từng vai trò theo tuần — trên vạch 0 là người THIẾU,
      dưới là người DƯ, mỗi đoạn màu là một vai trò; không bù trừ hai bên nên vai trò đang dư không che vai trò đang thiếu.
      Bấm một cột để xem chi tiết tuần đó (cần / có từng vai trò, % quân số của vai trò thiếu, dự án đang chiếm).
-     Đổi đơn vị Số người / % quân số công ty; xem 12 · 24 · 48 tuần kể từ tuần hiện tại; chip bật tắt từng vai trò.
+     Đổi đơn vị Số người / % quân số công ty; xem 12 · 24 · 36 tuần kể từ tuần hiện tại; chip bật tắt từng vai trò.
+     Vạch 0 tự đặt theo tỉ lệ thiếu / dư đang có nên biểu đồ không để trống nửa dưới; khung chi tiết bên phải rộng 420px,
+     tên dự án viết đủ (mã dự án chỉ đi kèm, không thay cho tên).
      Đoạn nhỏ vẫn vẽ dày tối thiểu 3px để không mất hút. Màn này CHỈ ĐỌC — lưới nhập vẫn ở tab Kế hoạch,
      dùng chung nguồn số liệu và quy tắc với tab đó (quân số × hệ số sẵn sàng, dự án tạm ẩn, vai trò gộp).
      Tắt mục Kế hoạch trong Thiết lập thì tab này cũng ẩn theo.
