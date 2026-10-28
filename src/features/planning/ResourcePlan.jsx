@@ -1,12 +1,12 @@
 /* ARTIUS TIME v12 — Tab "Kế hoạch": khung chung, hai chế độ Nhập liệu và Tổng quan.
    Admin nhập và lưu; BOD và trưởng phòng chỉ xem. Dữ liệu nằm ở bảng riêng (xem planStore.js). */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Download, Loader2, RotateCcw, Save } from "lucide-react";
+import { Camera, Download, Loader2, Merge, RotateCcw, Save } from "lucide-react";
 import { fmt, mondayOf } from "../../core/date.jsx";
 import { dbTsSent, ensureMonths, useDataTick, weekDone } from "../../core/db.jsx";
 import { ROLES, isResigned } from "../../core/domain.jsx";
 import { CTRL, Panel, btnGhost, btnPrimary } from "../../core/ui.jsx";
-import { PER_YEAR, actualByCell, joinYears, normalizeYear, prunePlan, realWeeksOfPair, slotIndexOf, splitYears, weeksOfPair } from "./planCalc.js";
+import { PER_YEAR, actualByCell, foldMerged, joinYears, normalizeYear, prunePlan, realWeeksOfPair, slotIndexOf, splitYears, weeksOfPair } from "./planCalc.js";
 import { PlanGrid } from "./PlanGrid.jsx";
 import { PlanOverview } from "./PlanOverview.jsx";
 import { SQL_HINT, errMsg, isMissingTable, listSnapshots, loadPlan, savePlan, snapshotPlan } from "./planStore.js";
@@ -52,13 +52,29 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
     const p = projects.find((x) => x.id === pid);
     if (ok !== false) flash(off ? `Đã tạm ẩn ${p?.code || p?.name} — không tính vào tổng.` : `Đã hiện lại ${p?.code || p?.name}.`);
   };
+  /* v12.16 — gộp vai trò trong kế hoạch (thiết lập chung planning.merge = { con: cha }), vd TL-2D → 2D, TLTK → TK.
+     Chỉ có tác dụng trong mục Kế hoạch: quân số, nhu cầu, giờ thực tế của vai trò con đều tính vào vai trò cha.
+     Vai trò của nhân sự ở tab Nhân sự không đổi. */
+  const allRoles = useMemo(() => ROLES.map((r) => ({ ...r })), [cfg.roles, tick]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const merge = useMemo(() => {
+    const m = cfg.planning?.merge || {}, ids = new Set(allRoles.map((r) => r.id)), out = {};
+    for (const [k, v] of Object.entries(m)) if (ids.has(k) && ids.has(v) && k !== v && !m[v]) out[k] = v;   // chỉ một tầng, bỏ vai trò đã xoá
+    return out;
+  }, [cfg.planning?.merge, allRoles]);
+  const prole = useCallback((rid) => merge[rid] || rid, [merge]);
+  const roles = useMemo(() => allRoles.filter((r) => !merge[r.id]), [allRoles, merge]);
+  const mergedOf = useMemo(() => {
+    const m = new Map();
+    for (const [k, v] of Object.entries(merge)) m.set(v, [...(m.get(v) || []), k]);
+    return m;
+  }, [merge]);
   const staff = useMemo(() => (cfg.employees || []).filter((e) => !isResigned(e)), [cfg.employees]);
+  const planStaff = useMemo(() => staff.map((e) => (e.role && merge[e.role] ? { ...e, role: merge[e.role] } : e)), [staff, merge]);
   const { head, cap } = useMemo(() => {
     const h = new Map();
-    for (const e of staff) if (e.role) h.set(e.role, (h.get(e.role) || 0) + 1);
+    for (const e of planStaff) if (e.role) h.set(e.role, (h.get(e.role) || 0) + 1);
     return { head: h, cap: new Map([...h].map(([k, v]) => [k, +(v * avail).toFixed(2)])) };
-  }, [staff, avail]);
-  const roles = useMemo(() => ROLES.map((r) => ({ ...r })), [cfg.roles, tick]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [planStaff, avail]);
   const statRoles = useMemo(() => { const h = new Set(totals?.hidden || []); return roles.filter((r) => !h.has(r.id)); }, [roles, totals]);
 
   /* dự án chưa có dòng nào → điền sẵn các vai trò cơ bản (dòng toàn 0, chưa tính là "đã sửa").
@@ -66,11 +82,25 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
   const fillRef = useRef(null);
   fillRef.current = (p) => {
     if (readOnly) return p;
-    const ids = DEFAULT_ROLES.filter((id) => ROLES.some((r) => r.id === id));
-    const out = { ...p };
+    const ids = DEFAULT_ROLES.filter((id) => roles.some((r) => r.id === id));
+    const f = foldMerged(p, prole);
+    foldedRef.current = f.changed;
+    const out = { ...f.plan };
     for (const pr of projects) if (!out[pr.id] || !Object.keys(out[pr.id]).length)
       out[pr.id] = Object.fromEntries(ids.map((id) => [id, Array(weeks.length).fill(0)]));
     return out;
+  };
+  const foldedRef = useRef(false);   // lúc tải có dòng vai trò con được gộp → đánh dấu chưa lưu để tự lưu
+  useEffect(() => {   // đổi thiết lập gộp khi đang mở lưới → gộp ngay các dòng đang có
+    if (readOnly) return;
+    setPlan((p) => { const f = foldMerged(p, prole); if (f.changed) setDirty(true); return f.plan; });
+  }, [prole, readOnly]);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const setMerge = async (child, parent) => {
+    const m = { ...(cfg.planning?.merge || {}) };
+    if (parent) m[child] = parent; else delete m[child];
+    const ok = await saveCfg({ ...cfg, planning: { ...(cfg.planning || {}), merge: m } });
+    if (ok !== false) flash(parent ? `Đã gộp ${child} vào ${parent} trong kế hoạch.` : `Đã tách ${child} ra riêng.`);
   };
 
   /* ---------- tải lưới ---------- */
@@ -78,7 +108,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
     let alive = true;
     setBusy(true); setErr("");
     Promise.all([loadPlan(start), loadPlan(start + 1)])
-      .then(([a, b]) => { if (alive) { setPlan(fillRef.current(joinYears(normalizeYear(a, start), normalizeYear(b, start + 1), n1, n2))); setDirty(false); } })
+      .then(([a, b]) => { if (alive) { setPlan(fillRef.current(joinYears(normalizeYear(a, start), normalizeYear(b, start + 1), n1, n2))); setDirty(!readOnly && foldedRef.current); } })
       .catch((e) => { if (alive) setErr(isMissingTable(e) ? SQL_HINT : `Chưa tải được kế hoạch — ${errMsg(e)}`); })
       .finally(() => alive && setBusy(false));
     Promise.all([listSnapshots(start), listSnapshots(start + 1)]).then(([a, b]) => alive && setSnaps([...a, ...b])).catch(() => {});
@@ -115,8 +145,8 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
   }, [start, staff, realWeeks, tick]);
 
   const actual = useMemo(
-    () => actualByCell(ts?.detail || [], staff, cfg.hours),
-    [ts, staff, cfg.hours]);
+    () => actualByCell(ts?.detail || [], planStaff, cfg.hours),
+    [ts, planStaff, cfg.hours]);
 
   /* ---------- lưu ---------- */
   /* ---------- lưu (tự lưu sau khi ngừng gõ 2 giây, nút Lưu để ghi ngay) ----------
@@ -235,6 +265,11 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
               {[0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 1].map((v) => <option key={v} value={v}>{Math.round(v * 100)}%</option>)}
             </select>
           </label>
+          {!readOnly && (
+            <button onClick={() => setMergeOpen(!mergeOpen)} aria-expanded={mergeOpen}
+              title="Gộp vai trò con vào vai trò chính trong kế hoạch, vd Teamleader 2D vào Họa viên 2D"
+              className={`${btnGhost} ${mergeOpen ? "border-teal-700 text-teal-300" : ""}`}><Merge size={15} /> Gộp vai trò{Object.keys(merge).length ? ` (${Object.keys(merge).length})` : ""}</button>
+          )}
           <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
             <button onClick={onExport} title="Xuất lưới, tổng theo vai trò, so với thực tế và các bản chốt"
               className={`flex-1 sm:flex-none ${btnGhost}`}><Download size={15} /> Xuất Excel</button>
@@ -250,9 +285,40 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
           </div>
         </div>
 
+        {mergeOpen && !readOnly && (
+          <div className="border-b border-slate-800 px-3 py-3 md:px-4">
+            <p className="mb-2 text-xs text-slate-500">
+              Vai trò được gộp không còn dòng riêng trong kế hoạch: quân số, nhu cầu và giờ thực tế của nó tính vào vai trò chính.
+              Vai trò của nhân sự ở tab Nhân sự không đổi.
+            </p>
+            <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2 xl:grid-cols-3">
+              {allRoles.map((r) => {
+                const kids = mergedOf.get(r.id);
+                return (
+                  <label key={r.id} className="flex items-center gap-2 text-sm">
+                    <span className="min-w-0 flex-1 truncate"><span className="font-mono text-slate-400">{r.id}</span> <span className="text-slate-300">{r.name}</span></span>
+                    {kids ? <span className="text-xs text-teal-400">nhóm chính · gồm {kids.join(", ")}</span> : (
+                      <select value={merge[r.id] || ""} onChange={(e) => setMerge(r.id, e.target.value)} aria-label={`Gộp ${r.id} vào`}
+                        className="h-8 w-44 rounded-md border border-slate-700 bg-slate-900 px-2 text-xs text-slate-100">
+                        <option value="">Không gộp</option>
+                        {allRoles.filter((x) => x.id !== r.id && !merge[x.id]).map((x) => <option key={x.id} value={x.id}>gộp vào {x.id} · {x.name}</option>)}
+                      </select>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {readOnly && Object.keys(merge).length > 0 && (
+          <div className="border-b border-slate-800 px-3 py-2 text-xs text-slate-500 md:px-4">
+            Gộp trong kế hoạch: {Object.entries(merge).map(([k, v]) => `${k} → ${v}`).join(" · ")}
+          </div>
+        )}
+
         {mode === "in" ? (
           <PlanGrid plan={plan} onChange={(p) => { setPlan(p); setDirty(true); }}
-            projects={projects} hidden={hidden} onToggleHide={readOnly ? undefined : toggleHide} totals={totals} onTotals={readOnly ? undefined : onTotals} roles={roles} weeks={view} nWeeks={weeks.length}
+            projects={projects} hidden={hidden} onToggleHide={readOnly ? undefined : toggleHide} totals={totals} onTotals={readOnly ? undefined : onTotals} mergedOf={mergedOf} roles={roles} weeks={view} nWeeks={weeks.length}
             cap={cap} head={head} readOnly={readOnly} nowIndex={nowIdx} scrollKey={start} />
         ) : (
           <PlanOverview plan={plan} projects={shownProjects} roles={statRoles} weeks={view}

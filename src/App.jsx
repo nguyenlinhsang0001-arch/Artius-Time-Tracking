@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.15
+   ARTIUS — Quản lý giờ công theo dự án · v12.16
+   Mới ở v12.16 — Kế hoạch: nút "Gộp vai trò" (Admin) gộp vai trò con vào vai trò chính, vd TL-2D → 2D, TLTK → TK.
+     Trong Kế hoạch, quân số, nhu cầu và giờ thực tế của vai trò con tính vào vai trò chính; dòng cũ của vai trò con trong
+     dự án được cộng vào dòng vai trò chính rồi tự lưu. Vai trò ở tab Nhân sự không đổi. Thiết lập chung (planning.merge).
    Mới ở v12.15 — Kế hoạch, khối TỔNG TOÀN CÔNG TY: Admin thêm vai trò (dấu + ở tiêu đề khối), ẩn vai trò (con mắt cuối dòng —
      ẩn luôn ở Tổng quan và Excel), kéo ⋮⋮ đổi thứ tự dòng. Lưu trong thiết lập chung (planning.totals), mọi người thấy như nhau.
    Mới ở v12.14 — Kế hoạch: (1) kéo thả dự án đổi vị trí (cầm ⋮⋮ ở dòng tên dự án; thứ tự riêng từng máy);

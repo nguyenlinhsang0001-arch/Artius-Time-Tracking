@@ -112,7 +112,7 @@ const Row = React.memo(function Row({ r, pid, rid, label, values, weeks, nowInde
   );
 });
 
-export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new Set(), onToggleHide, totals, onTotals, roles, weeks, nWeeks, cap, head, readOnly = false, nowIndex = -1, scrollKey }) {
+export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new Set(), onToggleHide, totals, onTotals, mergedOf = new Map(), roles, weeks, nWeeks, cap, head, readOnly = false, nowIndex = -1, scrollKey }) {
   const [active, setActive] = useState(null);     // { rid, wi }
   const wrap = useRef(null);
   const [order, setOrder] = useState(readOrd);
@@ -551,7 +551,8 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
                           </span>
                         )}
                         <span className="truncate"><span className="font-mono text-slate-400">{r.id}</span> <span className="text-slate-300">{r.name}</span>{" "}
-                          <span className="text-slate-600">· {head.get(r.id) || 0}</span></span>
+                          <span className="text-slate-600">· {head.get(r.id) || 0}</span>
+                          {mergedOf.get(r.id) && <span className="text-[10.5px] text-teal-600" title={`Đã gộp ${mergedOf.get(r.id).join(", ")} vào ${r.id}`}> (+{mergedOf.get(r.id).join(", ")})</span>}</span>
                         {canTot && (
                           <button type="button" onClick={() => hideTot(r.id)} title="Ẩn vai trò này khỏi khối tổng, Tổng quan và Excel"
                             className="ml-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-600 hover:text-amber-400">

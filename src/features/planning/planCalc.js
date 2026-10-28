@@ -144,6 +144,25 @@ export const setMany = (plan, items, nWeeks) => {
   }
   return next;
 };
+/* gộp vai trò trong kế hoạch (vd TL-2D → 2D): dòng của vai trò con cộng dồn vào vai trò cha rồi bỏ dòng con */
+export const foldMerged = (plan, prole) => {
+  let changed = false;
+  const out = {};
+  for (const pid of Object.keys(plan || {})) {
+    const byRole = plan[pid] || {};
+    if (!Object.keys(byRole).some((rid) => prole(rid) !== rid)) { out[pid] = byRole; continue; }
+    changed = true;
+    const next = {};
+    for (const rid of Object.keys(byRole)) if (prole(rid) === rid) next[rid] = byRole[rid].slice();
+    for (const rid of Object.keys(byRole)) {
+      const to = prole(rid); if (to === rid) continue;
+      const src = byRole[rid] || [], dst = next[to] || Array(src.length).fill(0);
+      next[to] = dst.map((v, i) => Math.min(99, (Number(v) || 0) + (Number(src[i]) || 0)));
+    }
+    out[pid] = next;
+  }
+  return { plan: changed ? out : plan, changed };
+};
 /* bỏ mảng rỗng trước khi lưu */
 export const prunePlan = (plan) => {
   const out = {};
