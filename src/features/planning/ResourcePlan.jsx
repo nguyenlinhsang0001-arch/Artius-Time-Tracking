@@ -1,12 +1,12 @@
 /* ARTIUS TIME v12 — Tab "Kế hoạch": khung chung, hai chế độ Nhập liệu và Tổng quan.
    Admin nhập và lưu; BOD và trưởng phòng chỉ xem. Dữ liệu nằm ở bảng riêng (xem planStore.js). */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Loader2, RotateCcw, Save } from "lucide-react";
+import { Camera, Download, Loader2, RotateCcw, Save } from "lucide-react";
 import { fmt, mondayOf } from "../../core/date.jsx";
 import { dbTsSent, ensureMonths, useDataTick, weekDone } from "../../core/db.jsx";
 import { ROLES, isResigned } from "../../core/domain.jsx";
 import { CTRL, Panel, btnGhost, btnPrimary } from "../../core/ui.jsx";
-import { actualByCell, joinYears, prunePlan, splitYears, weekIndexOf, weeksOfPair, weeksOfYear } from "./planCalc.js";
+import { PER_YEAR, actualByCell, joinYears, normalizeYear, prunePlan, realWeeksOfPair, slotIndexOf, splitYears, weeksOfPair } from "./planCalc.js";
 import { PlanGrid } from "./PlanGrid.jsx";
 import { PlanOverview } from "./PlanOverview.jsx";
 import { SQL_HINT, errMsg, isMissingTable, listSnapshots, loadPlan, savePlan, snapshotPlan } from "./planStore.js";
@@ -29,12 +29,13 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
   const savedAt = useRef("");
 
   const avail = Number(cfg.planning?.availability) > 0 ? Number(cfg.planning.availability) : DEFAULT_AVAIL;
-  const [n1, n2] = useMemo(() => [weeksOfYear(start).length, weeksOfYear(start + 1).length], [start]);
+  const n1 = PER_YEAR, n2 = PER_YEAR;   // mỗi năm 48 cột (12 tháng × 4 tuần)
   /* v12.8 — hai năm liền nhau trên MỘT lưới cuộn ngang. Chỉ số tuần nối tiếp (0 … n1+n2-1);
      khi lưu thì tách lại, Supabase vẫn lưu từng năm một. */
   const weeks = useMemo(() => weeksOfPair(start), [start]);
   const view = weeks;
-  const nowIdx = weekIndexOf(weeks, fmt(mondayOf(new Date())));
+  const realWeeks = useMemo(() => realWeeksOfPair(start), [start]);   // các thứ Hai thật, để so giờ thực tế
+  const nowIdx = slotIndexOf(start, new Date());
 
   const projects = useMemo(() => (cfg.projects || []).filter((p) => p.active), [cfg.projects]);
   const staff = useMemo(() => (cfg.employees || []).filter((e) => !isResigned(e)), [cfg.employees]);
@@ -62,7 +63,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
     let alive = true;
     setBusy(true); setErr("");
     Promise.all([loadPlan(start), loadPlan(start + 1)])
-      .then(([a, b]) => { if (alive) { setPlan(fillRef.current(joinYears(a, b, n1, n2))); setDirty(false); } })
+      .then(([a, b]) => { if (alive) { setPlan(fillRef.current(joinYears(normalizeYear(a, start), normalizeYear(b, start + 1), n1, n2))); setDirty(false); } })
       .catch((e) => { if (alive) setErr(isMissingTable(e) ? SQL_HINT : `Chưa tải được kế hoạch — ${errMsg(e)}`); })
       .finally(() => alive && setBusy(false));
     Promise.all([listSnapshots(start), listSnapshots(start + 1)]).then(([a, b]) => alive && setSnaps([...a, ...b])).catch(() => {});
@@ -88,7 +89,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
       /* tuần "đủ giờ": đã qua và mọi nhân sự còn làm đều đã gửi tuần đó */
       const today = fmt(mondayOf(new Date()));
       const ok = new Set();
-      for (const w of weeks) {
+      for (const w of realWeeks) {
         if (w.monday >= today) continue;
         const need = staff.filter((e) => !e.resignedAt || e.resignedAt > w.monday);
         if (need.length && need.every((e) => weekDone(e.id, w.monday))) ok.add(w.monday);
@@ -96,7 +97,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
       if (alive) setTs({ detail, okWeeks: ok });
     })();
     return () => { alive = false; };
-  }, [start, staff, weeks, tick]);
+  }, [start, staff, realWeeks, tick]);
 
   const actual = useMemo(
     () => actualByCell(ts?.detail || [], staff, cfg.hours),
@@ -129,6 +130,14 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
     } catch (e) { flash(isMissingTable(e) ? SQL_HINT : `Chưa chốt được — ${errMsg(e)}`, "err"); }
   }, [plan, start, n1, n2, flash]);
 
+  const onExport = async () => {
+    try {
+      const { exportPlanXlsx } = await import("./planExport.js");
+      await exportPlanXlsx({ plan: prunePlan(plan), projects, roles, weeks, cap, head, actual, okWeeks: ts?.okWeeks || new Set(), realWeeks, start, snaps, avail });
+      flash("Đã xuất Excel kế hoạch.");
+    } catch (e) { flash(`Chưa xuất được — ${errMsg(e)}`, "err"); }
+  };
+
   const setAvail = async (v) => {
     const ok = await saveCfg({ ...cfg, planning: { ...(cfg.planning || {}), availability: v } });
     if (ok !== false) flash(`Hệ số sẵn sàng ${Math.round(v * 100)}%.`);
@@ -158,7 +167,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
 
       <Panel flush
         title={mode === "in" ? "Lưới kế hoạch nguồn lực" : "Tổng quan nguồn lực"}
-        sub={<>Năm {start}–{start + 1} · {weeks.length} tuần · đơn vị là số người (1 / 0,5 / 0,25)</>}
+        sub={<>Năm {start}–{start + 1} · {weeks.length} cột (mỗi tháng 4 tuần) · đơn vị là số người (1 / 0,5 / 0,25)</>}
         right={busy ? <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} /> : null}>
 
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
@@ -172,15 +181,19 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
               {[0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 1].map((v) => <option key={v} value={v}>{Math.round(v * 100)}%</option>)}
             </select>
           </label>
+          <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
+            <button onClick={onExport} title="Xuất lưới, tổng theo vai trò, so với thực tế và các bản chốt"
+              className={`flex-1 sm:flex-none ${btnGhost}`}><Download size={15} /> Xuất Excel</button>
           {!readOnly && (
-            <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
+            <>
               <button onClick={onSnapshot} title="Chụp lại lưới hiện tại để về sau so với thực tế trên bản đã chốt"
                 className={`flex-1 sm:flex-none ${btnGhost}`}><Camera size={15} /> Chốt bản {snaps.length ? `(${snaps.length})` : ""}</button>
-              <button onClick={() => { setDirty(false); setBusy(true); Promise.all([loadPlan(start), loadPlan(start + 1)]).then(([a, b]) => { setPlan(fillRef.current(joinYears(a, b, n1, n2))); setBusy(false); }).catch(() => setBusy(false)); }}
+              <button onClick={() => { setDirty(false); setBusy(true); Promise.all([loadPlan(start), loadPlan(start + 1)]).then(([a, b]) => { setPlan(fillRef.current(joinYears(normalizeYear(a, start), normalizeYear(b, start + 1), n1, n2))); setBusy(false); }).catch(() => setBusy(false)); }}
                 className={`flex-1 sm:flex-none ${btnGhost}`}><RotateCcw size={15} /> Tải lại</button>
               <button onClick={onSave} disabled={!dirty || busy} className={`flex-1 sm:flex-none ${btnPrimary} disabled:opacity-40`}><Save size={15} /> Lưu</button>
-            </div>
+            </>
           )}
+          </div>
         </div>
 
         {mode === "in" ? (
@@ -190,7 +203,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
         ) : (
           <PlanOverview plan={plan} projects={projects} roles={roles} weeks={view}
             cap={cap} availability={avail}
-            actual={actual} okWeeks={ts?.okWeeks || new Set()} nowIndex={nowIdx < 0 ? 0 : nowIdx} />
+            actual={actual} realWeeks={realWeeks} okWeeks={ts?.okWeeks || new Set()} nowIndex={nowIdx < 0 ? 0 : nowIdx} />
         )}
       </Panel>
     </div>

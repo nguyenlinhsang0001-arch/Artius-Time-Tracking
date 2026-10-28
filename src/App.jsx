@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.9
+   ARTIUS — Quản lý giờ công theo dự án · v12.10
+   Mới ở v12.10 — Kế hoạch: (1) mỗi tháng đúng 4 cột tuần, mỗi năm 48 cột, không còn tuần 5 (tuần thứ 5 thật của tháng gộp
+     vào cột 4 khi so với giờ thực tế); dữ liệu đời cũ lưu theo 52–53 tuần ISO tự đổi sang 48 cột lúc tải, lưu lại là thành
+     định dạng mới; (2) nút "Xuất Excel" xuất cả lưới, tổng theo vai trò (cần / năng lực / CÒN), kế hoạch so với thực tế và các bản chốt.
    Mới ở v12.9 — Kế hoạch: nét đứt dọc ngăn giữa các tháng (ở lưới Nhập liệu và bản đồ tải Tổng quan) để dễ nhận ra ranh giới tháng.
    Mới ở v12.8 — Kế hoạch: (1) bỏ nút "Chép tuần đang chọn sang tuần sau" và việc bấm số tuần để chọn;
      (2) hiện HAI NĂM LIỀN NHAU trên một lưới cuộn ngang (chọn cặp 2025–2026 hoặc 2026–2027, mặc định cặp có năm nay);

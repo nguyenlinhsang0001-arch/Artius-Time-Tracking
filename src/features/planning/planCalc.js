@@ -6,49 +6,63 @@
 import { addDays, fmt, mondayOf, weeklyTarget } from "../../core/date.jsx";
 import { isLeaveTask, isResigned } from "../../core/domain.jsx";
 
-/* ---------- Tuần trong năm ----------
-   Theo chuẩn ISO: tuần 1 là tuần chứa ngày 4 tháng 1. Nhãn hiện "T<tháng> · <tuần thứ mấy trong tháng>"
-   cho giống cách đọc của file Excel. */
+/* ---------- Cột tuần ----------
+   Mỗi tháng đúng 4 cột tuần (T<tháng> · 1…4), mỗi năm 48 cột, không có ngoại lệ tuần 5 — giống cách đọc file Excel kế hoạch.
+   Một thứ Hai thuộc tháng của chính nó; thứ Hai thứ k của tháng vào cột k, thứ Hai thứ 5 (nếu có) gộp vào cột 4.
+   Chỉ số cột i chạy 0…47 trong một năm; lưới hai năm liền nhau nối tiếp 0…95. */
+export const SLOTS = 4;
+export const PER_YEAR = 12 * SLOTS;
+const slotOfMonday = (d) => Math.min(SLOTS, Math.ceil(d.getDate() / 7));
 export const weeksOfYear = (year) => {
-  const first = mondayOf(new Date(year, 0, 4));
-  const next = mondayOf(new Date(year + 1, 0, 4));   // tuần 1 của năm sau: dừng trước đó để hai năm nối liền, không trùng tuần
   const out = [];
-  for (let d = first, i = 0; d < next; d = addDays(d, 7), i++) {
-    const m = d.getMonth() + 1;
-    out.push({ i, monday: fmt(d), m, w: out.filter((x) => x.m === m).length + 1, y: year });
+  for (let m = 1; m <= 12; m++) {
+    const firstMon = mondayOf(new Date(year, m - 1, 1));
+    const f = firstMon.getMonth() + 1 === m ? firstMon : addDays(firstMon, 7);   // thứ Hai đầu tiên của tháng
+    for (let s = 1; s <= SLOTS; s++)
+      out.push({ i: (m - 1) * SLOTS + s - 1, monday: fmt(addDays(f, (s - 1) * 7)), m, w: s, y: year, ms: s === 1 });
   }
   return out;
 };
-/* hai năm liền nhau trên MỘT lưới: chỉ số tuần nối tiếp, w.y là năm của tuần đó */
-export const weeksOfPair = (start) => {
-  const a = weeksOfYear(start), b = weeksOfYear(start + 1);
-  const all = [...a, ...b.map((w) => ({ ...w, i: w.i + a.length }))];
-  return all.map((w, k) => ({ ...w, ms: k > 0 && all[k - 1].m !== w.m }));   // ms: tuần đầu của một tháng → vẽ nét đứt ngăn tháng
+/* hai năm liền nhau trên MỘT lưới: chỉ số cột nối tiếp, w.y là năm của cột đó; ms = cột đầu tháng (vẽ nét đứt) */
+export const weeksOfPair = (start) => [...weeksOfYear(start), ...weeksOfYear(start + 1).map((w) => ({ ...w, i: w.i + PER_YEAR }))];
+/* chỉ số cột của một ngày trong lưới cặp năm (start, start+1); -1 nếu ngoài khoảng */
+export const slotIndexOf = (start, date) => {
+  const d = mondayOf(date), y = d.getFullYear();
+  if (y < start || y > start + 1) return -1;
+  return (y - start) * PER_YEAR + d.getMonth() * SLOTS + slotOfMonday(d) - 1;
 };
-/* ghép / tách lưới theo năm: dữ liệu vẫn lưu từng năm một ở Supabase */
-export const joinYears = (p1, p2, n1, n2) => {
+/* mọi thứ Hai THẬT trong cặp năm, kèm cột kế hoạch của nó — để so giờ thực tế theo từng tuần thật (tuần 5 trỏ vào cột 4) */
+export const realWeeksOfPair = (start) => {
+  const out = [];
+  for (let d = mondayOf(new Date(start, 0, 1)); d.getFullYear() <= start + 1; d = addDays(d, 7)) {
+    const i = slotIndexOf(start, d);
+    if (i >= 0) out.push({ monday: fmt(d), i });
+  }
+  return out;
+};
+/* lưới đời cũ (v12.0–v12.9) lưu 52–53 tuần ISO một năm. Đổi sang 48 cột; nhiều tuần cùng vào một cột thì lấy số lớn nhất. */
+export const legacyToSlots = (arr, year) => {
+  const out = Array(PER_YEAR).fill(0);
+  const first = mondayOf(new Date(year, 0, 4));
+  (arr || []).forEach((v, k) => {
+    const d = addDays(first, k * 7);
+    if (d.getFullYear() !== year) return;
+    const i = slotIndexOf(year, d);
+    if (i >= 0) out[i] = Math.max(out[i], Number(v) || 0);
+  });
+  return out;
+};
+export const normalizeYear = (plan, year) => {
   const out = {};
-  const pad = (arr, n) => Array.from({ length: n }, (_, i) => Number(arr?.[i]) || 0);
-  for (const pid of new Set([...Object.keys(p1 || {}), ...Object.keys(p2 || {})])) {
-    out[pid] = {};
-    for (const rid of new Set([...Object.keys(p1?.[pid] || {}), ...Object.keys(p2?.[pid] || {})]))
-      out[pid][rid] = [...pad(p1?.[pid]?.[rid], n1), ...pad(p2?.[pid]?.[rid], n2)];
-  }
-  return out;
-};
-export const splitYears = (plan, n1, n2) => {
-  const a = {}, b = {};
   for (const pid of Object.keys(plan || {})) {
-    a[pid] = {}; b[pid] = {};
+    out[pid] = {};
     for (const rid of Object.keys(plan[pid] || {})) {
-      const arr = plan[pid][rid] || [];
-      a[pid][rid] = arr.slice(0, n1);
-      b[pid][rid] = arr.slice(n1, n1 + n2);
+      const a = plan[pid][rid] || [];
+      out[pid][rid] = a.length > PER_YEAR ? legacyToSlots(a, year) : a;
     }
   }
-  return [a, b];
+  return out;
 };
-export const weekIndexOf = (weeks, monday) => weeks.findIndex((w) => w.monday === monday);
 
 /* ---------- Quân số ----------
    head  = số người thật của vai trò (đã trừ người nghỉ việc)

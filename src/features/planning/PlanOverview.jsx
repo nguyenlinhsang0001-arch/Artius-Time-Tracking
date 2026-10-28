@@ -19,7 +19,7 @@ const LEGEND = () => (isLight()
   ? [["#e2e8f0", "< 60% rảnh"], ["#99f6e4", "60–85%"], ["#fde68a", "85–100% căng"], ["#fca5a5", "> 100% thiếu"]]
   : [["#1e293b", "< 60% rảnh"], ["#115e59", "60–85%"], ["#854d0e", "85–100% căng"], ["#991b1b", "> 100% thiếu"]]);
 
-export function PlanOverview({ plan, projects, roles, weeks, cap, actual, okWeeks, nowIndex, availability }) {
+export function PlanOverview({ plan, projects, roles, weeks, realWeeks, cap, actual, okWeeks, nowIndex, availability }) {
   const [drill, setDrill] = useState(null);
   const pids = useMemo(() => projects.map((p) => p.id), [projects]);
   const projById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
@@ -32,8 +32,8 @@ export function PlanOverview({ plan, projects, roles, weeks, cap, actual, okWeek
     () => shortages({ plan, projectIds: pids, roles: shown, weeks, cap, from: Math.max(0, nowIndex), count: 12 }),
     [plan, pids, shown, weeks, cap, nowIndex]);
   const pva = useMemo(
-    () => planVsActual({ plan, projects, weeks, okWeeks, actual }),
-    [plan, projects, weeks, okWeeks, actual]);
+    () => planVsActual({ plan, projects, weeks: realWeeks || weeks, okWeeks, actual }),
+    [plan, projects, weeks, realWeeks, okWeeks, actual]);
 
   /* quân số cần so với đang có — 12 tuần tới */
   const horizon = weeks.slice(Math.max(0, nowIndex), Math.max(0, nowIndex) + 12);
