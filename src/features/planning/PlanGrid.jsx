@@ -9,7 +9,8 @@
    Bề ngang cột khoá và cột tuần đều đặt cứng, tên dự án cắt gọn một dòng (rê chuột xem đủ) — nhờ vậy
    chiều cao mỗi dòng không đổi và màn hình laptop không bị tên dài đẩy cao gấp ba. */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Copy, Trash2 } from "lucide-react";
+import { Copy, GripVertical, Trash2 } from "lucide-react";
+import { moveInList } from "../../shared/rowDrag.jsx";
 import { btnGhost } from "../../core/ui.jsx";
 import { isLight } from "../../core/theme.jsx";
 import { copyWeek, leftOf, needOf, setCell } from "./planCalc.js";
@@ -30,6 +31,17 @@ const Frz = ({ children, cls = "", py = "py-0.5", title }) => (
   <div className={`truncate px-2 ${py} ${cls}`} style={{ width: "var(--frz, 230px)" }} title={title}>{children}</div>
 );
 
+/* thứ tự vai trò trong từng dự án do người dùng kéo thả — lưu riêng từng máy (như thứ tự dự án), không đụng dữ liệu kế hoạch */
+const ORD_KEY = "artius:planRoleOrder";
+const readOrd = () => { try { const o = JSON.parse(localStorage.getItem(ORD_KEY) || "{}"); return o && typeof o === "object" ? o : {}; } catch { return {}; } };
+const sortRoles = (rws, ord) => {
+  if (!ord?.length) return rws;
+  const ix = new Map(ord.map((id, i) => [id, i]));
+  return rws.map((r, i) => [r, i]).sort((a, b) => (ix.get(a[0].id) ?? 1e9 + a[1]) - (ix.get(b[0].id) ?? 1e9 + b[1])).map((x) => x[0]);
+};
+/* vạch teal báo chỗ thả: bật bằng thuộc tính data-drop trên <tr> (không qua state nên kéo không làm vẽ lại cả lưới) */
+const DROP_CSS = "tr[data-drop=before]>td{box-shadow:inset 0 2px 0 #2dd4bf}tr[data-drop=after]>td{box-shadow:inset 0 -2px 0 #2dd4bf}tr[data-dragging]{opacity:.4}";
+
 /* màu đặt thẳng bằng style không đi qua LIGHT_CSS nên phải tự chọn theo giao diện (App vẽ lại khi đổi Sáng/Tối) */
 const leftStyle = (lf) => {
   const L = isLight();
@@ -40,12 +52,24 @@ const leftStyle = (lf) => {
 const stripBg = () => (isLight() ? "#ccfbf1" : "#041f1c");
 
 /* một dòng dự án × vai trò — chỉ vẽ lại khi mảng số của chính nó đổi */
-const Row = React.memo(function Row({ pid, rid, label, values, weeks, nowIndex, readOnly, onCell, onFocus, onDrop }) {
+const Row = React.memo(function Row({ pid, rid, label, values, weeks, nowIndex, readOnly, onCell, onFocus, onDrop, dnd }) {
+  const dropProps = readOnly ? {} : {
+    onDragOver: (e) => dnd.over(e, pid, rid),
+    onDragLeave: (e) => e.currentTarget.removeAttribute("data-drop"),
+    onDrop: (e) => dnd.drop(e, pid, rid),
+  };
   return (
-    <tr className="border-b border-slate-900/70">
+    <tr className="border-b border-slate-900/70" {...dropProps}>
       <td className="sticky left-0 z-20 bg-slate-950 p-0">
         <Frz>
-          <span className="pl-4 font-mono text-slate-400">{label}</span>
+          {readOnly ? <span className="pl-4" /> : (
+            <span draggable onDragStart={(e) => dnd.start(e, pid, rid)} onDragEnd={dnd.end}
+              title="Giữ và kéo để đổi vị trí vai trò trong dự án"
+              className="ml-1 mr-0.5 inline-flex w-3 cursor-grab touch-none items-center justify-center align-[-2px] text-slate-600 hover:text-slate-300 active:cursor-grabbing">
+              <GripVertical size={12} />
+            </span>
+          )}
+          <span className="font-mono text-slate-400">{label}</span>
           {!readOnly && (
             <button type="button" title="Bỏ vai trò này khỏi dự án" onClick={() => onDrop(pid, rid)}
               className="ml-1.5 align-middle text-slate-700 hover:text-rose-400"><Trash2 size={11} /></button>
@@ -73,6 +97,9 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
   const [active, setActive] = useState(null);     // { rid, wi }
   const [selWeek, setSelWeek] = useState(null);
   const wrap = useRef(null);
+  const [order, setOrder] = useState(readOrd);
+  const orderRef = useRef(order); orderRef.current = order;
+  const drag = useRef(null);
   const [frz, setFrz] = useState(readFrz);
   const frzRef = useRef(frz); frzRef.current = frz;
   /* kéo mép phải của tiêu đề "Dự án · vai trò" để nới/thu cột tên */
@@ -89,6 +116,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
   const resetFrz = () => { setFrz(FRZ); try { localStorage.removeItem(FRZ_KEY); } catch { /* bỏ qua */ } };
   const nowCell = useRef(null);
   const planRef = useRef(plan); planRef.current = plan;
+  const rolesRef = useRef(roles); rolesRef.current = roles;
   const changeRef = useRef(onChange); changeRef.current = onChange;
 
   const pids = useMemo(() => projects.map((p) => p.id), [projects]);
@@ -100,6 +128,35 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
   const onCell = useCallback((pid, rid, wi, v) => {
     changeRef.current(setCell(planRef.current, pid, rid, wi, v, nWeeks));
   }, [nWeeks]);
+  /* kéo thả đổi vị trí vai trò — chỉ trong cùng một dự án */
+  const dnd = useMemo(() => ({
+    start: (e, pid, rid) => {
+      drag.current = { pid, rid };
+      e.dataTransfer.effectAllowed = "move";
+      const tr = e.currentTarget.closest("tr");
+      try { e.dataTransfer.setData("text/plain", rid); if (tr) { e.dataTransfer.setDragImage(tr, 20, 10); } } catch { /* bỏ qua */ }
+      if (tr) setTimeout(() => tr.setAttribute("data-dragging", "1"), 0);
+    },
+    end: () => { drag.current = null; wrap.current?.querySelectorAll("[data-drop],[data-dragging]").forEach((n) => { n.removeAttribute("data-drop"); n.removeAttribute("data-dragging"); }); },
+    over: (e, pid, rid) => {
+      const d = drag.current; if (!d || d.pid !== pid || d.rid === rid) return;
+      e.preventDefault();
+      const tr = e.currentTarget, b = tr.getBoundingClientRect();
+      const v = e.clientY > b.top + b.height / 2 ? "after" : "before";
+      if (tr.getAttribute("data-drop") !== v) tr.setAttribute("data-drop", v);
+    },
+    drop: (e, pid, rid) => {
+      const d = drag.current; if (!d || d.pid !== pid || d.rid === rid) return;
+      e.preventDefault();
+      const after = e.currentTarget.getAttribute("data-drop") === "after";
+      const cur = planRef.current[pid] || {};
+      const ids = sortRoles(rolesRef.current.filter((r) => r.id in cur), orderRef.current[pid]).map((r) => r.id);
+      const next = { ...orderRef.current, [pid]: moveInList(ids, d.rid, rid, after) };
+      setOrder(next);
+      try { localStorage.setItem(ORD_KEY, JSON.stringify(next)); } catch { /* không lưu được: chỉ đổi cho phiên này */ }
+      dnd.end();
+    },
+  }), []);  // eslint-disable-line react-hooks/exhaustive-deps
   const onFocusCell = useCallback((rid, wi) => setActive({ rid, wi }), []);
   const onDrop = useCallback((pid, rid) => {
     const next = { ...planRef.current, [pid]: { ...(planRef.current[pid] || {}) } };
@@ -147,6 +204,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
         </div>
       )}
 
+      <style>{DROP_CSS}</style>
       <div ref={wrap} onKeyDown={onKey} className="overflow-auto" style={{ maxHeight: "64vh", "--frz": `${frz}px` }}>
         <table className="text-[12px]">
           <thead>
@@ -185,7 +243,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
           <tbody>
             {projects.map((p) => {
               const used = new Set(Object.keys(plan[p.id] || {}));
-              const rws = roles.filter((r) => used.has(r.id));
+              const rws = sortRoles(roles.filter((r) => used.has(r.id)), order[p.id]);
               const free = roles.filter((r) => !used.has(r.id));
               const name = `${p.code ? `${p.code} ` : ""}${p.name}`;
               return (
@@ -211,7 +269,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
                   {rws.map((r) => (
                     <Row key={r.id} pid={p.id} rid={r.id} label={r.id} values={plan[p.id]?.[r.id]}
                       weeks={weeks} nowIndex={nowIndex} readOnly={readOnly}
-                      onCell={onCell} onFocus={onFocusCell} onDrop={onDrop} />
+                      onCell={onCell} onFocus={onFocusCell} onDrop={onDrop} dnd={dnd} />
                   ))}
                 </React.Fragment>
               );

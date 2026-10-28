@@ -17,7 +17,7 @@ class PlanBoundary extends React.Component {
   render() {
     if (!this.state.err) return this.props.children;
     return (
-      <div className="rounded-xl border border-rose-900 bg-rose-950/40 p-5 text-sm">
+      <div className="rounded-xl border border-rose-900 bg-rose-950 p-5 text-sm">
         <div className="flex items-center gap-2 text-base font-semibold text-rose-200">
           <AlertTriangle size={18} className="text-rose-400" /> Mục Kế hoạch gặp lỗi
         </div>

@@ -47,19 +47,19 @@ export function PlanOverview({ plan, projects, roles, weeks, cap, actual, okWeek
   return (
     <div className="space-y-3 p-3 md:p-4">
       {/* 1 — cần xử lý */}
-      <section className="rounded-xl border border-amber-900/60 bg-amber-950/10">
-        <div className="border-b border-amber-900/40 px-4 py-2.5">
-          <h3 className="text-sm text-amber-200">Cần xử lý — 12 tuần tới</h3>
+      <section className="rounded-xl border border-rose-900 bg-rose-950">
+        <div className="border-b border-rose-900 px-4 py-2.5">
+          <h3 className="text-sm text-rose-200">Cần xử lý — 12 tuần tới</h3>
         </div>
         {alerts.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-slate-500">12 tuần tới không vai trò nào thiếu người.</p>
+          <p className="px-4 py-3 text-sm text-rose-100">12 tuần tới không vai trò nào thiếu người.</p>
         ) : (
-          <div className="divide-y divide-amber-900/30">
+          <div>
             {alerts.map((a) => {
               const who = projects.map((p) => ({ p, v: cellOf(plan, p.id, a.role.id, a.w.i) })).filter((o) => o.v > 0).sort((x, y) => y.v - x.v);
               return (
-                <div key={`${a.role.id}${a.w.i}`} className="grid grid-cols-[96px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 text-[13px] md:grid-cols-[96px_140px_minmax(0,1fr)_auto]">
-                  <span className="font-mono text-amber-300">T{a.w.m} · tuần {a.w.w}</span>
+                <div key={`${a.role.id}${a.w.i}`} className="grid border-t border-rose-900 first:border-t-0 grid-cols-[96px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 text-[13px] md:grid-cols-[96px_140px_minmax(0,1fr)_auto]">
+                  <span className="font-mono text-rose-300">T{a.w.m} · tuần {a.w.w}</span>
                   <span className="hidden truncate text-slate-100 md:block">{a.role.id} · {a.role.name}</span>
                   <span className="truncate text-slate-400">
                     cần {f0(a.need)} / có {f0(cap.get(a.role.id) || 0)} · {who.slice(0, 3).map((o) => `${o.p.code || o.p.name} (${f0(o.v)})`).join(" · ")}

@@ -144,7 +144,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
       </div>
 
       {err && (
-        <div className="rounded-lg border border-amber-900 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
+        <div className="rounded-lg border border-rose-900 bg-rose-950 px-4 py-3 text-sm text-rose-100">
           {err}
         </div>
       )}
