@@ -1,6 +1,7 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.8
+   ARTIUS — Quản lý giờ công theo dự án · v12.9
+   Mới ở v12.9 — Kế hoạch: nét đứt dọc ngăn giữa các tháng (ở lưới Nhập liệu và bản đồ tải Tổng quan) để dễ nhận ra ranh giới tháng.
    Mới ở v12.8 — Kế hoạch: (1) bỏ nút "Chép tuần đang chọn sang tuần sau" và việc bấm số tuần để chọn;
      (2) hiện HAI NĂM LIỀN NHAU trên một lưới cuộn ngang (chọn cặp 2025–2026 hoặc 2026–2027, mặc định cặp có năm nay);
      đầu năm sau có vạch xanh và nhãn tháng 1 ghi năm (T1·27). Khi lưu, lưới tách lại và ghi từng năm như cũ nên không cần SQL.

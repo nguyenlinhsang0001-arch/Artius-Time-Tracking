@@ -22,7 +22,8 @@ export const weeksOfYear = (year) => {
 /* hai năm liền nhau trên MỘT lưới: chỉ số tuần nối tiếp, w.y là năm của tuần đó */
 export const weeksOfPair = (start) => {
   const a = weeksOfYear(start), b = weeksOfYear(start + 1);
-  return [...a, ...b.map((w) => ({ ...w, i: w.i + a.length }))];
+  const all = [...a, ...b.map((w) => ({ ...w, i: w.i + a.length }))];
+  return all.map((w, k) => ({ ...w, ms: k > 0 && all[k - 1].m !== w.m }));   // ms: tuần đầu của một tháng → vẽ nét đứt ngăn tháng
 };
 /* ghép / tách lưới theo năm: dữ liệu vẫn lưu từng năm một ở Supabase */
 export const joinYears = (p1, p2, n1, n2) => {

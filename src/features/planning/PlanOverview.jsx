@@ -84,19 +84,20 @@ export function PlanOverview({ plan, projects, roles, weeks, cap, actual, okWeek
           ))}
         </div>
         <div className="overflow-auto" style={{ maxHeight: "46vh" }}>
+          <style>{".mo{border-left:1px dashed #64748b!important}html[data-theme=light] .mo{border-left-color:#94a3b8!important}"}</style>
           <table className="text-[12px]">
             <thead>
               <tr>
                 <th className="sticky left-0 top-0 z-30 bg-slate-900 p-0 text-left"><Frz><span className="text-[11px] uppercase tracking-wider text-slate-500">Vai trò</span></Frz></th>
                 {weeks.map((w, k) => (
-                  <th key={w.i} style={{ minWidth: CW, top: 0 }} className={`sticky z-20 border-l border-slate-800 bg-slate-900 px-1 py-1 text-center text-[11px] font-medium ${k === 0 || weeks[k - 1].m !== w.m ? "text-teal-400" : "text-slate-700"}`}>
+                  <th key={w.i} style={{ minWidth: CW, top: 0 }} className={`sticky z-20 border-l border-slate-800 bg-slate-900 px-1 py-1 text-center text-[11px] font-medium ${w.ms ? "mo" : ""} ${k === 0 || weeks[k - 1].m !== w.m ? "text-teal-400" : "text-slate-700"}`}>
                     {k === 0 || weeks[k - 1].m !== w.m ? `T${w.m}${w.m === 1 || k === 0 ? `·${String(w.y).slice(2)}` : ""}` : ""}
                   </th>
                 ))}
               </tr>
               <tr>
                 <th className="sticky left-0 top-[26px] z-30 bg-slate-900 p-0"><Frz>&nbsp;</Frz></th>
-                {weeks.map((w) => <th key={w.i} style={{ minWidth: CW, top: 26 }} className="sticky z-20 border-l border-slate-800 bg-slate-900 px-1 py-1 text-center text-[10px] font-normal text-slate-600">{w.w}</th>)}
+                {weeks.map((w) => <th key={w.i} style={{ minWidth: CW, top: 26 }} className={`sticky z-20 border-l border-slate-800 bg-slate-900 px-1 py-1 text-center text-[10px] font-normal text-slate-600 ${w.ms ? "mo" : ""}`}>{w.w}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -119,7 +120,7 @@ export function PlanOverview({ plan, projects, roles, weeks, cap, actual, okWeek
                       const p = Math.round(loadOf(plan, pids, r.id, w.i, cap));
                       return (
                         <td key={w.i} onClick={() => setDrill({ rid: r.id, wi: w.i })}
-                          className={`cursor-pointer border-l border-slate-900 px-1 py-1 text-center font-mono text-[11px] ${p > 100 ? (isLight() ? "font-semibold text-red-950" : "font-semibold text-rose-100") : p >= 60 ? "text-slate-100" : "text-slate-600"}`}
+                          className={`cursor-pointer border-l border-slate-900 px-1 py-1 text-center font-mono text-[11px] ${w.ms ? "mo" : ""} ${p > 100 ? (isLight() ? "font-semibold text-red-950" : "font-semibold text-rose-100") : p >= 60 ? "text-slate-100" : "text-slate-600"}`}
                           style={{ minWidth: CW, background: bg(p) }}>{p || ""}</td>
                       );
                     })}

@@ -40,6 +40,7 @@ const sortRoles = (rws, ord) => {
   return rws.map((r, i) => [r, i]).sort((a, b) => (ix.get(a[0].id) ?? 1e9 + a[1]) - (ix.get(b[0].id) ?? 1e9 + b[1])).map((x) => x[0]);
 };
 /* vạch teal báo chỗ thả: bật bằng thuộc tính data-drop trên <tr> (không qua state nên kéo không làm vẽ lại cả lưới) */
+const MO_CSS = ".mo{border-left:1px dashed #64748b!important}html[data-theme=light] .mo{border-left-color:#94a3b8!important}";
 const DROP_CSS = "tr[data-drop=before]>td{box-shadow:inset 0 2px 0 #2dd4bf}tr[data-drop=after]>td{box-shadow:inset 0 -2px 0 #2dd4bf}tr[data-dragging]{opacity:.4}";
 
 /* màu đặt thẳng bằng style không đi qua LIGHT_CSS nên phải tự chọn theo giao diện (App vẽ lại khi đổi Sáng/Tối) */
@@ -97,7 +98,7 @@ const Row = React.memo(function Row({ pid, rid, label, values, weeks, nowIndex, 
         const past = nowIndex >= 0 && w.i < nowIndex;
         return (
           <td key={w.i} style={{ minWidth: CW, ...(v > 0.001 ? { background: `rgba(45,212,191,${(Math.min(v, 2) / 2 * 0.3 + 0.05).toFixed(2)})` } : null) }}
-            className={`border-l border-slate-900 p-0 ${past ? "bg-slate-950/70" : ""}`}>
+            className={`border-l border-slate-900 p-0 ${w.ms ? "mo" : ""} ${past ? "bg-slate-950/70" : ""}`}>
             <Cell k={k} v={v} readOnly={readOnly} onFocus={() => onFocus(rid, w.i)} onType={(x) => onCell(pid, rid, w.i, x)} />
           </td>
         );
@@ -201,6 +202,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
   const totalRoles = roles.filter((r) => (cap.get(r.id) || 0) > 0 || weeks.some((w) => needOf(plan, pids, r.id, w.i) > 0));
   const yearStart = (k) => k > 0 && weeks[k].y !== weeks[k - 1].y;   // cột đầu của năm sau
   const wkTh = (extra) => `sticky z-20 border-l border-slate-800 bg-slate-900 px-1 py-1 text-center ${extra}`;
+  const mo = (w, k) => (w.ms && !yearStart(k) ? " mo" : "");
 
   return (
     <div>
@@ -209,7 +211,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
           className={btnGhost}>Về tuần này</button>
       </div>
 
-      <style>{DROP_CSS}</style>
+      <style>{DROP_CSS + MO_CSS}</style>
       <div ref={wrap} onKeyDown={onKey} className="overflow-auto" style={{ maxHeight: "64vh", "--frz": `${frz}px` }}>
         <table className="text-[12px]">
           <thead>
@@ -222,19 +224,19 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
               </th>
               {weeks.map((w, k) => (
                 <th key={w.i} style={{ minWidth: CW, top: 0 }} title={yearStart(k) ? `Từ đây là năm ${w.y}` : undefined}
-                  className={wkTh(`text-[11px] font-medium ${yearStart(k) ? "border-l-2 border-l-teal-500" : ""} ${k === 0 || weeks[k - 1].m !== w.m ? "text-teal-400" : "text-slate-700"}`)}>
+                  className={wkTh(`text-[11px] font-medium${mo(w, k)} ${yearStart(k) ? "border-l-2 border-l-teal-500" : ""} ${k === 0 || weeks[k - 1].m !== w.m ? "text-teal-400" : "text-slate-700"}`)}>
                   {k === 0 || weeks[k - 1].m !== w.m ? `T${w.m}${w.m === 1 || k === 0 ? `·${String(w.y).slice(2)}` : ""}` : ""}
                 </th>
               ))}
             </tr>
             <tr>
               <th className="sticky left-0 top-[26px] z-30 bg-slate-900 p-0"><Frz py="py-1">&nbsp;</Frz></th>
-              {weeks.map((w) => {
+              {weeks.map((w, k) => {
                 const isNow = w.i === nowIndex;
                 return (
                   <th key={w.i} ref={isNow ? nowCell : null}
                     title={isNow ? "Tuần này" : undefined} style={{ minWidth: CW, top: 26 }}
-                    className={`sticky z-20 border-l border-slate-800 px-1 py-1 text-center text-[10px] ${isNow ? "bg-slate-800 font-semibold text-teal-300" : "bg-slate-900 font-normal text-slate-500"}`}>
+                    className={`sticky z-20 border-l border-slate-800 px-1 py-1 text-center text-[10px]${mo(w, k)} ${isNow ? "bg-slate-800 font-semibold text-teal-300" : "bg-slate-900 font-normal text-slate-500"}`}>
                     {w.w}
                   </th>
                 );
@@ -296,14 +298,14 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
                   </td>
                   {weeks.map((w) => {
                     const nd = needOf(plan, pids, r.id, w.i);
-                    return <td key={w.i} style={{ minWidth: CW }} className={`border-l border-slate-900 px-1 text-center font-mono ${nd ? "text-slate-100" : "text-slate-800"}`}>{nd ? f0(nd) : "0"}</td>;
+                    return <td key={w.i} style={{ minWidth: CW }} className={`border-l border-slate-900 px-1 text-center font-mono ${w.ms ? "mo" : ""} ${nd ? "text-slate-100" : "text-slate-800"}`}>{nd ? f0(nd) : "0"}</td>;
                   })}
                 </tr>
                 <tr className="border-b border-slate-800">
                   <td className="sticky left-0 z-20 bg-slate-950 p-0"><Frz><span className="pl-4 text-[11px] text-slate-600">còn lại</span></Frz></td>
                   {weeks.map((w) => {
                     const lf = leftOf(plan, pids, r.id, w.i, cap);
-                    return <td key={w.i} className="border-l border-slate-900 px-1 text-center font-mono font-semibold"
+                    return <td key={w.i} className={`border-l border-slate-900 px-1 text-center font-mono font-semibold ${w.ms ? "mo" : ""}`}
                       style={{ minWidth: CW, ...leftStyle(lf) }}>{f0(lf)}</td>;
                   })}
                 </tr>
@@ -323,7 +325,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
                   </td>
                   {weeks.map((w) => {
                     const nd = needOf(plan, pids, stripRole.id, w.i);
-                    return <td key={w.i} className="sticky z-10 border-l border-slate-900 px-1 text-center font-mono text-slate-300"
+                    return <td key={w.i} className={`sticky z-10 border-l border-slate-900 px-1 text-center font-mono text-slate-300 ${w.ms ? "mo" : ""}`}
                       style={{ minWidth: CW, bottom: 22, background: stripBg(), outline: w.i === active.wi ? "1.5px solid #14b8a6" : "none" }}>{nd ? f0(nd) : "0"}</td>;
                   })}
                 </tr>
@@ -333,7 +335,7 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
                   </td>
                   {weeks.map((w) => {
                     const lf = leftOf(plan, pids, stripRole.id, w.i, cap);
-                    return <td key={w.i} className="sticky z-10 border-l border-slate-900 px-1 text-center font-mono font-semibold"
+                    return <td key={w.i} className={`sticky z-10 border-l border-slate-900 px-1 text-center font-mono font-semibold ${w.ms ? "mo" : ""}`}
                       style={{ minWidth: CW, bottom: 0, outline: w.i === active.wi ? "1.5px solid #14b8a6" : "none", ...leftStyle(lf) }}>{f0(lf)}</td>;
                   })}
                 </tr>
