@@ -64,6 +64,32 @@ export const normalizeYear = (plan, year) => {
   return out;
 };
 
+export const weekIndexOf = (weeks, monday) => weeks.findIndex((w) => w.monday === monday);   // giữ cho tương thích
+
+/* ghép / tách lưới theo năm: dữ liệu vẫn lưu từng năm một ở Supabase */
+export const joinYears = (p1, p2, n1, n2) => {
+  const out = {};
+  const pad = (arr, n) => Array.from({ length: n }, (_, i) => Number(arr?.[i]) || 0);
+  for (const pid of new Set([...Object.keys(p1 || {}), ...Object.keys(p2 || {})])) {
+    out[pid] = {};
+    for (const rid of new Set([...Object.keys(p1?.[pid] || {}), ...Object.keys(p2?.[pid] || {})]))
+      out[pid][rid] = [...pad(p1?.[pid]?.[rid], n1), ...pad(p2?.[pid]?.[rid], n2)];
+  }
+  return out;
+};
+export const splitYears = (plan, n1, n2) => {
+  const a = {}, b = {};
+  for (const pid of Object.keys(plan || {})) {
+    a[pid] = {}; b[pid] = {};
+    for (const rid of Object.keys(plan[pid] || {})) {
+      const arr = plan[pid][rid] || [];
+      a[pid][rid] = arr.slice(0, n1);
+      b[pid][rid] = arr.slice(n1, n1 + n2);
+    }
+  }
+  return [a, b];
+};
+
 /* ---------- Quân số ----------
    head  = số người thật của vai trò (đã trừ người nghỉ việc)
    cap   = năng lực dùng được = head × hệ số sẵn sàng.
