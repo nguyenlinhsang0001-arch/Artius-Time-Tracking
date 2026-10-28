@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.12
+   ARTIUS — Quản lý giờ công theo dự án · v12.13
+   Mới ở v12.13 — Kế hoạch: TỰ LƯU sau khi ngừng gõ 2 giây (đầu lưới hiện Đang lưu… / Đã lưu lúc …); nút Lưu vẫn để ghi ngay.
+     Đổi cặp năm thì lưu nốt phần dở trước; đóng tab khi còn số chưa lưu thì trình duyệt hỏi lại. Lỗi lưu hiện nguyên câu
+     của Supabase. Chốt bản vẫn bấm tay.
    Mới ở v12.12 — Kế hoạch → Nhập liệu: phím + / − tăng / giảm 0,25 người cho ô đang đứng hoặc cả vùng đang chọn.
    Mới ở v12.11 — Kế hoạch → Nhập liệu: chọn nhiều ô (kéo chuột, Shift + mũi tên, Shift + bấm) rồi gõ số là điền cả vùng;
      Ctrl + C / Ctrl + X / Ctrl + V với vùng ô (dán thẳng từ Excel được, một số dán vào cả vùng đang chọn); Delete xoá vùng;

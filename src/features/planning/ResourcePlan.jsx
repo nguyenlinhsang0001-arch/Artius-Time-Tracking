@@ -104,20 +104,57 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
     [ts, staff, cfg.hours]);
 
   /* ---------- lưu ---------- */
-  const onSave = useCallback(async () => {
-    setBusy(true);
+  /* ---------- lưu (tự lưu sau khi ngừng gõ 2 giây, nút Lưu để ghi ngay) ----------
+     Không thay lưới đang hiện bằng bản đã dọn sau khi lưu: đang gõ dở mà dòng toàn 0 biến mất thì rất khó chịu.
+     Chỉ tắt cờ "chưa lưu" nếu từ lúc bắt đầu lưu tới giờ không gõ thêm gì. */
+  const planNow = useRef(plan); planNow.current = plan;
+  const savingRef = useRef(false), againRef = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState("");
+  const doSave = useCallback(async (manual = false) => {
+    if (readOnly) return true;
+    if (savingRef.current) { againRef.current = true; return false; }
+    savingRef.current = true; setSaving(true);
+    const snap = planNow.current;
+    let ok = true;
     try {
-      const clean = prunePlan(plan);
-      const [a, b] = splitYears(clean, n1, n2);
+      const [a, b] = splitYears(prunePlan(snap), n1, n2);
       await savePlan(start, prunePlan(a));
       await savePlan(start + 1, prunePlan(b));
-      setPlan(clean); setDirty(false);
+      if (planNow.current === snap) setDirty(false);
       savedAt.current = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
-      flash("Đã lưu kế hoạch.");
+      setSaveErr("");
+      if (manual) flash("Đã lưu kế hoạch.");
     } catch (e) {
-      flash(isMissingTable(e) ? SQL_HINT : `Chưa lưu được — ${errMsg(e)}`, "err");
-    } finally { setBusy(false); }
-  }, [plan, start, n1, n2, flash]);
+      ok = false;
+      const m = isMissingTable(e) ? `${SQL_HINT} (${errMsg(e)})` : `Chưa lưu được — ${errMsg(e)}`;
+      setSaveErr(m);
+      if (manual || !saveErr) flash(m, "err");   // tự lưu lỗi: báo một lần, sau đó hiện sẵn trên đầu lưới
+    } finally {
+      savingRef.current = false; setSaving(false);
+      if (againRef.current) { againRef.current = false; setTimeout(() => doSaveRef.current(), 0); }
+    }
+    return ok;
+  }, [readOnly, start, n1, n2, flash, saveErr]);
+  const doSaveRef = useRef(doSave); doSaveRef.current = doSave;
+  const onSave = () => doSave(true);
+
+  useEffect(() => {   // tự lưu
+    if (!dirty || readOnly) return undefined;
+    const t = setTimeout(() => doSaveRef.current(), 2000);
+    return () => clearTimeout(t);
+  }, [plan, dirty, readOnly]);
+  useEffect(() => {   // còn số chưa lưu mà đóng tab → trình duyệt hỏi lại
+    if (!dirty) return undefined;
+    const h = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, [dirty]);
+  /* đổi cặp năm: lưu nốt phần đang dở rồi mới chuyển */
+  const changeStart = async (y) => {
+    if (dirty && !readOnly && !(await doSave())) return;
+    setStart(y);
+  };
 
   const onSnapshot = useCallback(async () => {
     try {
@@ -154,8 +191,10 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
           <button onClick={() => setMode("ov")} aria-pressed={mode === "ov"}
             className={`${CTRL} rounded-lg px-6 text-sm font-medium ${mode === "ov" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Tổng quan</button>
         </div>
-        {dirty && <span className="text-xs text-amber-400">Chưa lưu</span>}
-        {!dirty && savedAt.current && <span className="text-xs text-slate-600">Đã lưu lúc {savedAt.current}</span>}
+        {!readOnly && (saving ? <span className="text-xs text-teal-400">Đang lưu…</span>
+          : saveErr ? <span className="text-xs text-rose-400" title={saveErr}>Chưa lưu được — bấm Lưu để thử lại</span>
+            : dirty ? <span className="text-xs text-amber-400">Chưa lưu — tự lưu sau 2 giây</span>
+              : savedAt.current ? <span className="text-xs text-slate-500">Đã lưu lúc {savedAt.current}</span> : null)}
         <span className="ml-auto font-mono text-[11px] text-slate-600">KH 1.0</span>
       </div>
 
@@ -171,7 +210,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
         right={busy ? <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} /> : null}>
 
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
-          <select value={start} onChange={(e) => setStart(Number(e.target.value))} aria-label="Cặp năm" className="h-11 w-40 rounded-md border border-slate-700 bg-slate-900 px-3 text-sm text-slate-100">
+          <select value={start} onChange={(e) => changeStart(Number(e.target.value))} aria-label="Cặp năm" className="h-11 w-40 rounded-md border border-slate-700 bg-slate-900 px-3 text-sm text-slate-100">
             {years.map((y) => <option key={y} value={y}>Năm {y}–{y + 1}</option>)}
           </select>
           <label className="flex items-center gap-2 text-xs text-slate-500">
@@ -190,7 +229,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
                 className={`flex-1 sm:flex-none ${btnGhost}`}><Camera size={15} /> Chốt bản {snaps.length ? `(${snaps.length})` : ""}</button>
               <button onClick={() => { setDirty(false); setBusy(true); Promise.all([loadPlan(start), loadPlan(start + 1)]).then(([a, b]) => { setPlan(fillRef.current(joinYears(normalizeYear(a, start), normalizeYear(b, start + 1), n1, n2))); setBusy(false); }).catch(() => setBusy(false)); }}
                 className={`flex-1 sm:flex-none ${btnGhost}`}><RotateCcw size={15} /> Tải lại</button>
-              <button onClick={onSave} disabled={!dirty || busy} className={`flex-1 sm:flex-none ${btnPrimary} disabled:opacity-40`}><Save size={15} /> Lưu</button>
+              <button onClick={onSave} disabled={(!dirty && !saveErr) || busy || saving} className={`flex-1 sm:flex-none ${btnPrimary} disabled:opacity-40`}><Save size={15} /> Lưu</button>
             </>
           )}
           </div>

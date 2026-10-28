@@ -1,5 +1,5 @@
 -- ============================================================
--- ARTIUS TIME v12.0 — Kế hoạch nguồn lực
+-- ARTIUS TIME v12.0 → v12.12 — Kế hoạch nguồn lực (bản đầy đủ: lưu lưới + chốt bản, chỉ Admin ghi)
 -- Chạy MỘT LẦN trong Supabase → SQL Editor → New query → dán toàn bộ file này → Run.
 -- Chạy lại nhiều lần vẫn an toàn. Không đổi dữ liệu có sẵn.
 --
@@ -108,6 +108,10 @@ alter table public.artius_plan_snapshot enable row level security;
 drop policy if exists artius_plan_read on public.artius_plan;
 create policy artius_plan_read on public.artius_plan
   for select to authenticated using (public.artius_is_member());
+
+-- bản v12 đầu tiên mở quyền ghi thẳng bảng bản chốt cho mọi tài khoản: gỡ đi, mọi thay đổi chỉ qua hàm.
+drop policy if exists artius_plan_snap_write on public.artius_plan_snapshot;
+revoke insert on public.artius_plan_snapshot from authenticated;
 
 drop policy if exists artius_plan_snap_read on public.artius_plan_snapshot;
 create policy artius_plan_snap_read on public.artius_plan_snapshot
