@@ -12,6 +12,8 @@ import { PlanOverview } from "./PlanOverview.jsx";
 import { SQL_HINT, errMsg, isMissingTable, listSnapshots, loadPlan, savePlan, snapshotPlan } from "./planStore.js";
 
 const DEFAULT_AVAIL = 0.8;
+/* vai trò cơ bản tự điền cho dự án chưa có dòng nào (chỉ lấy vai trò còn tồn tại trong Thiết lập) */
+const DEFAULT_ROLES = ["TK", "3D", "2D", "BIM", "MEP", "PM", "GS"];
 
 export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) {
   const tick = useDataTick();
@@ -42,12 +44,24 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
   }, [staff, avail]);
   const roles = useMemo(() => ROLES.map((r) => ({ ...r })), [cfg.roles, tick]);   // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* dự án chưa có dòng nào → điền sẵn các vai trò cơ bản (dòng toàn 0, chưa tính là "đã sửa").
+     Chỉ chạy lúc tải: gỡ bớt vai trò rồi lưu thì giữ nguyên, trừ khi gỡ hết thì lần mở sau điền lại. */
+  const fillRef = useRef(null);
+  fillRef.current = (p) => {
+    if (readOnly) return p;
+    const ids = DEFAULT_ROLES.filter((id) => ROLES.some((r) => r.id === id));
+    const out = { ...p };
+    for (const pr of projects) if (!out[pr.id] || !Object.keys(out[pr.id]).length)
+      out[pr.id] = Object.fromEntries(ids.map((id) => [id, Array(weeks.length).fill(0)]));
+    return out;
+  };
+
   /* ---------- tải lưới ---------- */
   useEffect(() => {
     let alive = true;
     setBusy(true); setErr("");
     loadPlan(year)
-      .then((p) => { if (alive) { setPlan(p); setDirty(false); } })
+      .then((p) => { if (alive) { setPlan(fillRef.current(p)); setDirty(false); } })
       .catch((e) => { if (alive) setErr(isMissingTable(e) ? SQL_HINT : `Chưa tải được kế hoạch — ${errMsg(e)}`); })
       .finally(() => alive && setBusy(false));
     listSnapshots(year).then((s) => alive && setSnaps(s)).catch(() => {});
@@ -155,7 +169,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
             <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
               <button onClick={onSnapshot} title="Chụp lại lưới hiện tại để về sau so với thực tế trên bản đã chốt"
                 className={`flex-1 sm:flex-none ${btnGhost}`}><Camera size={15} /> Chốt bản {snaps.length ? `(${snaps.length})` : ""}</button>
-              <button onClick={() => { setDirty(false); setBusy(true); loadPlan(year).then((p) => { setPlan(p); setBusy(false); }).catch(() => setBusy(false)); }}
+              <button onClick={() => { setDirty(false); setBusy(true); loadPlan(year).then((p) => { setPlan(fillRef.current(p)); setBusy(false); }).catch(() => setBusy(false)); }}
                 className={`flex-1 sm:flex-none ${btnGhost}`}><RotateCcw size={15} /> Tải lại</button>
               <button onClick={onSave} disabled={!dirty || busy} className={`flex-1 sm:flex-none ${btnPrimary} disabled:opacity-40`}><Save size={15} /> Lưu</button>
             </div>

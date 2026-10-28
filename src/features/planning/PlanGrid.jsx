@@ -14,7 +14,9 @@ import { btnGhost } from "../../core/ui.jsx";
 import { isLight } from "../../core/theme.jsx";
 import { copyWeek, leftOf, needOf, setCell } from "./planCalc.js";
 
-const FRZ = 230;   // bề ngang cột khoá cứng
+const FRZ = 230;   // bề ngang mặc định của cột khoá cứng; kéo ở mép tiêu đề để đổi (150–520), nhớ riêng từng máy
+const FRZ_MIN = 150, FRZ_MAX = 520, FRZ_KEY = "artius:planFrz";
+const readFrz = () => { try { const v = Number(localStorage.getItem(FRZ_KEY)); return v >= FRZ_MIN && v <= FRZ_MAX ? v : FRZ; } catch { return FRZ; } };
 const CW = 34;     // bề ngang mỗi cột tuần
 const f = (n) => (!n ? "" : String(+Number(n).toFixed(2)).replace(".", ","));
 const f0 = (n) => String(+Number(n).toFixed(2)).replace(".", ",");
@@ -25,7 +27,7 @@ const parse = (s) => {
 
 /* ô của cột khoá cứng — luôn đúng một bề ngang, nội dung dài thì cắt gọn */
 const Frz = ({ children, cls = "", py = "py-0.5", title }) => (
-  <div className={`truncate px-2 ${py} ${cls}`} style={{ width: FRZ }} title={title}>{children}</div>
+  <div className={`truncate px-2 ${py} ${cls}`} style={{ width: "var(--frz, 230px)" }} title={title}>{children}</div>
 );
 
 /* màu đặt thẳng bằng style không đi qua LIGHT_CSS nên phải tự chọn theo giao diện (App vẽ lại khi đổi Sáng/Tối) */
@@ -71,6 +73,20 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
   const [active, setActive] = useState(null);     // { rid, wi }
   const [selWeek, setSelWeek] = useState(null);
   const wrap = useRef(null);
+  const [frz, setFrz] = useState(readFrz);
+  const frzRef = useRef(frz); frzRef.current = frz;
+  /* kéo mép phải của tiêu đề "Dự án · vai trò" để nới/thu cột tên */
+  const startDrag = (e) => {
+    e.preventDefault();
+    const x0 = e.clientX, w0 = frzRef.current;
+    const mv = (ev) => setFrz(Math.max(FRZ_MIN, Math.min(FRZ_MAX, Math.round(w0 + ev.clientX - x0))));
+    const up = () => {
+      window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up);
+      try { localStorage.setItem(FRZ_KEY, String(frzRef.current)); } catch { /* không lưu được: chỉ đổi cho phiên này */ }
+    };
+    window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
+  };
+  const resetFrz = () => { setFrz(FRZ); try { localStorage.removeItem(FRZ_KEY); } catch { /* bỏ qua */ } };
   const nowCell = useRef(null);
   const planRef = useRef(plan); planRef.current = plan;
   const changeRef = useRef(onChange); changeRef.current = onChange;
@@ -131,12 +147,15 @@ export function PlanGrid({ plan, onChange, projects, roles, weeks, nWeeks, cap, 
         </div>
       )}
 
-      <div ref={wrap} onKeyDown={onKey} className="overflow-auto" style={{ maxHeight: "64vh" }}>
+      <div ref={wrap} onKeyDown={onKey} className="overflow-auto" style={{ maxHeight: "64vh", "--frz": `${frz}px` }}>
         <table className="text-[12px]">
           <thead>
             <tr>
               <th className="sticky left-0 top-0 z-30 bg-slate-900 p-0 text-left">
                 <Frz py="py-1"><span className="text-[11px] uppercase tracking-wider text-slate-500">Dự án · vai trò</span></Frz>
+                <span role="separator" aria-orientation="vertical" title="Kéo để nới / thu cột tên · bấm đúp để về mặc định"
+                  onPointerDown={startDrag} onDoubleClick={resetFrz}
+                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none border-r-2 border-slate-600 hover:border-teal-500" />
               </th>
               {weeks.map((w, k) => (
                 <th key={w.i} style={{ minWidth: CW, top: 0 }}

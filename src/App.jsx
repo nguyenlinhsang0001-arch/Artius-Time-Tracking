@@ -1,6 +1,10 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.3
+   ARTIUS — Quản lý giờ công theo dự án · v12.4
+   Mới ở v12.4 — Kế hoạch → Nhập liệu: (1) kéo mép phải tiêu đề "Dự án · vai trò" để nới / thu cột tên dự án
+     (150–520px, bấm đúp để về mặc định, nhớ riêng từng máy); (2) dự án chưa có dòng nào được điền sẵn 7 vai trò
+     cơ bản TK, 3D, 2D, BIM, MEP, PM, GS (chỉ lấy vai trò còn trong Thiết lập), vẫn thêm / xoá từng vai trò được.
+     Điền sẵn không tính là "chưa lưu"; dòng để trống khi lưu sẽ tự bỏ như trước.
    Mới ở v12.3 — Sửa lỗi hiển thị lưới Kế hoạch ở giao diện Sáng.
      Dải "cần / còn lại" dính đáy, các ô CÒN bằng 0 và bản đồ tải ở Tổng quan đặt màu thẳng bằng mã hex nên
      không đi qua bảng đảo màu của giao diện Sáng, còn nguyên nền xanh đen. Nay chọn màu theo giao diện đang dùng.
