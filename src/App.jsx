@@ -1,6 +1,8 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.19
+   ARTIUS — Quản lý giờ công theo dự án · v12.20
+   Mới ở v12.20 — Tab "Nhân sự" và "Giờ ngoài dự án" chuyển từ Dashboard sang tab Bảng công (thanh tab con:
+     Bảng công | Nhân sự | Giờ ngoài dự án), áp dụng cho Admin và BOD. Dashboard còn Dự án | Ma trận. Trưởng phòng không đổi.
    Mới ở v12.19 — BOD sửa được toàn bộ mục Kế hoạch như Admin: lưới, chốt bản, ẩn dự án, gộp vai trò, khối tổng, hệ số
      sẵn sàng. Cần chạy supabase/v12_19_bod_ke_hoach.sql (lưới + chốt bản cho Admin/BOD; hàm artius_planning_set chỉ ghi
      khoá "planning" của thiết lập chung). Các mục khác của BOD vẫn chỉ xem.
@@ -379,7 +381,7 @@ import { DEFAULT_HOURS } from "./core/date.jsx";
 import { LAST_STORAGE_ERROR, NET_OK, STORAGE_OK, commitConfig, errText, loadDB, pullTs, resetDB, useNet, useStorageHealth } from "./core/db.jsx";
 import { DEFAULT_DEPTS, DEFAULT_LEAVE_TYPES, DEFAULT_PHASES, DEFAULT_ROLES, DEFAULT_TASKS, IDLE_PENDING, IDLE_TASK_ID, OT_PENDING, emptyConfig, isDeptTask, migrateOtCfg, setIdlePending, setOtMigNote, setOtPending, supportList, syncDepts, syncLeave, syncOtBands, syncPhases, syncRoles, withIdleTask } from "./core/domain.jsx";
 import { useTheme } from "./core/theme.jsx";
-import { APP_VERSION, BrandLogo, ConfirmDialog, InstallButton, ThemeToggle, btnDanger, btnGhost, btnPrimary } from "./core/ui.jsx";
+import { APP_VERSION, BrandLogo, CTRL, ConfirmDialog, InstallButton, ThemeToggle, btnDanger, btnGhost, btnPrimary } from "./core/ui.jsx";
 import { EmployeeDashboard, EmployeeSettings } from "./features/EmployeeHome.jsx";
 import { Employees } from "./features/Employees.jsx";
 import { Projects } from "./features/Projects.jsx";
@@ -846,8 +848,8 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
             )
             : me.type === "bod" ? (
               <>
-                {tab === "dash" && <Dashboard cfg={cfg} saveCfg={bodSave} flash={flash} />}
-                {tab === "sheet" && <AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} readOnly onSupport={bodSave} />}
+                {tab === "dash" && <Dashboard cfg={cfg} saveCfg={bodSave} flash={flash} tabs={DASH_TABS} />}
+                {tab === "sheet" && <SheetArea cfg={cfg} saveCfg={bodSave} flash={flash}><AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} readOnly onSupport={bodSave} /></SheetArea>}
                 {/* v7.7 — BOD xem được mọi mục quản lý nhưng không sửa: mọi lệnh lưu cấu hình bị chặn bởi bodSave */}
                 {tab === "proj" && <ReadOnlyView><Projects cfg={cfg} saveCfg={bodSave} flash={flash} onSupport={bodSave} supportRo /></ReadOnlyView>}
                 {tab === "emp" && <ReadOnlyView><Employees cfg={cfg} saveCfg={bodSave} flash={flash} readOnly onSupport={bodSave} /></ReadOnlyView>}
@@ -860,8 +862,8 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
             )
             : me.type === "admin" ? (
               <>
-                {tab === "dash" && <Dashboard cfg={cfg} saveCfg={saveCfg} flash={flash} />}
-                {tab === "sheet" && <AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} onSupport={supportSave} pastLockSave={saveCfg} />}
+                {tab === "dash" && <Dashboard cfg={cfg} saveCfg={saveCfg} flash={flash} tabs={DASH_TABS} />}
+                {tab === "sheet" && <SheetArea cfg={cfg} saveCfg={saveCfg} flash={flash}><AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} onSupport={supportSave} pastLockSave={saveCfg} /></SheetArea>}
                 {tab === "proj" && <Projects cfg={cfg} saveCfg={saveCfg} flash={flash} onSupport={supportSave} />}
                 {tab === "emp" && <Employees cfg={cfg} saveCfg={saveCfg} flash={flash} onSupport={supportSave} />}
                 {tab === "task" && <Tasks cfg={cfg} saveCfg={saveCfg} flash={flash} />}
@@ -953,6 +955,28 @@ export function StorageBanner() {
   );
 
   return null;
+}
+
+/* v12.20 — tab Bảng công của Admin / BOD có thanh tab con: Bảng công | Nhân sự | Giờ ngoài dự án.
+   "Nhân sự" và "Giờ ngoài dự án" chuyển từ Dashboard sang (Dashboard còn Dự án | Ma trận).
+   Bảng công luôn giữ nguyên trong bộ nhớ khi xem tab khác, để không mất phần đang sửa dở. */
+const DASH_TABS = ["proj", "mtx"];
+const SHEET_TABS = [["sheet", "Bảng công"], ["ppl", "Nhân sự"], ["off", "Giờ ngoài dự án"]];
+function SheetArea({ cfg, saveCfg, flash, children }) {
+  const [sub, setSub0] = useState(() => { try { const v = localStorage.getItem("artius.sheetTab"); return SHEET_TABS.some(([k]) => k === v) ? v : "sheet"; } catch { return "sheet"; } });
+  const setSub = (t) => { setSub0(t); try { localStorage.setItem("artius.sheetTab", t); } catch { /* bỏ qua */ } };
+  return (
+    <div className="space-y-3 md:space-y-4">
+      <div className="flex rounded-xl border border-slate-800 bg-slate-900 p-1 md:inline-flex">
+        {SHEET_TABS.map(([k, l]) => (
+          <button key={k} onClick={() => setSub(k)} aria-pressed={sub === k}
+            className={`${CTRL} flex flex-1 items-center justify-center rounded-lg px-6 text-sm font-medium md:flex-none ${sub === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>{l}</button>
+        ))}
+      </div>
+      <div className={sub === "sheet" ? "" : "hidden"}>{children}</div>
+      {sub !== "sheet" && <Dashboard key={sub} cfg={cfg} saveCfg={saveCfg} flash={flash} tabs={[sub]} hideBar />}
+    </div>
+  );
 }
 
 /* v7.7 — Khung "chỉ xem" cho BOD (nhãn "Chế độ chỉ xem" hiện ở header cạnh tên tài khoản): ô nhập/chọn không thao tác được; lưu cấu hình đã bị chặn ở bodSave */
