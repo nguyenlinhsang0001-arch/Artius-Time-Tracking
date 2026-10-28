@@ -63,7 +63,7 @@ export const setCell = (plan, pid, rid, wi, v, nWeeks) => {
   const next = { ...plan, [pid]: { ...(plan[pid] || {}) } };
   const arr = (next[pid][rid] || Array(nWeeks).fill(0)).slice();
   arr[wi] = Number(v) || 0;
-  if (arr.some((x) => Number(x) > 0)) next[pid][rid] = arr; else delete next[pid][rid];
+  next[pid][rid] = arr;   // giữ dòng cả khi toàn 0 — dòng trống chỉ bị bỏ lúc lưu (prunePlan), để gõ 0 không làm mất vai trò
   return next;
 };
 export const copyWeek = (plan, projectIds, from, to, nWeeks) => {

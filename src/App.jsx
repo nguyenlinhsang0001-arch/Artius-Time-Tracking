@@ -1,6 +1,12 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.5
+   ARTIUS — Quản lý giờ công theo dự án · v12.7
+   Mới ở v12.7 — Sửa hai lỗi nhập lưới Kế hoạch: (1) gõ được số lẻ 0,5 / 0,25 / 0,75 (ô giữ chữ đang gõ, trước đây
+     gõ "0," bị hiểu thành 0 và xoá mất dấu phẩy); (2) gõ 0 vào ô không còn làm mất cả dòng vai trò —
+     dòng toàn 0 chỉ bị bỏ lúc lưu.
+   Mới ở v12.6 — Kế hoạch: (1) kéo thả để đổi vị trí các vai trò trong cùng một dự án (cầm biểu tượng ⋮⋮ ở đầu dòng;
+     thứ tự lưu riêng từng máy, không đổi dữ liệu kế hoạch); (2) các banner trong tab Kế hoạch đồng bộ
+     viền đỏ nền hồng như các cảnh báo khác ở giao diện Sáng.
    Mới ở v12.5 — Hỗ trợ dự án: bấm vào khoảng ngày của một đợt (có biểu tượng bút) để sửa thẳng ngày bắt đầu và
      ngày kết thúc, thay vì chỉ có +1 / +2 tuần. Ghi đè đúng đợt đó; Admin lưu thẳng, trưởng phòng qua artius_support_set.
    Mới ở v12.4 — Kế hoạch → Nhập liệu: (1) kéo mép phải tiêu đề "Dự án · vai trò" để nới / thu cột tên dự án

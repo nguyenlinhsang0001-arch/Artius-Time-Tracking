@@ -51,6 +51,22 @@ const leftStyle = (lf) => {
 };
 const stripBg = () => (isLight() ? "#ccfbf1" : "#041f1c");
 
+/* ô nhập: giữ chữ đang gõ riêng (để gõ được "0," rồi "0,5"), chỉ đẩy số đã hiểu lên lưới */
+const Cell = ({ k, v, readOnly, onType, onFocus }) => {
+  const [txt, setTxt] = useState(null);
+  return (
+    <input data-cell data-col={k} readOnly={readOnly} inputMode="decimal" placeholder="·"
+      value={txt ?? f(v)}
+      onFocus={(e) => { onFocus(); e.target.select(); }}
+      onBlur={() => setTxt(null)}
+      onChange={(e) => {
+        const t = e.target.value.replace(/[^0-9.,]/g, "");
+        setTxt(t); onType(parse(t));
+      }}
+      className="w-full border-0 bg-transparent py-1 text-center font-mono text-[12px] text-slate-100 outline-none placeholder:text-slate-800 focus:rounded-sm focus:bg-teal-950 focus:ring-[1.5px] focus:ring-teal-500" />
+  );
+};
+
 /* một dòng dự án × vai trò — chỉ vẽ lại khi mảng số của chính nó đổi */
 const Row = React.memo(function Row({ pid, rid, label, values, weeks, nowIndex, readOnly, onCell, onFocus, onDrop, dnd }) {
   const dropProps = readOnly ? {} : {
@@ -82,10 +98,7 @@ const Row = React.memo(function Row({ pid, rid, label, values, weeks, nowIndex, 
         return (
           <td key={w.i} style={{ minWidth: CW, ...(v > 0.001 ? { background: `rgba(45,212,191,${(Math.min(v, 2) / 2 * 0.3 + 0.05).toFixed(2)})` } : null) }}
             className={`border-l border-slate-900 p-0 ${past ? "bg-slate-950/70" : ""}`}>
-            <input data-cell data-col={k} readOnly={readOnly} value={f(v)} placeholder="·"
-              onFocus={(e) => { onFocus(rid, w.i); e.target.select(); }}
-              onChange={(e) => onCell(pid, rid, w.i, parse(e.target.value))}
-              className="w-full border-0 bg-transparent py-1 text-center font-mono text-[12px] text-slate-100 outline-none placeholder:text-slate-800 focus:rounded-sm focus:bg-teal-950 focus:ring-[1.5px] focus:ring-teal-500" />
+            <Cell k={k} v={v} readOnly={readOnly} onFocus={() => onFocus(rid, w.i)} onType={(x) => onCell(pid, rid, w.i, x)} />
           </td>
         );
       })}
