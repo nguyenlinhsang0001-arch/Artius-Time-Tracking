@@ -1,6 +1,16 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.21
+   ARTIUS — Quản lý giờ công theo dự án · v12.22
+   Mới ở v12.22 — Dashboard thêm tab "Tổng quan nguồn lực", đứng đầu thanh tab (features/dashboard/ResourceOverview.jsx
+     + ResourcePane.jsx, tải rời và có vỏ bắt lỗi riêng như PlanPane):
+     một biểu đồ cột chồng hai chiều cho cả công ty lẫn từng vai trò theo tuần — trên vạch 0 là người THIẾU,
+     dưới là người DƯ, mỗi đoạn màu là một vai trò; không bù trừ hai bên nên vai trò đang dư không che vai trò đang thiếu.
+     Bấm một cột để xem chi tiết tuần đó (cần / có từng vai trò, % quân số của vai trò thiếu, dự án đang chiếm).
+     Đổi đơn vị Số người / % quân số công ty; xem 12 · 24 · 48 tuần kể từ tuần hiện tại; chip bật tắt từng vai trò.
+     Đoạn nhỏ vẫn vẽ dày tối thiểu 3px để không mất hút. Màn này CHỈ ĐỌC — lưới nhập vẫn ở tab Kế hoạch,
+     dùng chung nguồn số liệu và quy tắc với tab đó (quân số × hệ số sẵn sàng, dự án tạm ẩn, vai trò gộp).
+     Tắt mục Kế hoạch trong Thiết lập thì tab này cũng ẩn theo.
+
    Mới ở v12.21 — Thanh bên (Admin / BOD): Kế hoạch lên ngay dưới Dashboard, trên Bảng công; Tác vụ gộp vào mục Nhân sự
      thành tab con (Nhân sự | Tác vụ). Trưởng phòng và nhân viên không đổi.
    Mới ở v12.20 — Tab "Nhân sự" và "Giờ ngoài dự án" chuyển từ Dashboard sang tab Bảng công (thanh tab con:
@@ -683,6 +693,8 @@ export function AppMain() {
 
   /* v12 — tab Kế hoạch bật / tắt trong Thiết lập; tắt thì tab biến mất, phần còn lại chạy như chưa có gì */
   const planOn = cfg?.planning?.enabled !== false;
+  /* v12.22 — tab "Tổng quan nguồn lực" đọc lưới kế hoạch, nên tắt mục Kế hoạch thì cũng ẩn tab này */
+  const dashTabs = planOn ? DASH_TABS : DASH_TABS.filter((t) => t !== "res");
   const railItems = me?.type === "admin"
     ? [["dash", "Dashboard", LayoutDashboard], ...(planOn ? [["plan", "Kế hoạch", CalendarDays]] : []),   // v12.21: Kế hoạch lên trên Bảng công
        ["sheet", "Bảng công", ClipboardList], ["proj", "Dự án", FolderKanban],
@@ -850,7 +862,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
             )
             : me.type === "bod" ? (
               <>
-                {tab === "dash" && <Dashboard cfg={cfg} saveCfg={bodSave} flash={flash} tabs={DASH_TABS} />}
+                {tab === "dash" && <Dashboard cfg={cfg} saveCfg={bodSave} flash={flash} tabs={dashTabs} />}
                 {tab === "sheet" && <SheetArea cfg={cfg} saveCfg={bodSave} flash={flash}><AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} readOnly onSupport={bodSave} /></SheetArea>}
                 {/* v7.7 — BOD xem được mọi mục quản lý nhưng không sửa: mọi lệnh lưu cấu hình bị chặn bởi bodSave */}
                 {tab === "proj" && <ReadOnlyView><Projects cfg={cfg} saveCfg={bodSave} flash={flash} onSupport={bodSave} supportRo /></ReadOnlyView>}
@@ -864,7 +876,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
             )
             : me.type === "admin" ? (
               <>
-                {tab === "dash" && <Dashboard cfg={cfg} saveCfg={saveCfg} flash={flash} tabs={DASH_TABS} />}
+                {tab === "dash" && <Dashboard cfg={cfg} saveCfg={saveCfg} flash={flash} tabs={dashTabs} />}
                 {tab === "sheet" && <SheetArea cfg={cfg} saveCfg={saveCfg} flash={flash}><AdminTimesheet cfg={cfg} flash={flash} onDirtyChange={setSheetDirty} onSupport={supportSave} pastLockSave={saveCfg} /></SheetArea>}
                 {tab === "proj" && <Projects cfg={cfg} saveCfg={saveCfg} flash={flash} onSupport={supportSave} />}
                 {tab === "emp" && <EmpArea emp={<Employees cfg={cfg} saveCfg={saveCfg} flash={flash} onSupport={supportSave} />}
@@ -962,7 +974,7 @@ export function StorageBanner() {
 /* v12.20 — tab Bảng công của Admin / BOD có thanh tab con: Bảng công | Nhân sự | Giờ ngoài dự án.
    "Nhân sự" và "Giờ ngoài dự án" chuyển từ Dashboard sang (Dashboard còn Dự án | Ma trận).
    Bảng công luôn giữ nguyên trong bộ nhớ khi xem tab khác, để không mất phần đang sửa dở. */
-const DASH_TABS = ["proj", "mtx"];
+const DASH_TABS = ["res", "proj", "mtx"];   // v12.22: Tổng quan nguồn lực đứng đầu
 const SHEET_TABS = [["sheet", "Bảng công"], ["ppl", "Nhân sự"], ["off", "Giờ ngoài dự án"]];
 function SheetArea({ cfg, saveCfg, flash, children }) {
   const [sub, setSub0] = useState(() => { try { const v = localStorage.getItem("artius.sheetTab"); return SHEET_TABS.some(([k]) => k === v) ? v : "sheet"; } catch { return "sheet"; } });

@@ -11,11 +11,13 @@ import { ALLOC_ST, allocLimits, allocState } from "../../shared/alloc.jsx";
 import { ProjectProgress } from "./ProjectProgress.jsx";
 import { OffProject } from "./OffProject.jsx";
 import { StaffAllocation } from "./StaffAllocation.jsx";
+import { ResourcePane } from "./ResourcePane.jsx";
 
 /* ============================ DASHBOARD (QUẢN LÝ) ============================ */
 /* v12.20 — tabs: các tab được hiện (Dashboard: Dự án | Ma trận; Bảng công: Nhân sự | Giờ ngoài dự án);
-   hideBar: ẩn thanh tab riêng khi nơi gọi đã có thanh tab của nó */
-export function Dashboard({ cfg, saveCfg, flash, tabs = ["proj", "ppl", "mtx", "off"], hideBar = false }) {
+   hideBar: ẩn thanh tab riêng khi nơi gọi đã có thanh tab của nó
+   v12.22 — thêm tab "res" (Tổng quan nguồn lực), đứng đầu thanh tab Dashboard */
+export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "mtx", "off"], hideBar = false }) {
   const dataTick = useDataTick();   // v1.9: số liệu tự cập nhật khi có người vừa gửi
   const now = new Date();
   const [from, setFrom] = useState(fmt(firstOfMonth(now)));
@@ -27,7 +29,7 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["proj", "ppl", "mtx", "
      Bỏ ô lọc Dự án / Giai đoạn chung ở đầu trang — mỗi tab có bộ lọc riêng, chỉ tác động lên chính tab đó. */
   const fProj = "all", fPhase = "all";
   // v10.1: ba tab — Dự án | Nhân sự | Ma trận
-  const [dTabRaw, setDTab0] = useState(() => { try { const v = localStorage.getItem("artius.dashTab"); return v === "proj" || v === "mtx" || v === "off" ? v : "ppl"; } catch { return "ppl"; } });
+  const [dTabRaw, setDTab0] = useState(() => { try { const v = localStorage.getItem("artius.dashTab"); return v === "res" || v === "proj" || v === "mtx" || v === "off" ? v : "ppl"; } catch { return "ppl"; } });
   const dTab = tabs.includes(dTabRaw) ? dTabRaw : tabs[0];
   const setDTab = (t) => { setDTab0(t); try { localStorage.setItem("artius.dashTab", t); } catch { /* bỏ qua */ } };
   const [q, setQ] = useState("");              // tìm theo tên nhân sự
@@ -327,13 +329,21 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["proj", "ppl", "mtx", "
       {/* v5.6 — chuyển tab Dự án | Nhân sự */}
       {!hideBar && <div className="flex rounded-xl border border-slate-800 bg-slate-900 p-1 md:inline-flex">
         {/* v11.1: thêm tab "Giờ ngoài dự án" · v12.20: Nhân sự và Giờ ngoài dự án chuyển sang tab Bảng công */}
-        {[["proj", "Dự án", nProjActive], ["ppl", "Nhân sự", nStaff], ["mtx", "Ma trận", nStaff], ["off", "Giờ ngoài dự án", nStaff]].filter(([k]) => tabs.includes(k)).map(([k, l, n]) => (
+        {/* v12.22: "Tổng quan nguồn lực" đứng đầu, không có số đếm (n = null) vì không đếm theo người hay dự án */}
+        {[["res", "Tổng quan nguồn lực", null], ["proj", "Dự án", nProjActive], ["ppl", "Nhân sự", nStaff], ["mtx", "Ma trận", nStaff], ["off", "Giờ ngoài dự án", nStaff]].filter(([k]) => tabs.includes(k)).map(([k, l, n]) => (
           <button key={k} onClick={() => setDTab(k)} aria-pressed={dTab === k}
             className={`${CTRL} flex flex-1 items-center justify-center gap-2 rounded-lg px-6 text-sm font-medium md:flex-none ${dTab === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>
-            {l}<span className={`rounded-full px-1.5 font-mono text-[11px] ${dTab === k ? "bg-teal-900/60 text-teal-300" : "bg-slate-800 text-slate-500"}`}>{n}</span>
+            {l}{n != null && <span className={`rounded-full px-1.5 font-mono text-[11px] ${dTab === k ? "bg-teal-900/60 text-teal-300" : "bg-slate-800 text-slate-500"}`}>{n}</span>}
           </button>
         ))}
       </div>}
+
+      {/* v12.22 — Tổng quan nguồn lực: một biểu đồ cho cả công ty lẫn từng vai trò theo tuần. Chỉ đọc, lưới nhập vẫn ở tab Kế hoạch. */}
+      {dTab === "res" && (
+        <Panel title="Tổng quan nguồn lực" sub="Thiếu / dư người theo tuần — trên vạch 0 là thiếu, dưới là dư, mỗi đoạn màu là một vai trò" flush>
+          <ResourcePane cfg={cfg} />
+        </Panel>
+      )}
 
       {dTab === "proj" && (
         <Panel title="Tiến độ dự án" sub="Giờ đã dùng từ trước tới nay so với giờ dự kiến từng giai đoạn — không phụ thuộc kỳ" flush>
