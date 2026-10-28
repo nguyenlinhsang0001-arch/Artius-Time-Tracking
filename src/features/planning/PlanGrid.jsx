@@ -18,7 +18,7 @@ import { cellOf, leftOf, needOf, setCell, setMany } from "./planCalc.js";
 const FRZ = 230;   // bề ngang mặc định của cột khoá cứng; kéo ở mép tiêu đề để đổi (150–520), nhớ riêng từng máy
 const FRZ_MIN = 150, FRZ_MAX = 520, FRZ_KEY = "artius:planFrz";
 const readFrz = () => { try { const v = Number(localStorage.getItem(FRZ_KEY)); return v >= FRZ_MIN && v <= FRZ_MAX ? v : FRZ; } catch { return FRZ; } };
-const CW = 34;     // bề ngang mỗi cột tuần
+const CW = 38;     // bề ngang mỗi cột tuần (bảng đặt cố định để lưới nhập và bảng tổng thẳng cột)
 const STEP_Q = 0.25;   // bước tăng / giảm của phím + / −
 const f = (n) => (!n ? "" : String(+Number(n).toFixed(2)).replace(".", ","));
 const f0 = (n) => String(+Number(n).toFixed(2)).replace(".", ",");
@@ -47,11 +47,11 @@ const MO_CSS = ".mo{border-left:1px dashed #64748b!important}html[data-theme=lig
 const DROP_CSS = "tr[data-drop=before]>td{box-shadow:inset 0 2px 0 #2dd4bf}tr[data-drop=after]>td{box-shadow:inset 0 -2px 0 #2dd4bf}tr[data-dragging]{opacity:.4}";
 
 /* màu đặt thẳng bằng style không đi qua LIGHT_CSS nên phải tự chọn theo giao diện (App vẽ lại khi đổi Sáng/Tối) */
+/* CÒN LẠI: đủ hoặc dư (≥ 0) xanh lá · thiếu tới 1 người vàng · thiếu hơn 1 người đỏ */
 const leftStyle = (lf) => {
-  const L = isLight();
-  if (lf < -0.001) return { background: "#f87171", color: "#450a0a" };
-  if (lf > 0.001) return { background: "#fde68a", color: "#451a03" };
-  return L ? { background: "#e2e8f0", color: "#64748b" } : { background: "#1e293b", color: "#64748b" };
+  if (lf >= -0.001) return isLight() ? { background: "#bbf7d0", color: "#14532d" } : { background: "#166534", color: "#dcfce7" };
+  if (lf >= -1.001) return { background: "#fde68a", color: "#451a03" };
+  return { background: "#f87171", color: "#450a0a" };
 };
 const stripBg = () => (isLight() ? "#ccfbf1" : "#041f1c");
 
@@ -115,6 +115,7 @@ const Row = React.memo(function Row({ r, pid, rid, label, values, weeks, nowInde
 export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new Set(), onToggleHide, totals, onTotals, mergedOf = new Map(), roles, weeks, nWeeks, cap, head, readOnly = false, nowIndex = -1, scrollKey }) {
   const [active, setActive] = useState(null);     // { rid, wi }
   const wrap = useRef(null);
+  const wrap2 = useRef(null);   // bảng Tổng toàn công ty (cuộn ngang đồng bộ với lưới nhập)
   const [order, setOrder] = useState(readOrd);
   const orderRef = useRef(order); orderRef.current = order;
   const drag = useRef(null);
@@ -415,6 +416,68 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
   const wkTh = (extra) => `sticky z-20 border-l border-slate-800 bg-slate-900 px-1 py-1 text-center ${extra}`;
   const mo = (w, k) => (w.ms && !yearStart(k) ? " mo" : "");
 
+  /* hàng tiêu đề tháng / tuần — dùng chung cho lưới nhập và bảng Tổng toàn công ty */
+  const colgroup = (
+    <colgroup>
+      <col style={{ width: frz }} />
+      {weeks.map((w) => <col key={w.i} style={{ width: CW }} />)}
+    </colgroup>
+  );
+  const tblStyle = { tableLayout: "fixed", width: frz + nCol * CW };
+  const renderHead = (main) => (
+    <thead>
+      <tr>
+        <th className="sticky left-0 top-0 z-30 bg-slate-900 p-0 text-left">
+          {main ? (
+            <>
+              <Frz py="py-1"><span className="text-[11px] uppercase tracking-wider text-slate-500">Dự án · vai trò</span></Frz>
+              <span role="separator" aria-orientation="vertical" title="Kéo để nới / thu cột tên · bấm đúp để về mặc định"
+                onPointerDown={startDrag} onDoubleClick={resetFrz}
+                className="absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none border-r-2 border-slate-600 hover:border-teal-500" />
+            </>
+          ) : totHead}
+        </th>
+        {weeks.map((w, k) => (
+          <th key={w.i} style={{ minWidth: CW, top: 0 }} title={yearStart(k) ? `Từ đây là năm ${w.y}` : undefined}
+            className={wkTh(`whitespace-nowrap text-[11px] font-medium${mo(w, k)} ${yearStart(k) ? "border-l-2 border-l-teal-500" : ""} ${k === 0 || weeks[k - 1].m !== w.m ? "text-teal-400" : "text-slate-700"}`)}>
+            {k === 0 || weeks[k - 1].m !== w.m ? `T${w.m}${w.m === 1 || k === 0 ? `·${String(w.y).slice(2)}` : ""}` : ""}
+          </th>
+        ))}
+      </tr>
+      <tr>
+        <th className="sticky left-0 top-[26px] z-30 bg-slate-900 p-0"><Frz py="py-1">&nbsp;</Frz></th>
+        {weeks.map((w, k) => {
+          const isNow = w.i === nowIndex;
+          return (
+            <th key={w.i} ref={isNow && main ? nowCell : null}
+              title={isNow ? "Tuần này" : undefined} style={{ minWidth: CW, top: 26 }}
+              className={`sticky z-20 border-l border-slate-800 px-1 py-1 text-center text-[10px]${mo(w, k)} ${isNow ? "bg-slate-800 font-semibold text-teal-300" : "bg-slate-900 font-normal text-slate-500"}`}>
+              {w.w}
+            </th>
+          );
+        })}
+      </tr>
+    </thead>
+  );
+  const totHead = (
+    <Frz py="py-1">
+                  <span className="flex items-center gap-1">
+                    <span className="font-semibold text-teal-300">TỔNG TOÀN CÔNG TY</span>
+                    {canTot && addableTot.length > 0 && (
+                      <span className="relative ml-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-slate-700 text-slate-400 hover:border-teal-600 hover:text-teal-300"
+                        title="Thêm / hiện lại vai trò ở khối tổng">
+                        <Plus size={13} />
+                        <select value="" onChange={(e) => addTot(e.target.value)} aria-label="Thêm vai trò vào khối tổng"
+                          className="absolute inset-0 cursor-pointer opacity-0">
+                          <option value="">Thêm vai trò…</option>
+                          {addableTot.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}{tHidden.has(r.id) ? " (đang ẩn)" : ""}</option>)}
+                        </select>
+                      </span>
+                    )}
+                  </span>
+    </Frz>
+  );
+
   return (
     <div>
       <div className="flex items-center justify-end border-b border-slate-800 px-3 py-2.5 md:px-4">
@@ -425,37 +488,11 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
       <style>{DROP_CSS + MO_CSS}</style>
       <div ref={wrap} onKeyDown={onKey} onCopy={onCopy} onCut={onCut} onPaste={onPaste}
         onPointerDown={readOnly ? undefined : onPointerDown} onPointerOver={readOnly ? undefined : onPointerOver}
+        onScroll={() => { const a = wrap.current, b = wrap2.current; if (a && b && b.scrollLeft !== a.scrollLeft) b.scrollLeft = a.scrollLeft; }}
         className="relative overflow-auto" style={{ maxHeight: "64vh", "--frz": `${frz}px` }}>
-        <table className="text-[12px]">
-          <thead>
-            <tr>
-              <th className="sticky left-0 top-0 z-30 bg-slate-900 p-0 text-left">
-                <Frz py="py-1"><span className="text-[11px] uppercase tracking-wider text-slate-500">Dự án · vai trò</span></Frz>
-                <span role="separator" aria-orientation="vertical" title="Kéo để nới / thu cột tên · bấm đúp để về mặc định"
-                  onPointerDown={startDrag} onDoubleClick={resetFrz}
-                  className="absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none border-r-2 border-slate-600 hover:border-teal-500" />
-              </th>
-              {weeks.map((w, k) => (
-                <th key={w.i} style={{ minWidth: CW, top: 0 }} title={yearStart(k) ? `Từ đây là năm ${w.y}` : undefined}
-                  className={wkTh(`text-[11px] font-medium${mo(w, k)} ${yearStart(k) ? "border-l-2 border-l-teal-500" : ""} ${k === 0 || weeks[k - 1].m !== w.m ? "text-teal-400" : "text-slate-700"}`)}>
-                  {k === 0 || weeks[k - 1].m !== w.m ? `T${w.m}${w.m === 1 || k === 0 ? `·${String(w.y).slice(2)}` : ""}` : ""}
-                </th>
-              ))}
-            </tr>
-            <tr>
-              <th className="sticky left-0 top-[26px] z-30 bg-slate-900 p-0"><Frz py="py-1">&nbsp;</Frz></th>
-              {weeks.map((w, k) => {
-                const isNow = w.i === nowIndex;
-                return (
-                  <th key={w.i} ref={isNow ? nowCell : null}
-                    title={isNow ? "Tuần này" : undefined} style={{ minWidth: CW, top: 26 }}
-                    className={`sticky z-20 border-l border-slate-800 px-1 py-1 text-center text-[10px]${mo(w, k)} ${isNow ? "bg-slate-800 font-semibold text-teal-300" : "bg-slate-900 font-normal text-slate-500"}`}>
-                    {w.w}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
+        <table className="text-[12px]" style={tblStyle}>
+          {colgroup}
+          {renderHead(true)}
 
           <tbody>
             {projects.map((p) => {
@@ -514,70 +551,6 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
               );
             })}
 
-            {/* khối tổng của mọi vai trò */}
-            <tr><td className="sticky left-0 z-20 bg-slate-900 p-0"><Frz py="pt-4">&nbsp;</Frz></td><td colSpan={nCol} /></tr>
-            <tr>
-              <td className="sticky left-0 z-20 border-y border-slate-600 bg-slate-950 p-0">
-                <Frz py="py-1.5">
-                  <span className="flex items-center gap-1">
-                    <span className="font-semibold text-teal-300">TỔNG TOÀN CÔNG TY</span>
-                    {canTot && addableTot.length > 0 && (
-                      <span className="relative ml-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-slate-700 text-slate-400 hover:border-teal-600 hover:text-teal-300"
-                        title="Thêm / hiện lại vai trò ở khối tổng">
-                        <Plus size={13} />
-                        <select value="" onChange={(e) => addTot(e.target.value)} aria-label="Thêm vai trò vào khối tổng"
-                          className="absolute inset-0 cursor-pointer opacity-0">
-                          <option value="">Thêm vai trò…</option>
-                          {addableTot.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}{tHidden.has(r.id) ? " (đang ẩn)" : ""}</option>)}
-                        </select>
-                      </span>
-                    )}
-                  </span>
-                </Frz>
-              </td>
-              <td className="border-y border-slate-600" colSpan={nCol} />
-            </tr>
-            {totalRoles.map((r) => (
-              <React.Fragment key={r.id}>
-                <tr className="border-b border-slate-900"
-                  {...(canTot ? { onDragOver: (e) => tdnd.over(e, r.id), onDragLeave: (e) => e.currentTarget.removeAttribute("data-drop"), onDrop: (e) => tdnd.drop(e, r.id) } : {})}>
-                  <td className="sticky left-0 z-20 bg-slate-950 p-0">
-                    <Frz title={`${r.id} · ${r.name}`}>
-                      <span className="flex items-center gap-1">
-                        {canTot && (
-                          <span draggable onDragStart={(e) => tdnd.start(e, r.id)} onDragEnd={dnd.end} title="Giữ và kéo để đổi vị trí dòng"
-                            className="inline-flex w-3 shrink-0 cursor-grab touch-none items-center justify-center text-slate-600 hover:text-slate-300 active:cursor-grabbing">
-                            <GripVertical size={12} />
-                          </span>
-                        )}
-                        <span className="truncate"><span className="font-mono text-slate-400">{r.id}</span> <span className="text-slate-300">{r.name}</span>{" "}
-                          <span className="text-slate-600">· {head.get(r.id) || 0}</span>
-                          {mergedOf.get(r.id) && <span className="text-[10.5px] text-teal-600" title={`Đã gộp ${mergedOf.get(r.id).join(", ")} vào ${r.id}`}> (+{mergedOf.get(r.id).join(", ")})</span>}</span>
-                        {canTot && (
-                          <button type="button" onClick={() => hideTot(r.id)} title="Ẩn vai trò này khỏi khối tổng, Tổng quan và Excel"
-                            className="ml-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-600 hover:text-amber-400">
-                            <EyeOff size={12} />
-                          </button>
-                        )}
-                      </span>
-                    </Frz>
-                  </td>
-                  {weeks.map((w) => {
-                    const nd = needOf(plan, pids, r.id, w.i);
-                    return <td key={w.i} style={{ minWidth: CW }} className={`border-l border-slate-900 px-1 text-center font-mono ${w.ms ? "mo" : ""} ${nd ? "text-slate-100" : "text-slate-800"}`}>{nd ? f0(nd) : "0"}</td>;
-                  })}
-                </tr>
-                <tr className="border-b border-slate-800">
-                  <td className="sticky left-0 z-20 bg-slate-950 p-0"><Frz><span className="pl-4 text-[11px] text-slate-600">còn lại</span></Frz></td>
-                  {weeks.map((w) => {
-                    const lf = leftOf(plan, pids, r.id, w.i, cap);
-                    return <td key={w.i} className={`border-l border-slate-900 px-1 text-center font-mono font-semibold ${w.ms ? "mo" : ""}`}
-                      style={{ minWidth: CW, ...leftStyle(lf) }}>{f0(lf)}</td>;
-                  })}
-                </tr>
-              </React.Fragment>
-            ))}
-
             {/* dải dính đáy: Cần và CÒN của vai trò đang gõ */}
             {stripRole && (
               <>
@@ -591,7 +564,7 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
                   </td>
                   {weeks.map((w) => {
                     const nd = needOf(plan, pids, stripRole.id, w.i);
-                    return <td key={w.i} className={`sticky z-10 border-l border-slate-900 px-1 text-center font-mono text-slate-300 ${w.ms ? "mo" : ""}`}
+                    return <td key={w.i} className={`sticky z-10 border-l border-slate-900 px-0 text-center font-mono text-[11px] text-slate-300 ${w.ms ? "mo" : ""}`}
                       style={{ minWidth: CW, bottom: 22, background: stripBg(), outline: w.i === active.wi ? "1.5px solid #14b8a6" : "none" }}>{nd ? f0(nd) : "0"}</td>;
                   })}
                 </tr>
@@ -601,7 +574,7 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
                   </td>
                   {weeks.map((w) => {
                     const lf = leftOf(plan, pids, stripRole.id, w.i, cap);
-                    return <td key={w.i} className={`sticky z-10 border-l border-slate-900 px-1 text-center font-mono font-semibold ${w.ms ? "mo" : ""}`}
+                    return <td key={w.i} className={`sticky z-10 border-l border-slate-900 px-0 text-center font-mono text-[11px] font-semibold ${w.ms ? "mo" : ""}`}
                       style={{ minWidth: CW, bottom: 0, outline: w.i === active.wi ? "1.5px solid #14b8a6" : "none", ...leftStyle(lf) }}>{f0(lf)}</td>;
                   })}
                 </tr>
@@ -612,9 +585,63 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
         {ov && <div aria-hidden className="pointer-events-none absolute z-10 rounded-sm border-2 border-teal-400 bg-teal-400/10" style={ov} />}
       </div>
 
+      {/* v12.18 — TỔNG TOÀN CÔNG TY tách thành bảng riêng, có hàng tiêu đề tháng / tuần của chính nó, cuộn ngang theo lưới nhập */}
+      <div className="border-t-2 border-slate-700">
+        <div ref={wrap2} onScroll={() => { const a = wrap2.current, b = wrap.current; if (a && b && b.scrollLeft !== a.scrollLeft) b.scrollLeft = a.scrollLeft; }}
+          className="overflow-auto" style={{ maxHeight: "48vh", "--frz": `${frz}px` }}>
+          <table className="text-[12px]" style={tblStyle}>
+            {colgroup}
+            {renderHead(false)}
+            <tbody>
+              {totalRoles.map((r) => (
+                <React.Fragment key={r.id}>
+                  <tr className="border-b border-slate-900"
+                    {...(canTot ? { onDragOver: (e) => tdnd.over(e, r.id), onDragLeave: (e) => e.currentTarget.removeAttribute("data-drop"), onDrop: (e) => tdnd.drop(e, r.id) } : {})}>
+                    <td className="sticky left-0 z-20 bg-slate-950 p-0">
+                      <Frz title={`${r.id} · ${r.name}`}>
+                        <span className="flex items-center gap-1">
+                          {canTot && (
+                            <span draggable onDragStart={(e) => tdnd.start(e, r.id)} onDragEnd={dnd.end} title="Giữ và kéo để đổi vị trí dòng"
+                              className="inline-flex w-3 shrink-0 cursor-grab touch-none items-center justify-center text-slate-600 hover:text-slate-300 active:cursor-grabbing">
+                              <GripVertical size={12} />
+                            </span>
+                          )}
+                          <span className="truncate"><span className="font-mono text-slate-400">{r.id}</span> <span className="text-slate-300">{r.name}</span>{" "}
+                            <span className="text-slate-600">· {head.get(r.id) || 0}</span>
+                            {mergedOf.get(r.id) && <span className="text-[10.5px] text-teal-600" title={`Đã gộp ${mergedOf.get(r.id).join(", ")} vào ${r.id}`}> (+{mergedOf.get(r.id).join(", ")})</span>}</span>
+                          {canTot && (
+                            <button type="button" onClick={() => hideTot(r.id)} title="Ẩn vai trò này khỏi khối tổng, Tổng quan và Excel"
+                              className="ml-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-600 hover:text-amber-400">
+                              <EyeOff size={12} />
+                            </button>
+                          )}
+                        </span>
+                      </Frz>
+                    </td>
+                    {weeks.map((w) => {
+                      const nd = needOf(plan, pids, r.id, w.i);
+                      return <td key={w.i} style={{ minWidth: CW }} className={`border-l border-slate-900 px-0 text-center font-mono text-[11px] ${w.ms ? "mo" : ""} ${nd ? "text-slate-100" : "text-slate-800"}`}>{nd ? f0(nd) : "0"}</td>;
+                    })}
+                  </tr>
+                  <tr className="border-b border-slate-800">
+                    <td className="sticky left-0 z-20 bg-slate-950 p-0"><Frz><span className="pl-4 text-[11px] text-slate-600">còn lại</span></Frz></td>
+                    {weeks.map((w) => {
+                      const lf = leftOf(plan, pids, r.id, w.i, cap);
+                      return <td key={w.i} className={`border-l border-slate-900 px-0 text-center font-mono text-[11px] font-semibold ${w.ms ? "mo" : ""}`}
+                        style={{ minWidth: CW, ...leftStyle(lf) }}>{f0(lf)}</td>;
+                    })}
+                  </tr>
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-slate-800 px-3 py-2.5 text-xs text-slate-400 md:px-4">
-        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: "#fde68a" }} />CÒN dư người</span>
-        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: "#f87171" }} />CÒN âm — thiếu người</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: leftStyle(0).background }} />CÒN ≥ 0 — đủ / dư người</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: "#fde68a" }} />thiếu tới 1 người</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: "#f87171" }} />thiếu hơn 1 người</span>
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-slate-950" />tuần đã qua</span>
         <span className="text-slate-600">Tên dự án dài được cắt gọn — rê chuột để xem đủ</span>
         {!readOnly && <span className="text-slate-600">Mũi tên để di chuyển · Enter xuống dòng · Esc nhả ô</span>}

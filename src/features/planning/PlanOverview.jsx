@@ -134,7 +134,7 @@ export function PlanOverview({ plan, projects, roles, weeks, realWeeks, cap, act
           const r = roleById.get(drill.rid), w = weeks.find((x) => x.i === drill.wi);
           const lf = leftOf(plan, pids, drill.rid, drill.wi, cap);
           return (
-            <div className="border-t border-slate-800 bg-slate-950/50 px-4 py-3">
+            <div className="border-t border-slate-800 bg-teal-950/40 px-4 py-3">
               <div className="mb-2 flex flex-wrap items-baseline gap-3">
                 <span className="text-sm text-slate-100">{r?.id} · {r?.name}</span>
                 <span className="text-xs text-slate-500">T{w?.m} tuần {w?.w}</span>

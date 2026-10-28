@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.17
+   ARTIUS — Quản lý giờ công theo dự án · v12.18
+   Mới ở v12.18 — Kế hoạch: (1) TỔNG TOÀN CÔNG TY tách thành bảng riêng dưới lưới nhập, có hàng tiêu đề tháng / tuần
+     riêng, cuộn ngang đồng bộ; (2) màu CÒN LẠI: ≥ 0 xanh lá, thiếu tới 1 người vàng, thiếu hơn 1 người đỏ;
+     (3) khung chi tiết khi bấm ô ở Bản đồ tải không còn nền xám ở giao diện Sáng.
    Mới ở v12.17 — Nhân sự: ô "Tính vào Kế hoạch nguồn lực" trong khung sửa nhân sự (bỏ tích cho người thử việc…). Người bị bỏ
      không tính vào quân số, giờ thực tế và điều kiện "tuần đủ giờ" của mục Kế hoạch; chấm công vẫn bình thường.
      Danh sách nhân sự hiện nhãn "Không tính KH", bấm để tính lại.
