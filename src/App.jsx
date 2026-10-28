@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.18
+   ARTIUS — Quản lý giờ công theo dự án · v12.19
+   Mới ở v12.19 — BOD sửa được toàn bộ mục Kế hoạch như Admin: lưới, chốt bản, ẩn dự án, gộp vai trò, khối tổng, hệ số
+     sẵn sàng. Cần chạy supabase/v12_19_bod_ke_hoach.sql (lưới + chốt bản cho Admin/BOD; hàm artius_planning_set chỉ ghi
+     khoá "planning" của thiết lập chung). Các mục khác của BOD vẫn chỉ xem.
    Mới ở v12.18 — Kế hoạch: (1) TỔNG TOÀN CÔNG TY tách thành bảng riêng dưới lưới nhập, có hàng tiêu đề tháng / tuần
      riêng, cuộn ngang đồng bộ; (2) màu CÒN LẠI: ≥ 0 xanh lá, thiếu tới 1 người vàng, thiếu hơn 1 người đỏ;
      (3) khung chi tiết khi bấm ô ở Bản đồ tải không còn nền xám ở giao diện Sáng.
@@ -579,6 +582,21 @@ export function AppMain() {
     })() : null),
   [cfg, me?.type, me?.dept, me?.empId]); // eslint-disable-line react-hooks/exhaustive-deps
   const bodSave = useCallback(async () => { flash("Tài khoản BOD chỉ xem, không sửa được.", "err"); return false; }, [flash]);
+  /* v12.19 — BOD sửa được mục Kế hoạch như Admin. Lưới đi qua artius_plan_set (SQL cho phép Admin + BOD);
+     phần thiết lập của Kế hoạch (ẩn dự án, gộp vai trò, khối tổng, hệ số sẵn sàng) chỉ ghi khoá "planning"
+     của thiết lập chung qua hàm artius_planning_set — BOD vẫn không đổi được phần thiết lập nào khác. */
+  const bodPlanSave = useCallback(async (next) => {
+    try {
+      const { data, error } = await supabase.rpc("artius_planning_set", { p_planning: next?.planning || {} });
+      if (error) throw error;
+      setCfg((c) => (c ? { ...c, planning: data && typeof data === "object" ? data : next.planning } : c));
+      return true;
+    } catch (e) {
+      const m = String(e?.message || e || "");
+      flash(/artius_planning_set|function|schema cache/i.test(m) && !/Admin|BOD/.test(m) ? "Chưa bật được: Admin cần chạy file supabase/v12_19_bod_ke_hoach.sql trên Supabase." : `Chưa lưu được — ${m}`, "err");
+      return false;
+    }
+  }, [flash]);
   /* v9.3 — trưởng phòng "lưu thiết lập" ở tab Dự án / Nhân sự: chỉ được đổi dự án tham gia (projects, allProjects) của nhân viên phòng mình.
      So bản mới với headCfg; mỗi người thay đổi ghi qua hàm SQL artius_emp_projects_set. Đổi gì khác → báo chỉ xem. */
   const headSave = useCallback(async (next) => {
@@ -835,7 +853,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
                 {tab === "emp" && <ReadOnlyView><Employees cfg={cfg} saveCfg={bodSave} flash={flash} readOnly onSupport={bodSave} /></ReadOnlyView>}
                 {tab === "task" && <ReadOnlyView><Tasks cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
                 {tab === "set" && <ReadOnlyView><SettingsTab cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
-                {tab === "plan" && <PlanPane cfg={cfg} saveCfg={bodSave} flash={flash} readOnly />}
+                {tab === "plan" && <PlanPane cfg={cfg} saveCfg={bodPlanSave} flash={flash} />}
                 {tab === "ts" && me.empId && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} />}
                 {tab === "eset" && me.empId && <EmployeeSettings cfg={cfg} empId={me.empId} onSignOut={signOut} />}
               </>
