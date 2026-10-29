@@ -9,13 +9,14 @@ import { CTRL, Panel, btnGhost, btnPrimary } from "../../core/ui.jsx";
 import { PER_YEAR, actualByCell, foldMerged, joinYears, normalizeYear, prunePlan, realWeeksOfPair, slotIndexOf, splitYears, weeksOfPair } from "./planCalc.js";
 import { PlanGrid } from "./PlanGrid.jsx";
 import { PlanOverview } from "./PlanOverview.jsx";
+import { PlanProjects } from "./PlanProjects.jsx";
 import { SQL_HINT, errMsg, isMissingTable, listSnapshots, loadPlan, savePlan, snapshotPlan } from "./planStore.js";
 
 const DEFAULT_AVAIL = 0.8;
 /* vai trò cơ bản tự điền cho dự án chưa có dòng nào (chỉ lấy vai trò còn tồn tại trong Thiết lập) */
 const DEFAULT_ROLES = ["TK", "3D", "2D", "BIM", "MEP", "PM", "GS"];
 
-export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) {
+export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, canSaveProjects = false }) {
   const tick = useDataTick();
   const thisYear = new Date().getFullYear();
   const [start, setStart] = useState(thisYear);   // cặp năm đang xem: start và start + 1
@@ -38,6 +39,14 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
   const nowIdx = slotIndexOf(start, new Date());
 
   const projects = useMemo(() => (cfg.projects || []).filter((p) => p.active), [cfg.projects]);
+  /* v12.24 — chế độ "Theo dự án" phải thấy cả dự án ĐÃ ĐÓNG, nếu không thì không bao giờ gợi ý được "nên mở" */
+  const everyProject = useMemo(() => cfg.projects || [], [cfg.projects]);
+  const toggleActive = async (pid) => {
+    const p = everyProject.find((x) => x.id === pid);
+    if (!p) return;
+    const ok = await saveCfg({ ...cfg, projects: cfg.projects.map((x) => (x.id === pid ? { ...x, active: !x.active } : x)) });
+    if (ok !== false) flash(p.active ? `Đã đóng ${p.name} — nhân viên không chấm công vào đây được nữa.` : `Đã mở ${p.name} cho chấm công.`);
+  };
   /* v12.14 — dự án tạm ẩn: lưu trong thiết lập chung (mọi người thấy như nhau), không tính vào tổng / tổng quan / Excel */
   const hidden = useMemo(() => new Set(cfg.planning?.hidden || []), [cfg.planning?.hidden]);
   const shownProjects = useMemo(() => projects.filter((p) => !hidden.has(p.id)), [projects, hidden]);
@@ -236,6 +245,8 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
             className={`${CTRL} rounded-lg px-6 text-sm font-medium ${mode === "in" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Nhập liệu</button>
           <button onClick={() => setMode("ov")} aria-pressed={mode === "ov"}
             className={`${CTRL} rounded-lg px-6 text-sm font-medium ${mode === "ov" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Tổng quan</button>
+          <button onClick={() => setMode("pj")} aria-pressed={mode === "pj"}
+            className={`${CTRL} rounded-lg px-6 text-sm font-medium ${mode === "pj" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Theo dự án</button>
         </div>
         {!readOnly && (saving ? <span className="text-xs text-teal-400">Đang lưu…</span>
           : saveErr ? <span className="text-xs text-rose-400" title={saveErr}>Chưa lưu được — bấm Lưu để thử lại</span>
@@ -251,7 +262,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
       )}
 
       <Panel flush
-        title={mode === "in" ? "Lưới kế hoạch nguồn lực" : "Tổng quan nguồn lực"}
+        title={mode === "in" ? "Lưới kế hoạch nguồn lực" : mode === "pj" ? "Kế hoạch theo dự án" : "Tổng quan nguồn lực"}
         sub={<>Năm {start}–{start + 1} · {weeks.length} cột (mỗi tháng 4 tuần) · đơn vị là số người (1 / 0,5 / 0,25)</>}
         right={busy ? <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} /> : null}>
 
@@ -317,7 +328,11 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false }) 
           </div>
         )}
 
-        {mode === "in" ? (
+        {mode === "pj" ? (
+          <PlanProjects plan={plan} projects={everyProject} roles={roles} weeks={view} nowIndex={nowIdx}
+            hidden={hidden} detail={ts?.detail || []} employees={cfg.employees || []}
+            canToggle={!readOnly && canSaveProjects} onToggle={toggleActive} />
+        ) : mode === "in" ? (
           <PlanGrid plan={plan} onChange={(p) => { setPlan(p); setDirty(true); }}
             projects={projects} hidden={hidden} onToggleHide={readOnly ? undefined : toggleHide} totals={totals} onTotals={readOnly ? undefined : onTotals} mergedOf={mergedOf} roles={roles} weeks={view} nWeeks={weeks.length}
             cap={cap} head={head} readOnly={readOnly} nowIndex={nowIdx} scrollKey={start} />

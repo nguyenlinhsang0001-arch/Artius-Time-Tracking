@@ -1,6 +1,19 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.23
+   ARTIUS — Quản lý giờ công theo dự án · v12.24
+   Mới ở v12.24 — Tab Kế hoạch thêm chế độ thứ ba "Theo dự án" (features/planning/PlanProjects.jsx), cạnh Nhập liệu và
+     Tổng quan: mỗi dòng là một dự án, gộp sẵn trạng thái chấm công, khoảng thời gian kế hoạch (tuần đầu → tuần cuối,
+     số tuần, người-tuần), dải thời gian từng vai trò có vạch đánh dấu tuần hiện tại, và nút Đóng / Mở bấm ngay tại chỗ
+     — không phải chuyển qua tab Dự án nữa.
+     Cột "Đang lệch" so khoảng thời gian kế hoạch với trạng thái đang bật/tắt: "Nên mở" khi kế hoạch đang chạy tuần này
+     mà dự án đã đóng, "Nên đóng" khi kế hoạch đã hết, chưa tới hạn, hoặc dự án mở mà chưa nhập kế hoạch tuần nào.
+     App chỉ gợi ý, không tự đóng/mở. Lọc nhanh Tất cả | Đang lệch | Đang mở | Đã đóng, tìm theo tên không dấu.
+     Bung một dòng để xem vai trò theo kế hoạch và người tham gia — ghép người được gắn ở tab Nhân sự (nhãn "gắn")
+     với người đã chấm giờ nhưng chưa được gắn (nhãn "ngoài"), kèm số giờ đã chấm.
+     Danh sách này kể cả dự án ĐÃ ĐÓNG, nếu không thì không bao giờ gợi ý được "nên mở".
+     Nút Đóng / Mở chỉ Admin dùng được: lệnh lưu kế hoạch của BOD chỉ ghi được khoá "planning", không ghi được
+     projects[].active — tài khoản BOD thấy cảnh báo nhưng cột nút hiện "chỉ xem".
+
    Mới ở v12.23 — Tổng quan nguồn lực, chỉnh phần nhìn: bỏ dòng phụ đề dưới tiêu đề, bỏ dòng chú thích dưới chân
      biểu đồ và bỏ hai nhãn trục "THIẾU người" / "DƯ người".
      Biểu đồ vẽ đúng bề ngang thật của khung (đo bằng ResizeObserver) thay vì để viewBox kéo giãn — trước đây viewBox
@@ -892,7 +905,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
                 {tab === "proj" && <Projects cfg={cfg} saveCfg={saveCfg} flash={flash} onSupport={supportSave} />}
                 {tab === "emp" && <EmpArea emp={<Employees cfg={cfg} saveCfg={saveCfg} flash={flash} onSupport={supportSave} />}
                   task={<Tasks cfg={cfg} saveCfg={saveCfg} flash={flash} />} />}
-                {tab === "plan" && <PlanPane cfg={cfg} saveCfg={saveCfg} flash={flash} />}
+                {tab === "plan" && <PlanPane cfg={cfg} saveCfg={saveCfg} flash={flash} canSaveProjects />}
                 {tab === "set" && <SettingsTab cfg={cfg} saveCfg={saveCfg} flash={flash} />}
               </>
             ) : (
