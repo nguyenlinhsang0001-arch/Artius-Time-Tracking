@@ -19,7 +19,7 @@ const wLbl = (w) => (w ? `T${w.m} tuần ${w.w}` : "—");
 const norm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = new Set(),
-  detail = [], employees = [], canToggle = false, onToggle }) {
+  detail = [], employees = [], canToggle = false, onToggle, prole = (r) => r }) {
   const [flt, setFlt] = useState("all");
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(() => new Set());
@@ -151,6 +151,20 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
           h: logged.get(eid) || 0,
         })).filter((o) => o.e).sort((x, y) => y.h - x.h || String(x.e.name).localeCompare(String(y.e.name)));
 
+        /* v12.24 — gom người tham gia theo VAI TRÒ để soi chéo được với vai trò theo kế hoạch.
+           Vai trò của người đi qua bảng gộp (vd TL-2D → 2D) để trùng khớp với vai trò trong lưới kế hoạch.
+           Vai trò kế hoạch có nhưng chưa ai làm vẫn hiện thành nhóm rỗng — đó mới là chỗ cần thấy. */
+        const planByRole = new Map((s?.byRole || []).map((r) => [r.rid, r]));
+        const byRole = new Map();
+        for (const o of people) {
+          const rid = prole(o.e.role || "") || "";
+          if (!byRole.has(rid)) byRole.set(rid, []);
+          byRole.get(rid).push(o);
+        }
+        const groups = [];
+        for (const r of s?.byRole || []) groups.push({ rid: r.rid, plan: r, list: byRole.get(r.rid) || [] });
+        for (const [rid, list] of byRole) if (!planByRole.has(rid)) groups.push({ rid, plan: null, list });
+
         return (
           <div key={p.id} className="border-b border-slate-800 last:border-b-0">
             <div onClick={(e) => { if (e.target.closest("button")) return; setOpen((sx) => { const t = new Set(sx); t.has(p.id) ? t.delete(p.id) : t.add(p.id); return t; }); }}
@@ -213,16 +227,31 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
                     ))}
                 </div>
                 <div>
-                  <div className="py-2 text-[10.5px] uppercase tracking-wider text-slate-500">Người tham gia</div>
-                  {people.length === 0
+                  <div className="py-2 text-[10.5px] uppercase tracking-wider text-slate-500">Người tham gia theo vai trò</div>
+                  {groups.length === 0
                     ? <div className="border-t border-slate-800 py-1.5 text-[12px] text-slate-600">Chưa ai tham gia</div>
-                    : people.map((o) => (
-                      <div key={o.eid} className="grid grid-cols-[52px_minmax(0,1fr)_72px] items-baseline gap-2 border-t border-slate-800 py-1.5 text-[12px]">
-                        <span className={`rounded border px-1.5 text-[10px] ${o.gan ? "border-teal-900 text-teal-400" : "border-slate-700 text-slate-500"}`}>
-                          {o.gan ? "gắn" : "ngoài"}
-                        </span>
-                        <span className="truncate text-slate-300">{o.e.name}</span>
-                        <span className={`text-right font-mono ${o.h ? "text-slate-300" : "text-slate-600"}`}>{o.h ? `${f0(o.h)} h` : "—"}</span>
+                    : groups.map(({ rid, plan: pr, list }) => (
+                      <div key={rid || "_none"}>
+                        {/* tiêu đề nhóm mang luôn con số kế hoạch, để soi chéo mà không phải nhìn qua cột bên trái */}
+                        <div className="mt-1 grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2 border-t border-slate-800 pb-1 pt-2 text-[11.5px]">
+                          <span className="truncate">
+                            <span className="font-mono text-teal-300">{rid || "—"}</span>{" "}
+                            <span className="text-slate-500">{roleById.get(rid)?.name || (rid ? "" : "chưa gán vai trò")}</span>
+                          </span>
+                          <span className={`whitespace-nowrap font-mono ${pr && list.length === 0 ? "text-amber-400" : !pr ? "text-slate-500" : "text-slate-400"}`}>
+                            {pr ? `kế hoạch ${f0(pr.peak)}/tuần · ` : "ngoài kế hoạch · "}
+                            {list.length ? `${list.length} người` : "chưa có ai"}
+                          </span>
+                        </div>
+                        {list.map((o) => (
+                          <div key={o.eid} className="grid grid-cols-[52px_minmax(0,1fr)_72px] items-baseline gap-2 py-1 pl-3 text-[12px]">
+                            <span className={`rounded border px-1.5 text-[10px] ${o.gan ? "border-teal-900 text-teal-400" : "border-slate-700 text-slate-500"}`}>
+                              {o.gan ? "gắn" : "ngoài"}
+                            </span>
+                            <span className="truncate text-slate-300">{o.e.name}</span>
+                            <span className={`text-right font-mono ${o.h ? "text-slate-300" : "text-slate-600"}`}>{o.h ? `${f0(o.h)} h` : "—"}</span>
+                          </div>
+                        ))}
                       </div>
                     ))}
                 </div>

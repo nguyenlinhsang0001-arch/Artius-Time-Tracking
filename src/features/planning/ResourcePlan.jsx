@@ -331,7 +331,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
         {mode === "pj" ? (
           <PlanProjects plan={plan} projects={everyProject} roles={roles} weeks={view} nowIndex={nowIdx}
             hidden={hidden} detail={ts?.detail || []} employees={cfg.employees || []}
-            canToggle={!readOnly && canSaveProjects} onToggle={toggleActive} />
+            canToggle={!readOnly && canSaveProjects} onToggle={toggleActive} prole={prole} />
         ) : mode === "in" ? (
           <PlanGrid plan={plan} onChange={(p) => { setPlan(p); setDirty(true); }}
             projects={projects} hidden={hidden} onToggleHide={readOnly ? undefined : toggleHide} totals={totals} onTotals={readOnly ? undefined : onTotals} mergedOf={mergedOf} roles={roles} weeks={view} nWeeks={weeks.length}

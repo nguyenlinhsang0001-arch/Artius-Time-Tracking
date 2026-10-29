@@ -10,6 +10,10 @@
      App chỉ gợi ý, không tự đóng/mở. Lọc nhanh Tất cả | Đang lệch | Đang mở | Đã đóng, tìm theo tên không dấu.
      Bung một dòng để xem vai trò theo kế hoạch và người tham gia — ghép người được gắn ở tab Nhân sự (nhãn "gắn")
      với người đã chấm giờ nhưng chưa được gắn (nhãn "ngoài"), kèm số giờ đã chấm.
+     Người tham gia gom theo VAI TRÒ, tiêu đề mỗi nhóm mang luôn con số kế hoạch của vai trò đó
+     ("kế hoạch 3/tuần · 2 người") để soi chéo ngay; vai trò kế hoạch có nhưng chưa ai làm vẫn hiện thành nhóm rỗng
+     ghi "chưa có ai" (màu hổ phách), người có vai trò ngoài kế hoạch gom vào nhóm "ngoài kế hoạch".
+     Vai trò của người đi qua bảng gộp vai trò (vd TL-2D → 2D) để khớp với vai trò trong lưới kế hoạch.
      Danh sách này kể cả dự án ĐÃ ĐÓNG, nếu không thì không bao giờ gợi ý được "nên mở".
      Nút Đóng / Mở chỉ Admin dùng được: lệnh lưu kế hoạch của BOD chỉ ghi được khoá "planning", không ghi được
      projects[].active — tài khoản BOD thấy cảnh báo nhưng cột nút hiện "chỉ xem".
