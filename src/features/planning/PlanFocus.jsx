@@ -130,7 +130,7 @@ export function PlanFocus({ plan, onChange, projects: allProjects, hidden = new 
           </div>
         </div>
         {used.size === 0 && <div className="px-4 py-3 text-sm text-slate-500">Dự án chưa có vai trò nào.</div>}
-        <PlanGrid key={cur.id} focus plan={plan} onChange={onChange} projects={[cur]} scopePids={scopePids} allWeeks={weeks}
+        <PlanGrid key={cur.id} focus plan={plan} onChange={onChange} projects={[cur]} scopePids={scopePids}
           roles={roles} weeks={view} nWeeks={nWeeks} cap={cap} head={head} mergedOf={mergedOf}
           readOnly={readOnly} nowIndex={nowIndex} scrollKey={`${scrollKey}|${cur.id}`} />
       </div>

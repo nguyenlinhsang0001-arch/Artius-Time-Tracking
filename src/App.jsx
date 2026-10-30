@@ -1,6 +1,15 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.29
+   ARTIUS — Quản lý giờ công theo dự án · v12.30
+   Mới ở v12.30 — Kế hoạch › Nhập liệu:
+     · Bỏ thanh nhập nhanh (Dự án · Vai trò · từ · đến · Áp dụng · Xoá đoạn). Núm kéo điền và mọi phím tắt giữ nguyên.
+     · "Về tuần này" chuyển lên hàng công cụ, cạnh nút Toàn bộ | Từng dự án.
+     · Lưới nhập theo theme html mẫu: ô nền trắng, ô trống để trống, vai trò có chấm màu và ghi đủ tên, dòng dự án nền xám nhạt
+       kèm khoảng tuần, cột tuần này nền xanh nhạt, ô đang chọn viền xanh đậm. Màu đặt bằng biến CSS riêng của lưới, có bộ sáng / tối.
+     · Khối "TOÀN CÔNG TY · CÒN" dính đáy ngay trong lưới, mỗi vai trò đúng 1 dòng ("TK · có 5", số có = quân số × hệ số sẵn sàng),
+       số âm chữ đỏ nền đỏ nhạt. Bỏ dòng "cần", bỏ bảng tổng tách riêng, bỏ dải "cần — vai trò / còn lại".
+       Admin vẫn thêm / ẩn / kéo đổi thứ tự vai trò trong khối này.
+
    Mới ở v12.29 — Kế hoạch › Nhập liệu:
      · Thanh nhập nhanh trên lưới: chọn dự án, vai trò, từ tuần, đến tuần, số người / tuần → Áp dụng ghi cả đoạn một lượt;
        Xoá đoạn đưa đoạn đó về 0. Dự án chưa có vai trò đó thì tự thêm dòng. Ô vừa điền sáng lên một nhịp.

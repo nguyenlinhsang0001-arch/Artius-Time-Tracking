@@ -289,6 +289,9 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
                 className={`h-10 rounded-md px-4 text-sm font-medium ${inView === "one" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Từng dự án</button>
             </div>
           )}
+          {mode === "in" && (
+            <button onClick={() => window.dispatchEvent(new Event("artius:planNow"))} className={btnGhost}>Về tuần này</button>
+          )}
           {!readOnly && (
             <button onClick={() => setMergeOpen(!mergeOpen)} aria-expanded={mergeOpen}
               title="Gộp vai trò con vào vai trò chính trong kế hoạch, vd Teamleader 2D vào Họa viên 2D"
