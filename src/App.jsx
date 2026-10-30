@@ -1,6 +1,20 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.24
+   ARTIUS — Quản lý giờ công theo dự án · v12.25
+   Mới ở v12.25 — Trưởng phòng xem được Dashboard › Dự án và Ma trận: tab Dashboard của trưởng phòng thành thanh
+     tab con "Của tôi | Dự án | Ma trận" (nhân viên thường không đổi, vẫn chỉ có Dashboard cá nhân).
+     Hai tab mới dùng lại đúng Dashboard quản lý, chỉ xem, phạm vi nhân sự là phòng mình và GỒM cả chính trưởng phòng
+     (headCfg của Bảng công cố tình loại họ ra, nhưng Ma trận thiếu chính họ thì tổng của phòng bị hụt).
+     Hai tab này không nhận saveCfg nên nút Urgent trên Tiến độ dự án tắt sẵn — truyền headSave vào thì nó so với
+     headCfg (không có chính trưởng phòng) và báo nhầm "Trưởng phòng không thêm được nhân sự".
+     Cần chạy supabase/v12_25_truongphong_dashboard.sql: hai hàm tổng hợp artius_usage và artius_phase_detail
+     đang chặn bằng artius_view_all() = admin/bod, mà đó là điều kiện WHERE chứ không phải RAISE, nên trưởng phòng
+     gọi vào nhận RỖNG chứ không báo lỗi — tab Dự án sẽ hiện đủ dự án với giờ đã dùng = 0. File SQL thêm một hàm
+     riêng artius_view_agg() (admin/bod/head) cho đúng hai hàm tổng hợp đó; artius_view_all() giữ nguyên nên
+     quyền đọc bảng công và mọi hàm khác không đổi. Không chạy file SQL thì Ma trận vẫn đúng, chỉ Dự án là trống.
+     Lưu ý phạm vi: hai hàm đó trả số toàn công ty, nên trưởng phòng thấy giờ và ngân sách của mọi dự án,
+     kể cả dự án phòng họ không tham gia. Cột "Người tuần này" ở Tiến độ dự án chỉ đếm người phòng mình.
+
    Mới ở v12.24 — Tab Kế hoạch thêm chế độ thứ ba "Theo dự án" (features/planning/PlanProjects.jsx), cạnh Nhập liệu và
      Tổng quan: mỗi dòng là một dự án, gộp sẵn trạng thái chấm công, khoảng thời gian kế hoạch (tuần đầu → tuần cuối,
      số tuần, người-tuần), dải thời gian từng vai trò có vạch đánh dấu tuần hiện tại, và nút Đóng / Mở bấm ngay tại chỗ
@@ -623,6 +637,13 @@ export function AppMain() {
       return { ...cfg, employees: emps, support: supportList(cfg).filter((x) => ids.has(x.empId)) };   // v10.0: không lộ đợt hỗ trợ của phòng khác
     })() : null),
   [cfg, me?.type, me?.dept, me?.empId]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* v12.25 — Dashboard của trưởng phòng: nhân sự phòng mình, GỒM cả chính họ.
+     headCfg (dùng cho Bảng công) cố tình loại chính trưởng phòng ra vì bảng công của họ theo luật nhân viên;
+     còn Ma trận là để nhìn phòng, thiếu chính họ thì tổng của phòng bị hụt. Database vốn đã cho họ đọc giờ của mình. */
+  const headDashCfg = useMemo(() => (me?.type === "head" && cfg
+    ? { ...cfg, employees: cfg.employees.filter((e) => me.dept && e.dept === me.dept) }
+    : null),
+  [cfg, me?.type, me?.dept]);
   const bodSave = useCallback(async () => { flash("Tài khoản BOD chỉ xem, không sửa được.", "err"); return false; }, [flash]);
   /* v12.19 — BOD sửa được mục Kế hoạch như Admin. Lưới đi qua artius_plan_set (SQL cho phép Admin + BOD);
      phần thiết lập của Kế hoạch (ẩn dự án, gộp vai trò, khối tổng, hệ số sẵn sàng) chỉ ghi khoá "planning"
@@ -915,7 +936,12 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
             ) : (
               <>
                 {tab === "ts" && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} />}
-                {tab === "edash" && <EmployeeDashboard cfg={cfg} empId={me.empId} onGoTimesheet={(mon) => { setTsMonday(mon || null); setTab("ts"); }} />}
+                {/* v12.25 — trưởng phòng: tab Dashboard có thanh tab con Của tôi | Dự án | Ma trận.
+                    Nhân viên thường vẫn chỉ có Dashboard cá nhân như cũ. */}
+                {tab === "edash" && (me.type === "head" && headDashCfg
+                  ? <HeadDashArea cfg={headDashCfg} flash={flash}
+                      me={<EmployeeDashboard cfg={cfg} empId={me.empId} onGoTimesheet={(mon) => { setTsMonday(mon || null); setTab("ts"); }} />} />
+                  : <EmployeeDashboard cfg={cfg} empId={me.empId} onGoTimesheet={(mon) => { setTsMonday(mon || null); setTab("ts"); }} />)}
                 {tab === "eset" && <EmployeeSettings cfg={cfg} empId={me.empId} onSignOut={signOut} />}
                 {tab === "sheet" && me.type === "head" && headCfg && <AdminTimesheet cfg={headCfg} flash={flash} onDirtyChange={setSheetDirty} oneDept onSupport={supportSave} />}
                 {/* v9.3 — trưởng phòng: Dự án (chỉ xem, thêm / gỡ nhân sự phòng mình) · Nhân sự (phòng mình, giao dự án; không xem tài khoản / mật khẩu) */}
@@ -1023,6 +1049,29 @@ function SheetArea({ cfg, saveCfg, flash, children }) {
 
 /* v12.21 — mục Nhân sự của Admin / BOD gộp thêm Tác vụ: thanh tab con Nhân sự | Tác vụ (cả hai giữ trong bộ nhớ khi chuyển qua lại) */
 const EMP_TABS = [["emp", "Nhân sự"], ["task", "Tác vụ"]];
+/* v12.25 — Dashboard của trưởng phòng. "Của tôi" là Dashboard cá nhân sẵn có;
+   "Dự án" và "Ma trận" dùng lại đúng Dashboard quản lý, mỗi lần một tab (tabs={[sub]} hideBar) như SheetArea.
+   Chỉ xem: không truyền saveCfg, nên nút Urgent trên Tiến độ dự án tự tắt. */
+const HEAD_DASH_TABS = [["me", "Của tôi"], ["proj", "Dự án"], ["mtx", "Ma trận"]];
+function HeadDashArea({ cfg, flash, me }) {
+  const [sub, setSub0] = useState(() => { try { const v = localStorage.getItem("artius.headDashTab"); return ["me", "proj", "mtx"].includes(v) ? v : "me"; } catch { return "me"; } });
+  const setSub = (t) => { setSub0(t); try { localStorage.setItem("artius.headDashTab", t); } catch { /* bỏ qua */ } };
+  return (
+    <div className="space-y-3 md:space-y-4">
+      <div className="flex rounded-xl border border-slate-800 bg-slate-900 p-1 md:inline-flex">
+        {HEAD_DASH_TABS.map(([k, l]) => (
+          <button key={k} onClick={() => setSub(k)} aria-pressed={sub === k}
+            className={`${CTRL} flex flex-1 items-center justify-center rounded-lg px-6 text-sm font-medium md:flex-none ${sub === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>{l}</button>
+        ))}
+      </div>
+      {/* không truyền saveCfg: hai tab này chỉ xem. ProjectProgress tự tắt nút Urgent khi thiếu saveCfg,
+          nếu truyền headSave vào thì nó so với headCfg (vốn không có chính trưởng phòng) và báo nhầm
+          "Trưởng phòng không thêm được nhân sự". */}
+      {sub === "me" ? me : <Dashboard key={sub} cfg={cfg} flash={flash} tabs={[sub]} hideBar />}
+    </div>
+  );
+}
+
 function EmpArea({ emp, task }) {
   const [sub, setSub0] = useState(() => { try { return localStorage.getItem("artius.empTab") === "task" ? "task" : "emp"; } catch { return "emp"; } });
   const [seen, setSeen] = useState(() => new Set([sub]));
