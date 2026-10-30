@@ -1,6 +1,15 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.28
+   ARTIUS — Quản lý giờ công theo dự án · v12.29
+   Mới ở v12.29 — Kế hoạch › Nhập liệu:
+     · Thanh nhập nhanh trên lưới: chọn dự án, vai trò, từ tuần, đến tuần, số người / tuần → Áp dụng ghi cả đoạn một lượt;
+       Xoá đoạn đưa đoạn đó về 0. Dự án chưa có vai trò đó thì tự thêm dòng. Ô vừa điền sáng lên một nhịp.
+     · Núm kéo điền ở góc phải dưới ô đang chọn: kéo sang ngang trên cùng dòng để chép số của ô đó cho cả đoạn.
+     · Nút chuyển "Toàn bộ | Từng dự án". Từng dự án: danh sách dự án bên trái (khoảng tuần có kế hoạch, dấu có tuần thiếu người),
+       bên phải là lưới riêng dự án đang chọn — chỉ vai trò của dự án, chỉ các tuần dự án chạy (− tuần / + tuần để nới),
+       dưới mỗi vai trò là dòng CÒN toàn công ty. Cùng dữ liệu, cùng tự lưu như lưới Toàn bộ.
+     · Giữ nguyên mọi phím tắt cũ: + / − tăng giảm 0,25, Ctrl + D, Ctrl + C / V, Shift + mũi tên, Delete.
+
    Mới ở v12.28 — Sửa lỗi điện thoại: bấm "+ Nhân sự" ở tab Dự án hoặc thêm dự án cho nhân sự ở tab Nhân sự thì bảng chọn
      vừa mở đã tự tắt. Nguyên nhân: hai bảng chọn này đóng ở MỌI sự kiện resize, mà ô tìm kiếm tự bật bàn phím ảo khi mở —
      bàn phím làm đổi chiều cao màn hình, trình duyệt phát resize, bảng đóng ngay. Cuộn trang cũng gây lỗi vì thanh địa chỉ

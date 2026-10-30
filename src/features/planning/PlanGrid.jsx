@@ -1,5 +1,11 @@
 /* ARTIUS TIME v12.2 — Lưới nhập kế hoạch nguồn lực, cả năm trên một bảng cuộn ngang.
 
+   v12.29 — thêm:
+     · thanh nhập nhanh: chọn dự án, vai trò, từ tuần, đến tuần, số người → Áp dụng (dự án chưa có vai trò đó thì tự thêm dòng)
+     · núm kéo điền ở góc ô đang chọn: kéo sang ngang trên cùng dòng để chép số đó cho cả đoạn
+     · chế độ focus (dùng cho "Từng dự án"): một dự án, các tuần dự án chạy, dòng CÒN toàn công ty dưới mỗi vai trò
+   Mọi phím tắt cũ giữ nguyên: + / − tăng giảm 0,25, Ctrl + D, Ctrl + C / V, Shift + mũi tên, Delete.
+
    Bố cục: MỘT cột khoá cứng duy nhất, rộng cố định, chứa cả tên dự án lẫn mã vai trò.
    v12.1 dùng hai cột khoá cứng và neo cột thứ hai ở một con số đặt sẵn (left: 150px), trong khi bề ngang
    thật của cột thứ nhất lại do trình duyệt tự tính từ nội dung — tên dự án dài thì cột nở ra, tên ngắn thì
@@ -11,7 +17,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Eye, EyeOff, GripVertical, Plus, Trash2 } from "lucide-react";
 import { moveInList, sortByProjOrder } from "../../shared/rowDrag.jsx";
-import { btnGhost } from "../../core/ui.jsx";
+import { btnGhost, btnPrimary } from "../../core/ui.jsx";
 import { isLight } from "../../core/theme.jsx";
 import { cellOf, leftOf, needOf, setCell, setMany } from "./planCalc.js";
 
@@ -54,6 +60,10 @@ const leftStyle = (lf) => {
   return { background: "#f87171", color: "#450a0a" };
 };
 const stripBg = () => (isLight() ? "#ccfbf1" : "#041f1c");
+const flashBg = () => (isLight() ? "#bbf7d0" : "#166534");
+const KNOB = "#14b8a6";
+const wLbl = (w) => `T${w.m} tuần ${w.w} · ${w.y}`;
+const SEL_CLS = "h-11 rounded-md border border-slate-700 bg-slate-900 px-2 text-sm text-slate-100";
 
 /* ô nhập: giữ chữ đang gõ riêng (để gõ được "0," rồi "0,5"), chỉ đẩy số đã hiểu lên lưới */
 const Cell = ({ r, k, v, readOnly, onType, onFocus }) => {
@@ -74,7 +84,7 @@ const Cell = ({ r, k, v, readOnly, onType, onFocus }) => {
 };
 
 /* một dòng dự án × vai trò — chỉ vẽ lại khi mảng số của chính nó đổi */
-const Row = React.memo(function Row({ r, pid, rid, label, values, weeks, nowIndex, readOnly, onCell, onFocus, onDrop, dnd }) {
+const Row = React.memo(function Row({ r, pid, rid, label, name, values, weeks, nowIndex, readOnly, onCell, onFocus, onDrop, dnd, flash }) {
   const dropProps = readOnly ? {} : {
     onDragOver: (e) => dnd.over(e, pid, rid),
     onDragLeave: (e) => e.currentTarget.removeAttribute("data-drop"),
@@ -92,6 +102,7 @@ const Row = React.memo(function Row({ r, pid, rid, label, values, weeks, nowInde
             </span>
           )}
           <span className="font-mono text-slate-400">{label}</span>
+          {name && <span className="text-slate-300"> {name}</span>}
           {!readOnly && (
             <button type="button" title="Bỏ vai trò này khỏi dự án" onClick={() => onDrop(pid, rid)}
               className="ml-1.5 align-middle text-slate-700 hover:text-rose-400"><Trash2 size={11} /></button>
@@ -101,8 +112,9 @@ const Row = React.memo(function Row({ r, pid, rid, label, values, weeks, nowInde
       {weeks.map((w, k) => {
         const v = Number(values?.[w.i]) || 0;
         const past = nowIndex >= 0 && w.i < nowIndex;
+        const lit = flash && w.i >= flash.a && w.i <= flash.b;   // vừa điền bằng thanh nhập nhanh / núm kéo
         return (
-          <td key={w.i} style={{ minWidth: CW, ...(v > 0.001 ? { background: `rgba(45,212,191,${(Math.min(v, 2) / 2 * 0.3 + 0.05).toFixed(2)})` } : null) }}
+          <td key={w.i} style={{ minWidth: CW, transition: "background-color .6s", ...(lit ? { background: flashBg() } : v > 0.001 ? { background: `rgba(45,212,191,${(Math.min(v, 2) / 2 * 0.3 + 0.05).toFixed(2)})` } : null) }}
             className={`border-l border-slate-900 p-0 ${w.ms ? "mo" : ""} ${past ? "bg-slate-950/70" : ""}`}>
             <Cell r={r} k={k} v={v} readOnly={readOnly} onFocus={() => onFocus(rid, w.i, r, k)} onType={(x) => onCell(pid, rid, w.i, x, r, k)} />
           </td>
@@ -112,7 +124,9 @@ const Row = React.memo(function Row({ r, pid, rid, label, values, weeks, nowInde
   );
 });
 
-export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new Set(), onToggleHide, totals, onTotals, mergedOf = new Map(), roles, weeks, nWeeks, cap, head, readOnly = false, nowIndex = -1, scrollKey }) {
+export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new Set(), onToggleHide, totals, onTotals, mergedOf = new Map(), roles, weeks, nWeeks, cap, head, readOnly = false, nowIndex = -1, scrollKey,
+  focus = false, scopePids, allWeeks }) {
+  /* focus: lưới của MỘT dự án (chế độ Từng dự án) — scopePids là các dự án tính vào dòng CÒN toàn công ty, allWeeks là mọi tuần cho thanh nhập nhanh */
   const [active, setActive] = useState(null);     // { rid, wi }
   const wrap = useRef(null);
   const wrap2 = useRef(null);   // bảng Tổng toàn công ty (cuộn ngang đồng bộ với lưới nhập)
@@ -143,11 +157,15 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
   const pOrderRef = useRef(pOrder); pOrderRef.current = pOrder;
   const projects = useMemo(() => sortByProjOrder(allProjects, pOrder, (p) => p.id), [allProjects, pOrder]);
   const projectsRef = useRef(projects); projectsRef.current = projects;
-  const pids = useMemo(() => projects.filter((p) => !hidden.has(p.id)).map((p) => p.id), [projects, hidden]);
+  const ownPids = useMemo(() => projects.filter((p) => !hidden.has(p.id)).map((p) => p.id), [projects, hidden]);
+  const pids = scopePids || ownPids;
   const roleById = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles]);
   const nCol = weeks.length;
 
-  useEffect(() => { nowCell.current?.scrollIntoView({ inline: "center", block: "nearest" }); }, [scrollKey]);
+  useEffect(() => {
+    if (nowCell.current) nowCell.current.scrollIntoView({ inline: "center", block: "nearest" });
+    else if (wrap.current) wrap.current.scrollLeft = 0;
+  }, [scrollKey]);
 
   /* ---------- chọn nhiều ô (kéo chuột / Shift + mũi tên / Shift + bấm) ----------
      sel = { a: ô neo (ô đang gõ), f: góc kia }. Vùng chọn vẽ bằng MỘT khung phủ lên lưới,
@@ -257,6 +275,99 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
     const wr = W.getBoundingClientRect(), ra = A.getBoundingClientRect(), rb = B.getBoundingClientRect();
     setOv({ left: ra.left - wr.left + W.scrollLeft, top: ra.top - wr.top + W.scrollTop, width: rb.right - ra.left, height: rb.bottom - ra.top });
   }, [sel, frz]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ---------- v12.29 — ô vừa điền sáng lên một nhịp ---------- */
+  const [flash, setFlash] = useState(null);   // { pid, rid, a, b } theo chỉ số tuần w.i
+  const flashT = useRef(0);
+  const lightUp = (pid, rid, a, b) => {
+    clearTimeout(flashT.current);
+    setFlash({ pid, rid, a, b });
+    flashT.current = setTimeout(() => setFlash(null), 900);
+  };
+  useEffect(() => () => clearTimeout(flashT.current), []);
+
+  /* ---------- v12.29 — núm kéo điền ----------
+     Bấm một ô → núm nhỏ ở góc phải dưới. Kéo núm sang ngang trên cùng dòng → số của ô đó chép cho cả đoạn. */
+  const [fillPrev, setFillPrev] = useState(null);   // { r, c0, c1 } đang kéo
+  const [knob, setKnob] = useState(null);
+  const [prevBox, setPrevBox] = useState(null);
+  const rectOf = (r0, c0, r1, c1) => {
+    const W = wrap.current; if (!W) return null;
+    const q = (r, c) => W.querySelector(`input[data-row="${r}"][data-col="${c}"]`)?.closest("td");
+    const A = q(r0, c0), B = q(r1, c1);
+    if (!A || !B) return null;
+    const wr = W.getBoundingClientRect(), ra = A.getBoundingClientRect(), rb = B.getBoundingClientRect();
+    return { left: ra.left - wr.left + W.scrollLeft, top: ra.top - wr.top + W.scrollTop, width: rb.right - ra.left, height: rb.bottom - ra.top };
+  };
+  useLayoutEffect(() => {
+    if (readOnly || !sel || isMulti(sel) || fillPrev) { setKnob(null); return; }
+    const R = rectOf(sel.a.r, sel.a.c, sel.a.r, sel.a.c);
+    setKnob(R ? { left: R.left + R.width - 5, top: R.top + R.height - 5 } : null);
+  }, [sel, frz, weeks, plan, fillPrev, readOnly]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    setPrevBox(fillPrev ? rectOf(fillPrev.r, fillPrev.c0, fillPrev.r, fillPrev.c1) : null);
+  }, [fillPrev]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const startFill = (e) => {
+    const s = selRef.current; if (!s || readOnly) return;
+    e.preventDefault(); e.stopPropagation();
+    const r = s.a.r, c = s.a.c, v = valAt(r, c);
+    let to = c;
+    setFillPrev({ r, c0: c, c1: c });
+    const mv = (ev) => {
+      const W = wrap.current;
+      if (W) {   // chạm mép thì tự cuộn ngang để kéo tiếp
+        const wr = W.getBoundingClientRect();
+        if (ev.clientX > wr.right - 24) W.scrollLeft += CW;
+        else if (ev.clientX < wr.left + frzRef.current + 24) W.scrollLeft -= CW;
+      }
+      const x = cellAt(document.elementFromPoint(ev.clientX, ev.clientY));
+      if (!x || x.r !== r || x.c === to) return;
+      to = x.c;
+      setFillPrev({ r, c0: Math.min(c, to), c1: Math.max(c, to) });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
+      setFillPrev(null);
+      if (to === c) return;
+      const c0 = Math.min(c, to), c1 = Math.max(c, to), row = rowsRef.current[r];
+      applyMany(itemsOf({ r0: r, r1: r, c0, c1 }, () => v));
+      if (row) lightUp(row.pid, row.rid, weeksRef.current[c0].i, weeksRef.current[c1].i);
+      setSel({ a: { r, c }, f: { r, c: to } });
+    };
+    window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
+  };
+
+  /* ---------- v12.29 — thanh nhập nhanh theo đoạn ---------- */
+  const qWeeks = allWeeks || weeks;
+  const qProjects = useMemo(() => projects.filter((p) => !hidden.has(p.id)), [projects, hidden]);
+  const q0 = Math.max(0, qWeeks.findIndex((w) => w.i === nowIndex));
+  const [qp, setQp] = useState(() => qProjects[0]?.id || "");
+  const [qr, setQr] = useState(() => roles[0]?.id || "");
+  const [qa, setQa] = useState(() => qWeeks[q0]?.i ?? 0);
+  const [qb, setQb] = useState(() => qWeeks[Math.min(qWeeks.length - 1, q0 + 7)]?.i ?? 0);
+  const [qv, setQv] = useState("1");
+  const qPid = focus ? projects[0]?.id : (qProjects.some((p) => p.id === qp) ? qp : qProjects[0]?.id);
+  const qRid = roles.some((r) => r.id === qr) ? qr : roles[0]?.id;
+  const qN = Math.abs(qb - qa) + 1;
+  const quickApply = (val) => {
+    if (!qPid || !qRid) return;
+    const a = Math.min(qa, qb), b = Math.max(qa, qb);
+    if (!val && !planRef.current[qPid]?.[qRid]) return;   // xoá đoạn của vai trò dự án chưa có: không tạo dòng trống
+    const items = [];
+    for (const w of qWeeks) if (w.i >= a && w.i <= b) items.push({ pid: qPid, rid: qRid, wi: w.i, v: val });
+    applyMany(items);   // setMany tự thêm dòng vai trò nếu dự án chưa có
+    lightUp(qPid, qRid, a, b);
+    setQa(a); setQb(b);
+    setSel(null);   // thêm dòng mới làm chỉ số dòng của vùng chọn cũ lệch đi
+    /* cuộn tới đoạn vừa điền */
+    setTimeout(() => {
+      const r = rowsRef.current.findIndex((x) => x.pid === qPid && x.rid === qRid);
+      const c = weeksRef.current.findIndex((w) => w.i === a);
+      const elx = r >= 0 && c >= 0 ? wrap.current?.querySelector(`input[data-row="${r}"][data-col="${c}"]`) : null;
+      elx?.closest("td")?.scrollIntoView({ inline: "center", block: "nearest" });
+    }, 0);
+  };
+
   /* kéo thả đổi vị trí vai trò — chỉ trong cùng một dự án */
   const dnd = useMemo(() => ({
     start: (e, pid, rid) => {
@@ -430,7 +541,7 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
         <th className="sticky left-0 top-0 z-30 bg-slate-900 p-0 text-left">
           {main ? (
             <>
-              <Frz py="py-1"><span className="text-[11px] uppercase tracking-wider text-slate-500">Dự án · vai trò</span></Frz>
+              <Frz py="py-1"><span className="text-[11px] uppercase tracking-wider text-slate-500">{focus ? "Vai trò" : "Dự án · vai trò"}</span></Frz>
               <span role="separator" aria-orientation="vertical" title="Kéo để nới / thu cột tên · bấm đúp để về mặc định"
                 onPointerDown={startDrag} onDoubleClick={resetFrz}
                 className="absolute right-0 top-0 h-full w-2 cursor-col-resize touch-none border-r-2 border-slate-600 hover:border-teal-500" />
@@ -480,10 +591,42 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
 
   return (
     <div>
-      <div className="flex items-center justify-end border-b border-slate-800 px-3 py-2.5 md:px-4">
-        <button type="button" onClick={() => nowCell.current?.scrollIntoView({ inline: "center", block: "nearest" })}
-          className={btnGhost}>Về tuần này</button>
+      {(!readOnly || !focus) && (
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
+        {!readOnly && (
+          <>
+            {!focus && (
+              <select value={qPid || ""} onChange={(e) => setQp(e.target.value)} aria-label="Dự án" className={`${SEL_CLS} max-w-[16rem]`}>
+                {qProjects.map((p) => <option key={p.id} value={p.id}>{p.code ? `${p.code} ` : ""}{p.name}</option>)}
+              </select>
+            )}
+            <select value={qRid || ""} onChange={(e) => setQr(e.target.value)} aria-label="Vai trò" className={`${SEL_CLS} max-w-[12rem]`}>
+              {roles.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
+            </select>
+            <span className="text-xs text-slate-500">từ</span>
+            <select value={qa} onChange={(e) => setQa(Number(e.target.value))} aria-label="Từ tuần" className={SEL_CLS}>
+              {qWeeks.map((w) => <option key={w.i} value={w.i}>{wLbl(w)}</option>)}
+            </select>
+            <span className="text-xs text-slate-500">đến</span>
+            <select value={qb} onChange={(e) => setQb(Number(e.target.value))} aria-label="Đến tuần" className={SEL_CLS}>
+              {qWeeks.map((w) => <option key={w.i} value={w.i}>{wLbl(w)}</option>)}
+            </select>
+            <input value={qv} inputMode="decimal" aria-label="Số người mỗi tuần"
+              onChange={(e) => setQv(e.target.value.replace(/[^0-9.,]/g, ""))}
+              onKeyDown={(e) => { if (e.key === "Enter") quickApply(parse(qv)); }}
+              className={`${SEL_CLS} w-16 text-right font-mono`} />
+            <span className="text-xs text-slate-500">người / tuần</span>
+            <button type="button" onClick={() => quickApply(parse(qv))} className={btnPrimary}>Áp dụng</button>
+            <button type="button" onClick={() => quickApply(0)} className={btnGhost}>Xoá đoạn</button>
+            <span className="text-xs text-slate-500">{qb < qa ? "tuần kết thúc đang trước tuần bắt đầu" : `${qN} tuần · ${f0(qN * parse(qv))} người-tuần`}</span>
+          </>
+        )}
+        {!focus && (
+          <button type="button" onClick={() => nowCell.current?.scrollIntoView({ inline: "center", block: "nearest" })}
+            className={`${btnGhost} ml-auto`}>Về tuần này</button>
+        )}
       </div>
+      )}
 
       <style>{DROP_CSS + MO_CSS}</style>
       <div ref={wrap} onKeyDown={onKey} onCopy={onCopy} onCut={onCut} onPaste={onPaste}
@@ -503,7 +646,7 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
               const off = hidden.has(p.id);
               return (
                 <React.Fragment key={p.id}>
-                  <tr className={off ? "opacity-50" : ""}
+                  {!focus && <tr className={off ? "opacity-50" : ""}
                     {...(readOnly ? {} : { onDragOver: (e) => pdnd.over(e, p.id), onDragLeave: (e) => e.currentTarget.removeAttribute("data-drop"), onDrop: (e) => pdnd.drop(e, p.id) })}>
                     <td className="sticky left-0 z-20 border-t border-slate-700 bg-slate-950 p-0">
                       <Frz py="py-1" title={off ? `${name} — đang tạm ẩn, không tính vào tổng` : name}>
@@ -541,18 +684,35 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
                       </Frz>
                     </td>
                     <td className="border-t border-slate-700" colSpan={nCol} />
-                  </tr>
+                  </tr>}
                   {rws.map(({ r, idx }) => (
-                    <Row key={r.id} r={idx} pid={p.id} rid={r.id} label={r.id} values={plan[p.id]?.[r.id]}
-                      weeks={weeks} nowIndex={nowIndex} readOnly={readOnly}
-                      onCell={onCell} onFocus={onFocusCell} onDrop={onDrop} dnd={dnd} />
+                    <React.Fragment key={r.id}>
+                      <Row r={idx} pid={p.id} rid={r.id} label={r.id} name={focus ? r.name : undefined} values={plan[p.id]?.[r.id]}
+                        weeks={weeks} nowIndex={nowIndex} readOnly={readOnly}
+                        onCell={onCell} onFocus={onFocusCell} onDrop={onDrop} dnd={dnd}
+                        flash={flash && flash.pid === p.id && flash.rid === r.id ? flash : null} />
+                      {focus && (
+                        <tr className="border-b border-slate-800">
+                          <td className="sticky left-0 z-20 bg-slate-950 p-0">
+                            <Frz title={`${r.id} · ${r.name} — còn lại của cả công ty sau khi trừ mọi dự án`}>
+                              <span className="pl-4 text-[11px] text-slate-500">CÒN toàn công ty · có {f0(cap.get(r.id) || 0)}</span>
+                            </Frz>
+                          </td>
+                          {weeks.map((w) => {
+                            const lf = leftOf(plan, pids, r.id, w.i, cap);
+                            return <td key={w.i} className={`border-l border-slate-900 px-0 text-center font-mono text-[11px] font-semibold ${w.ms ? "mo" : ""}`}
+                              style={{ minWidth: CW, ...leftStyle(lf) }}>{f0(lf)}</td>;
+                          })}
+                        </tr>
+                      )}
+                    </React.Fragment>
                   ))}
                 </React.Fragment>
               );
             })}
 
             {/* dải dính đáy: Cần và CÒN của vai trò đang gõ */}
-            {stripRole && (
+            {stripRole && !focus && (
               <>
                 <tr>
                   <td className="sticky left-0 z-30 border-t-2 border-teal-800 p-0" style={{ bottom: 22, background: stripBg() }}>
@@ -583,10 +743,16 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
           </tbody>
         </table>
         {ov && <div aria-hidden className="pointer-events-none absolute z-10 rounded-sm border-2 border-teal-400 bg-teal-400/10" style={ov} />}
+        {prevBox && <div aria-hidden className="pointer-events-none absolute z-10 rounded-sm" style={{ ...prevBox, border: `2px dashed ${KNOB}` }} />}
+        {knob && (
+          <div role="button" aria-label="Kéo sang ngang để chép số này" title="Kéo sang ngang để chép số này" onPointerDown={startFill}
+            className="absolute z-[15] cursor-crosshair touch-none rounded-sm"
+            style={{ left: knob.left, top: knob.top, width: 10, height: 10, background: KNOB, border: `1.5px solid ${isLight() ? "#ffffff" : "#020617"}` }} />
+        )}
       </div>
 
       {/* v12.18 — TỔNG TOÀN CÔNG TY tách thành bảng riêng, có hàng tiêu đề tháng / tuần của chính nó, cuộn ngang theo lưới nhập */}
-      <div className="border-t-2 border-slate-700">
+      {!focus && <div className="border-t-2 border-slate-700">
         <div ref={wrap2} onScroll={() => { const a = wrap2.current, b = wrap.current; if (a && b && b.scrollLeft !== a.scrollLeft) b.scrollLeft = a.scrollLeft; }}
           className="overflow-auto" style={{ maxHeight: "48vh", "--frz": `${frz}px` }}>
           <table className="text-[12px]" style={tblStyle}>
@@ -636,16 +802,16 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
             </tbody>
           </table>
         </div>
-      </div>
+      </div>}
 
       <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-slate-800 px-3 py-2.5 text-xs text-slate-400 md:px-4">
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: leftStyle(0).background }} />CÒN ≥ 0 — đủ / dư người</span>
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: "#fde68a" }} />thiếu tới 1 người</span>
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: "#f87171" }} />thiếu hơn 1 người</span>
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-slate-950" />tuần đã qua</span>
-        <span className="text-slate-600">Tên dự án dài được cắt gọn — rê chuột để xem đủ</span>
+        {!focus && <span className="text-slate-600">Tên dự án dài được cắt gọn — rê chuột để xem đủ</span>}
         {!readOnly && <span className="text-slate-600">Mũi tên để di chuyển · Enter xuống dòng · Esc nhả ô</span>}
-        {!readOnly && <span className="text-slate-600">Kéo chuột hoặc Shift + mũi tên để chọn nhiều ô, gõ số là điền cả vùng · Ctrl + C / Ctrl + V · Ctrl + D lấy theo dòng trên · + / − tăng giảm 0,25 · Delete xoá vùng</span>}
+        {!readOnly && <span className="text-slate-600">Kéo chuột hoặc Shift + mũi tên để chọn nhiều ô, gõ số là điền cả vùng · Ctrl + C / Ctrl + V · Ctrl + D lấy theo dòng trên · + / − tăng giảm 0,25 · Delete xoá vùng · kéo núm ở góc ô để chép sang ngang</span>}
       </div>
     </div>
   );

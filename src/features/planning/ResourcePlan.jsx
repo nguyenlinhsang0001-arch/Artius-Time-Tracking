@@ -1,4 +1,4 @@
-/* ARTIUS TIME v12 — Tab "Kế hoạch": khung chung, hai chế độ Nhập liệu và Tổng quan.
+/* ARTIUS TIME v12 — Tab "Kế hoạch": khung chung, các chế độ Nhập liệu (Toàn bộ | Từng dự án), Tổng quan, Theo dự án.
    Admin nhập và lưu; BOD và trưởng phòng chỉ xem. Dữ liệu nằm ở bảng riêng (xem planStore.js). */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, Download, Loader2, Merge, RotateCcw, Save } from "lucide-react";
@@ -7,6 +7,7 @@ import { dbTsSent, ensureMonths, useDataTick, weekDone } from "../../core/db.jsx
 import { ROLES, isResigned } from "../../core/domain.jsx";
 import { CTRL, Panel, btnGhost, btnPrimary } from "../../core/ui.jsx";
 import { PER_YEAR, actualByCell, foldMerged, joinYears, normalizeYear, prunePlan, realWeeksOfPair, slotIndexOf, splitYears, weeksOfPair } from "./planCalc.js";
+import { PlanFocus } from "./PlanFocus.jsx";
 import { PlanGrid } from "./PlanGrid.jsx";
 import { PlanOverview } from "./PlanOverview.jsx";
 import { PlanProjects } from "./PlanProjects.jsx";
@@ -21,6 +22,9 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
   const thisYear = new Date().getFullYear();
   const [start, setStart] = useState(thisYear);   // cặp năm đang xem: start và start + 1
   const [mode, setMode] = useState("in");
+  /* v12.29 — Nhập liệu có hai cách xem: Toàn bộ (lưới cũ) và Từng dự án (PlanFocus); nhớ riêng từng máy */
+  const [inView, setInView] = useState(() => { try { return localStorage.getItem("artius:planInView") === "one" ? "one" : "all"; } catch { return "all"; } });
+  const pickInView = (v) => { setInView(v); try { localStorage.setItem("artius:planInView", v); } catch { /* chỉ nhớ trong phiên */ } };
   const [plan, setPlan] = useState({});
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(true);
@@ -277,6 +281,14 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
               {[0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 1].map((v) => <option key={v} value={v}>{Math.round(v * 100)}%</option>)}
             </select>
           </label>
+          {mode === "in" && (
+            <div className="flex rounded-lg border border-slate-800 bg-slate-900 p-0.5" role="group" aria-label="Cách xem lưới nhập">
+              <button onClick={() => pickInView("all")} aria-pressed={inView === "all"}
+                className={`h-10 rounded-md px-4 text-sm font-medium ${inView === "all" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Toàn bộ</button>
+              <button onClick={() => pickInView("one")} aria-pressed={inView === "one"}
+                className={`h-10 rounded-md px-4 text-sm font-medium ${inView === "one" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Từng dự án</button>
+            </div>
+          )}
           {!readOnly && (
             <button onClick={() => setMergeOpen(!mergeOpen)} aria-expanded={mergeOpen}
               title="Gộp vai trò con vào vai trò chính trong kế hoạch, vd Teamleader 2D vào Họa viên 2D"
@@ -332,6 +344,10 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
           <PlanProjects plan={plan} projects={everyProject} roles={roles} weeks={view} nowIndex={nowIdx}
             hidden={hidden} detail={ts?.detail || []} employees={cfg.employees || []}
             canToggle={!readOnly && canSaveProjects} onToggle={toggleActive} prole={prole} />
+        ) : mode === "in" && inView === "one" ? (
+          <PlanFocus plan={plan} onChange={(p) => { setPlan(p); setDirty(true); }}
+            projects={projects} hidden={hidden} mergedOf={mergedOf} roles={roles} weeks={view} nWeeks={weeks.length}
+            cap={cap} head={head} readOnly={readOnly} nowIndex={nowIdx} scrollKey={start} />
         ) : mode === "in" ? (
           <PlanGrid plan={plan} onChange={(p) => { setPlan(p); setDirty(true); }}
             projects={projects} hidden={hidden} onToggleHide={readOnly ? undefined : toggleHide} totals={totals} onTotals={readOnly ? undefined : onTotals} mergedOf={mergedOf} roles={roles} weeks={view} nWeeks={weeks.length}
