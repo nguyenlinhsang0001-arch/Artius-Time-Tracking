@@ -1,6 +1,21 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.26
+   ARTIUS — Quản lý giờ công theo dự án · v12.27
+   Mới ở v12.27 — Mode sáng của Tổng quan nguồn lực và Kế hoạch › Theo dự án:
+     · Sửa lỗi rê chuột vào một dòng ra dải xám đen. Nguyên nhân: LIGHT_CSS tự sinh bằng cách đảo từng class Tailwind
+       của mode tối, class có tiền tố hover: hoặc độ mờ /60 không nằm trong danh sách đã sinh thì giữ nguyên màu tối
+       (hover:bg-slate-900/60, border-slate-800/60, hover:bg-teal-950, bg-cyan-700/80). Hai màn này giờ đặt màu
+       theo theme ngay trong code (bảng TONE), không trông vào LIGHT_CSS nữa; quét lại còn 0 class lọt.
+     · Dòng đang chọn trong bảng dự án: nền xanh ngọc nhạt, vạch xanh bên trái, tên dự án màu xanh, giữ nền khi rê chuột.
+     · Tuần không liên quan tới dự án đang chọn tô xám trung tính thay vì làm trong suốt 22% — trên nền trắng cách cũ
+       biến cam thành kem, xanh thành tím phấn, nhìn như một màu khác chứ không phải đang bị làm mờ.
+     · Tuần đang chọn là một dải nền nhạt sau cột, số tuần đậm màu xanh, thay cho khung nét đứt đen.
+     · Chip vai trò đang tắt: ô màu chỉ còn viền, viền chip nét đứt — thay vì làm nhạt cả chip.
+     · Phần dư nền nhạt hơn, viền rõ hơn, số dư màu đậm hơn; dải nhiệt từng tuần dùng thang đỏ liền
+       từ hồng nhạt tới đỏ đậm; hai ô người thiếu / người dư có viền mảnh.
+     Mode tối giữ nguyên màu cũ, chỉ đổi cách làm mờ tuần và cách đánh dấu tuần đang chọn để hai mode hành xử như nhau.
+     Cả hai màn nghe sự kiện đổi theme nên bấm Sáng / Tối là đổi màu ngay.
+
    Mới ở v12.26 — Dashboard › Tổng quan nguồn lực dựng lại phần hiển thị, số liệu và cách tính không đổi:
      · Dải tóm tắt cho CẢ giai đoạn đang xem (12 / 24 / 36 tuần): bao nhiêu tuần có thiếu, thiếu bình quân mỗi tuần
        kèm phần trăm quân số, đỉnh thiếu rơi vào tuần nào, vai trò thiếu nhiều nhất tính bằng người-tuần cộng dồn.

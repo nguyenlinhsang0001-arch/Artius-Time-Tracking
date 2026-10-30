@@ -7,10 +7,11 @@
    Cột "Đang lệch" so KHOẢNG THỜI GIAN KẾ HOẠCH với trạng thái chấm công hiện tại.
    Nó chỉ gợi ý, không tự đổi gì: đóng một dự án là chặn nhân viên chấm công vào đó,
    nên quyết định vẫn là của người bấm. */
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
 import { isResigned } from "../../core/domain.jsx";
 import { CTRL, inputCls } from "../../core/ui.jsx";
+import { isLight } from "../../core/theme.jsx";
 import { cellOf } from "./planCalc.js";
 
 const f0 = (n) => String(+Number(n).toFixed(2)).replace(".", ",");
@@ -18,12 +19,28 @@ const wLbl = (w) => (w ? `T${w.m} tuần ${w.w}` : "—");
 /* bỏ dấu để gõ không dấu vẫn tìm ra, cùng cách với các màn khác */
 const norm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
+/* v12.27 — màu hover và thanh thời gian đặt theo theme ngay trong code: class hover:bg-slate-900/60, hover:bg-teal-950
+   và bg-cyan-700/80 không có trong LIGHT_CSS nên ở mode sáng vẫn giữ màu tối (dòng thành xám đen khi rê chuột). */
+const TONE = {
+  dark:  { rowHover: "rgba(30,41,59,0.45)", bar: "rgba(14,116,144,0.85)", openHover: "#042f2e", closeHover: "#1e293b" },
+  light: { rowHover: "#f8fafc",             bar: "#22d3ee",               openHover: "#f0fdfa", closeHover: "#f1f5f9" },
+};
+
 export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = new Set(),
   detail = [], employees = [], canToggle = false, onToggle, prole = (r) => r }) {
   const [flt, setFlt] = useState("all");
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(() => new Set());
   const [busyId, setBusyId] = useState(null);
+  const [hovP, setHovP] = useState(null);      /* dòng đang rê chuột */
+  const [hovBtn, setHovBtn] = useState(null);  /* nút Mở / Đóng đang rê chuột */
+  const [, bump] = useState(0);                /* vẽ lại ngay khi đổi Sáng / Tối */
+  useEffect(() => {
+    const f = () => bump((n) => n + 1);
+    window.addEventListener("artius:theme", f);
+    return () => window.removeEventListener("artius:theme", f);
+  }, []);
+  const C = isLight() ? TONE.light : TONE.dark;
 
   const roleById = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles]);
   const nowW = nowIndex >= 0 ? weeks.find((w) => w.i === nowIndex) : null;
@@ -168,7 +185,9 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
         return (
           <div key={p.id} className="border-b border-slate-800 last:border-b-0">
             <div onClick={(e) => { if (e.target.closest("button")) return; setOpen((sx) => { const t = new Set(sx); t.has(p.id) ? t.delete(p.id) : t.add(p.id); return t; }); }}
-              className="grid cursor-pointer grid-cols-[116px_minmax(0,1fr)_84px_20px] items-center gap-3 px-3 py-2.5 hover:bg-slate-900/60 md:grid-cols-[132px_minmax(0,1fr)_280px_120px_88px_20px] md:px-4">
+              onMouseEnter={() => setHovP(p.id)} onMouseLeave={() => setHovP((h) => (h === p.id ? null : h))}
+              style={{ background: hovP === p.id ? C.rowHover : "transparent" }}
+              className="grid cursor-pointer grid-cols-[116px_minmax(0,1fr)_84px_20px] items-center gap-3 px-3 py-2.5 md:grid-cols-[132px_minmax(0,1fr)_280px_120px_88px_20px] md:px-4">
               {/* trạng thái */}
               <span className={`flex h-[30px] items-center justify-center rounded-md border text-[11.5px] ${p.active ? "border-teal-900 bg-teal-950 text-teal-300" : "border-slate-700 bg-slate-950 text-slate-500"}`}>
                 {p.active ? "Đang chấm công" : "Đã đóng"}
@@ -191,8 +210,8 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
                 <span className="relative block h-[26px] overflow-hidden rounded-md bg-slate-950">
                   {(s?.byRole || []).map((r) => (
                     <i key={r.rid} title={`${r.rid}: ${wLbl(weeks.find((w) => w.i === r.a))} → ${wLbl(weeks.find((w) => w.i === r.b))}`}
-                      className="absolute top-[5px] h-4 rounded-sm bg-cyan-700/80"
-                      style={{ left: `${pc(r.a)}%`, width: `${Math.max(1.2, ((r.b - r.a + 1) / WN) * 100)}%` }} />
+                      className="absolute top-[5px] h-4 rounded-sm"
+                      style={{ left: `${pc(r.a)}%`, width: `${Math.max(1.2, ((r.b - r.a + 1) / WN) * 100)}%`, background: C.bar }} />
                   ))}
                   {nowIndex >= 0 && <i className="absolute inset-y-0 w-0.5 bg-rose-500" style={{ left: `${pc(nowIndex)}%` }} />}
                 </span>
@@ -203,7 +222,9 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
               <span>
                 {canToggle ? (
                   <button onClick={() => toggle(p)} disabled={busyId === p.id}
-                    className={`h-[30px] w-full rounded-md border text-[11.5px] disabled:opacity-40 ${p.active ? "border-slate-700 text-slate-300 hover:bg-slate-800" : "border-teal-800 text-teal-300 hover:bg-teal-950"}`}>
+                    onMouseEnter={() => setHovBtn(p.id)} onMouseLeave={() => setHovBtn((h) => (h === p.id ? null : h))}
+                    style={{ background: hovBtn === p.id ? (p.active ? C.closeHover : C.openHover) : "transparent" }}
+                    className={`h-[30px] w-full rounded-md border text-[11.5px] disabled:opacity-40 ${p.active ? "border-slate-700 text-slate-300" : "border-teal-800 text-teal-300"}`}>
                     {busyId === p.id ? "…" : p.active ? "Đóng" : "Mở"}
                   </button>
                 ) : <span className="block text-center text-[11px] text-slate-600">chỉ xem</span>}

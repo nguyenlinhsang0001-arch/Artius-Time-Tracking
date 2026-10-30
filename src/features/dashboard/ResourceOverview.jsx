@@ -1,4 +1,4 @@
-/* ARTIUS TIME v12.26 — Dashboard › Tổng quan nguồn lực.
+/* ARTIUS TIME v12.27 — Dashboard › Tổng quan nguồn lực.
    Bốn khối, đọc từ trên xuống là từ kết luận tới chi tiết:
      1. Dải tóm tắt — kết luận cho CẢ giai đoạn đang xem (bao nhiêu tuần thiếu, thiếu bình quân, đỉnh, vai trò nghẽn).
         Trước v12.26 màn này chỉ có số của MỘT tuần đang chọn, người xem phải tự cộng nhẩm mới biết
@@ -30,7 +30,40 @@ const f0 = (n) => String(+Number(n).toFixed(2)).replace(".", ",");
 const PALETTE = ["#14b8a6", "#f59e0b", "#6366f1", "#ec4899", "#0ea5e9", "#84cc16", "#f43f5e",
   "#a855f7", "#eab308", "#3b82f6", "#fb923c", "#22c55e", "#d946ef", "#2dd4bf", "#94a3b8"];
 
-const SHORT = "#ef4444";   /* màu chữ số tổng thiếu trên đỉnh cột */
+/* v12.27 — Màu theo theme đặt thẳng trong code thay vì trông vào LIGHT_CSS.
+   LIGHT_CSS tự sinh bằng cách đảo từng class Tailwind của mode tối, nên class có tiền tố hover: hoặc độ mờ /60
+   mà không có sẵn trong danh sách thì giữ nguyên màu tối — trước đây rê chuột vào một dòng ở mode sáng
+   ra dải xám đen 60% trên nền trắng. Màu nào quan trọng ở màn này đều lấy từ đây. */
+const TONE = {
+  dark: {
+    shortLab: "#ef4444", surLab: "#64748b", surFill: 0.45, surStroke: 0.9,
+    dimShort: "#1e293b", dimSur: "#0f172a", dimStroke: "#1e293b", dimLab: "#334155",
+    selBand: "rgba(20,184,166,0.09)", selWk: "#5eead4",
+    rowHover: "rgba(30,41,59,0.45)", rowSel: "rgba(4,47,46,0.55)", rowSelBar: "#14b8a6", rowSelName: "#5eead4", rowLine: "#1e293b",
+    heat0: "#111a2e", heatA: [127, 29, 29], heatB: [248, 113, 113],
+    kpA: "rgba(76,5,25,0.5)", kpAline: "transparent", kpAv: "#fda4af", kpB: "rgba(30,41,59,0.5)", kpBline: "transparent", kpBv: "#cbd5e1",
+    chipOffText: "#475569", chipOffLine: "#334155",
+  },
+  light: {
+    shortLab: "#dc2626", surLab: "#475569", surFill: 0.28, surStroke: 0.75,
+    dimShort: "#e2e8f0", dimSur: "#f1f5f9", dimStroke: "#e2e8f0", dimLab: "#cbd5e1",
+    selBand: "#f0fdfa", selWk: "#0f766e",
+    rowHover: "#f8fafc", rowSel: "#f0fdfa", rowSelBar: "#14b8a6", rowSelName: "#0f766e", rowLine: "#f1f5f9",
+    heat0: "#f1f5f9", heatA: [254, 202, 202], heatB: [220, 38, 38],
+    kpA: "#fef2f2", kpAline: "#fecaca", kpAv: "#dc2626", kpB: "#f8fafc", kpBline: "#e2e8f0", kpBv: "#334155",
+    chipOffText: "#94a3b8", chipOffLine: "#cbd5e1",
+  },
+};
+const heatOf = (C, t) => `rgb(${C.heatA.map((a, k) => Math.round(a + (C.heatB[k] - a) * t)).join(",")})`;
+/* vẽ lại ngay khi đổi Sáng / Tối, kể cả khi có tầng cha nào đó không vẽ lại */
+const useThemeTick = () => {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const f = () => bump((n) => n + 1);
+    window.addEventListener("artius:theme", f);
+    return () => window.removeEventListener("artius:theme", f);
+  }, []);
+};
 
 export default function ResourceOverview({ cfg }) {
   const tick = useDataTick();
@@ -42,6 +75,8 @@ export default function ResourceOverview({ cfg }) {
   const [pick, setPick] = useState(null);    /* chỉ số cột tuần đang soi */
   const [off, setOff] = useState(() => new Set());   /* vai trò đang tắt */
   const [selP, setSelP] = useState(null);    /* dự án đang chọn ở bảng xếp hạng */
+  const [hovP, setHovP] = useState(null);    /* dòng đang rê chuột — tô bằng style, không dùng class hover: */
+  useThemeTick();
   /* Bề ngang thật của khung vẽ. SVG vẽ đúng số pixel này thay vì để viewBox kéo giãn:
      kéo giãn thì cỡ chữ bị nhân theo bề ngang màn hình, màn rộng chữ phóng to gấp đôi. */
   const wrapRef = useRef(null);
@@ -226,7 +261,8 @@ export default function ResourceOverview({ cfg }) {
   const sc = Math.min((mid - T - PADU) / Math.max(up, unit === "abs" ? 0.5 : 5),
     (H - B - mid - PADD) / Math.max(dn, unit === "abs" ? 0.5 : 5));
 
-  const axis = isLight() ? "#0f172a" : "#e2e8f0";
+  const C = isLight() ? TONE.light : TONE.dark;
+  const axis = isLight() ? "#334155" : "#e2e8f0";
   const grid = isLight() ? "#e2e8f0" : "#1e293b";
   const mute = "#64748b";
 
@@ -234,38 +270,37 @@ export default function ResourceOverview({ cfg }) {
   view.forEach((w, k) => {
     const x = L + k * step + step * 0.17, bw = step * 0.66;
     const seg = [];
+    const focus = inWeek(w.i);   /* v12.27: tuần không liên quan tô xám trung tính, không làm trong suốt */
     let yU = mid, yD = mid + 1;
     live.forEach((r) => {
       const g = gapOf(r.id, w.i);
       if (g < -0.001) {                                  /* thiếu → vẽ lên trên */
         const h = Math.max(FLOOR, val(-g) * sc); yU -= h;
-        seg.push(<rect key={`s${r.id}`} x={x} y={yU} width={bw} height={h - 1} rx="2" fill={colorOf.get(r.id)}>
+        seg.push(<rect key={`s${r.id}`} x={x} y={yU} width={bw} height={h - 1} rx="2" fill={focus ? colorOf.get(r.id) : C.dimShort}>
           <title>{`T${w.m} tuần ${w.w} — ${r.id} thiếu ${f0(-g)}`}</title></rect>);
       } else if (g > 0.001) {                            /* dư → vẽ xuống dưới */
         /* v12.26: phần dư sáng hơn (0,45 thay vì 0,32) và có viền màu vai trò.
            Bản cũ mờ quá nên nửa dưới thành một mảng đục, không đọc được vai trò nào đang rảnh. */
         const h = Math.max(FLOOR, val(g) * sc);
         seg.push(<rect key={`f${r.id}`} x={x + 0.5} y={yD} width={bw - 1} height={h - 1} rx="2"
-          fill={colorOf.get(r.id)} fillOpacity="0.45" stroke={colorOf.get(r.id)} strokeOpacity="0.9">
+          fill={focus ? colorOf.get(r.id) : C.dimSur} fillOpacity={focus ? C.surFill : 1}
+          stroke={focus ? colorOf.get(r.id) : C.dimStroke} strokeOpacity={focus ? C.surStroke : 1}>
           <title>{`T${w.m} tuần ${w.w} — ${r.id} dư ${f0(g)}`}</title></rect>);
         yD += h;
       }
     });
     const tot = shortAt(w.i, live), fre = freeAt(w.i, live);
     if (tot > 0.02) seg.push(
-      <text key="st" x={x + bw / 2} y={yU - 5} fontSize={FS_TOTAL} textAnchor="middle" fill={SHORT}>
+      <text key="st" x={x + bw / 2} y={yU - 5} fontSize={FS_TOTAL} textAnchor="middle" fill={focus ? C.shortLab : C.dimLab}>
         {unit === "abs" ? f0(tot) : `${Math.round(val(tot))}%`}
       </text>);
     /* v12.26: tổng dư ghi dưới chân cột, đối xứng với tổng thiếu trên đỉnh */
     if (fre > 0.02) seg.push(
-      <text key="ft" x={x + bw / 2} y={yD + 11} fontSize={FS_WEEK} textAnchor="middle" fill={mute}>
+      <text key="ft" x={x + bw / 2} y={yD + 11} fontSize={FS_WEEK} textAnchor="middle" fill={focus ? C.surLab : C.dimLab}>
         {unit === "abs" ? f0(fre) : `${Math.round(val(fre))}%`}
       </text>);
     /* chọn một dự án thì các tuần dự án đó không góp mặt bị làm mờ */
-    bars.push(<g key={`g${w.i}`} opacity={inWeek(w.i) ? 1 : 0.22}>{seg}</g>);
-    if (w.i === sel) bars.push(
-      <rect key={`k${w.i}`} x={x - 3} y={T} width={bw + 6} height={H - B - T} rx="5"
-        fill="none" stroke={axis} strokeWidth="1.1" strokeDasharray="3 3" />);
+    bars.push(<g key={`g${w.i}`}>{seg}</g>);
     bars.push(<rect key={`h${w.i}`} x={L + k * step} y={T} width={step} height={H - B - T}
       fill="transparent" style={{ cursor: "pointer" }} onClick={() => setPick(w.i)} />);
   });
@@ -288,8 +323,13 @@ export default function ResourceOverview({ cfg }) {
   });
   const wkLabels = view.map((w, k) => (
     <text key={`w${w.i}`} x={L + k * step + step / 2} y={30} fontSize={FS_WEEK} textAnchor="middle"
-      fill={w.i === sel ? axis : mute}>{w.w}</text>
+      fill={w.i === sel ? C.selWk : mute} fontWeight={w.i === sel ? 600 : 400}>{w.w}</text>
   ));
+  /* v12.27: tuần đang chọn là một dải nền nhạt sau cột, thay cho khung nét đứt (trên nền trắng trông thô) */
+  const selK = view.findIndex((w) => w.i === sel);
+  const selBand = selK >= 0
+    ? <rect x={L + selK * step + 1} y={4} width={step - 2} height={H - B - 4} rx="6" fill={C.selBand} />
+    : null;
 
   /* ---------------------------- khung chi tiết ---------------------------- */
   const selW = weeks.find((w) => w.i === sel);
@@ -305,7 +345,7 @@ export default function ResourceOverview({ cfg }) {
   const tile = (k, v, s, red) => (
     <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
       <div className="text-[11px] text-slate-500">{k}</div>
-      <div className={`mt-0.5 font-mono text-[19px] leading-tight ${red ? "text-rose-400" : "text-slate-100"}`}>{v}</div>
+      <div className={`mt-0.5 font-mono text-[19px] leading-tight ${red ? "" : "text-slate-100"}`} style={red ? { color: C.shortLab } : undefined}>{v}</div>
       <div className="text-[11.5px] text-slate-400">{s}</div>
     </div>
   );
@@ -365,11 +405,14 @@ export default function ResourceOverview({ cfg }) {
           const on = !off.has(r.id);
           const pk = Math.max(0, ...view.map((w) => -gapOf(r.id, w.i)));
           return (
+            /* v12.27: chip tắt = ô màu chỉ còn viền + viền chip nét đứt, thay vì làm nhạt cả chip */
             <button key={r.id} onClick={() => setOff((s) => { const t = new Set(s); t.has(r.id) ? t.delete(r.id) : t.add(r.id); return t; })}
-              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] ${on ? "border-slate-700 text-slate-300" : "border-slate-800 text-slate-600"}`}>
-              <span className="h-2.5 w-2.5 rounded-sm" style={{ background: colorOf.get(r.id), opacity: on ? 1 : 0.3 }} />
+              className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] ${on ? "border-slate-700 text-slate-300" : ""}`}
+              style={on ? undefined : { borderStyle: "dashed", borderColor: C.chipOffLine, color: C.chipOffText }}>
+              <span className="h-2.5 w-2.5 rounded-sm"
+                style={on ? { background: colorOf.get(r.id) } : { background: "transparent", boxShadow: `inset 0 0 0 1.5px ${colorOf.get(r.id)}` }} />
               <span className="font-mono">{r.id}</span>
-              <span className={`font-mono ${on && pk > 0.001 ? "text-rose-400" : "text-slate-600"}`}>
+              <span className="font-mono" style={{ color: on && pk > 0.001 ? C.shortLab : C.chipOffText }}>
                 {pk > 0.001 ? `▲${f0(pk)}` : "đủ"}
               </span>
             </button>
@@ -379,11 +422,12 @@ export default function ResourceOverview({ cfg }) {
 
       {/* items-start: cột trái không bị kéo giãn theo cột phải, nhờ vậy phép đo chiều cao không lặp vô hạn */}
       <div className="grid items-start gap-0 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div ref={leftRef} className="min-w-0 xl:border-r xl:border-slate-800">
+        <div ref={leftRef} className="min-w-0 border-slate-800 xl:border-r">
           {/* biểu đồ — vẽ đúng bề ngang đo được, không để viewBox phóng to chữ */}
           <div className="min-w-0 p-3 md:p-4">
             <div ref={wrapRef} className="min-w-0">
               <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+                {selBand}
                 {ticks}
                 {wkLabels}
                 {bars}
@@ -405,13 +449,20 @@ export default function ResourceOverview({ cfg }) {
                 {summary && summary.nShort === 0 ? "Giai đoạn này không vai trò nào thiếu người." : "Không có dự án nào đặt người vào vai trò đang thiếu."}
               </p>
             ) : projRows.map((o) => (
+              /* v12.27: nền dòng tô bằng style theo theme. Dòng đang chọn có vạch xanh bên trái và giữ nền khi rê chuột. */
               <div key={o.p.id} onClick={() => setSelP(selP === o.p.id ? null : o.p.id)}
-                className={`grid cursor-pointer grid-cols-[minmax(0,1fr)_90px] items-center gap-3 border-b border-slate-800/60 px-3 py-1.5 text-[12.5px] last:border-b-0 md:grid-cols-[230px_minmax(0,1fr)_84px_minmax(0,1fr)] md:px-4 ${selP === o.p.id ? "bg-teal-950/40" : "hover:bg-slate-900/60"}`}>
-                <span className="truncate text-slate-200">
+                onMouseEnter={() => setHovP(o.p.id)} onMouseLeave={() => setHovP((h) => (h === o.p.id ? null : h))}
+                className="grid cursor-pointer grid-cols-[minmax(0,1fr)_90px] items-center gap-3 px-3 py-1.5 text-[12.5px] md:grid-cols-[230px_minmax(0,1fr)_84px_minmax(0,1fr)] md:px-4"
+                style={{
+                  background: selP === o.p.id ? C.rowSel : hovP === o.p.id ? C.rowHover : "transparent",
+                  borderLeft: `3px solid ${selP === o.p.id ? C.rowSelBar : "transparent"}`,
+                  borderBottom: `1px solid ${C.rowLine}`,
+                }}>
+                <span className="truncate text-slate-200" style={selP === o.p.id ? { color: C.rowSelName } : undefined}>
                   {o.p.name}
                   {o.p.code && <span className="ml-1.5 font-mono text-[11px] text-slate-600">{o.p.code}</span>}
                 </span>
-                <span className="hidden h-3.5 overflow-hidden rounded-sm bg-slate-950 md:flex">
+                <span className="hidden h-3.5 overflow-hidden rounded-sm md:flex" style={{ background: C.heat0 }}>
                   {live.filter((r) => o.byRole.get(r.id)).map((r) => (
                     <span key={r.id} title={`${r.id}: ${f0(o.byRole.get(r.id))}`}
                       style={{ width: `${(o.byRole.get(r.id) / projMax) * 100}%`, background: colorOf.get(r.id) }} />
@@ -422,7 +473,7 @@ export default function ResourceOverview({ cfg }) {
                   {view.map((w) => {
                     const v = o.byWeek.get(w.i) || 0;
                     return <span key={w.i} title={`T${w.m} tuần ${w.w}: ${f0(v)}`} className="h-3.5 flex-1 rounded-[2px]"
-                      style={{ background: v ? `rgba(248,113,113,${0.18 + 0.82 * (v / weekMax)})` : (isLight() ? "#e2e8f0" : "#111a2e") }} />;
+                      style={{ background: v ? heatOf(C, v / weekMax) : C.heat0 }} />;
                   })}
                 </span>
               </div>
@@ -435,12 +486,12 @@ export default function ResourceOverview({ cfg }) {
           style={leftH ? { maxHeight: leftH } : undefined}>
           <div className="text-sm text-slate-200">T{selW?.m} · tuần {selW?.w}</div>
           <div className="mb-3 mt-3 grid grid-cols-2 gap-2">
-            <div className="rounded-lg bg-rose-950/50 px-3 py-2">
-              <div className="font-mono text-lg text-rose-300">{f0(shortAt(sel, live))}</div>
+            <div className="rounded-lg px-3 py-2" style={{ background: C.kpA, border: `1px solid ${C.kpAline}` }}>
+              <div className="font-mono text-lg" style={{ color: C.kpAv }}>{f0(shortAt(sel, live))}</div>
               <div className="text-[10.5px] text-slate-500">người thiếu</div>
             </div>
-            <div className="rounded-lg bg-slate-800/50 px-3 py-2">
-              <div className="font-mono text-lg text-slate-300">{f0(freeAt(sel, live))}</div>
+            <div className="rounded-lg px-3 py-2" style={{ background: C.kpB, border: `1px solid ${C.kpBline}` }}>
+              <div className="font-mono text-lg" style={{ color: C.kpBv }}>{f0(freeAt(sel, live))}</div>
               <div className="text-[10.5px] text-slate-500">người dư</div>
             </div>
           </div>
@@ -451,7 +502,7 @@ export default function ResourceOverview({ cfg }) {
               <div className="flex items-baseline gap-2">
                 <span className="font-mono" style={{ color: colorOf.get(o.r.id) }}>{o.r.id}</span>
                 <span className="truncate text-slate-500">{o.r.name}</span>
-                <span className="ml-auto whitespace-nowrap font-mono text-rose-400">thiếu {f0(-o.g)}</span>
+                <span className="ml-auto whitespace-nowrap font-mono" style={{ color: C.shortLab }}>thiếu {f0(-o.g)}</span>
               </div>
               <div className="mb-1 mt-0.5 text-[11.5px] text-slate-500">
                 cần {f0(o.need)} / có {f0(o.c)}{o.pct != null && ` · thiếu ${o.pct}% quân số`}
