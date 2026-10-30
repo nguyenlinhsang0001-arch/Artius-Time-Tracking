@@ -1,6 +1,12 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.27
+   ARTIUS — Quản lý giờ công theo dự án · v12.28
+   Mới ở v12.28 — Sửa lỗi điện thoại: bấm "+ Nhân sự" ở tab Dự án hoặc thêm dự án cho nhân sự ở tab Nhân sự thì bảng chọn
+     vừa mở đã tự tắt. Nguyên nhân: hai bảng chọn này đóng ở MỌI sự kiện resize, mà ô tìm kiếm tự bật bàn phím ảo khi mở —
+     bàn phím làm đổi chiều cao màn hình, trình duyệt phát resize, bảng đóng ngay. Cuộn trang cũng gây lỗi vì thanh địa chỉ
+     của trình duyệt điện thoại co giãn. Sửa: chỉ đóng khi BỀ NGANG đổi (xoay máy, kéo cửa sổ); trên điện thoại không tự bật
+     bàn phím khi mở bảng nữa (chạm vào ô tìm kiếm khi cần), máy tính vẫn tự trỏ vào ô tìm kiếm như cũ.
+
    Mới ở v12.27 — Mode sáng của Tổng quan nguồn lực và Kế hoạch › Theo dự án:
      · Sửa lỗi rê chuột vào một dòng ra dải xám đen. Nguyên nhân: LIGHT_CSS tự sinh bằng cách đảo từng class Tailwind
        của mode tối, class có tiền tố hover: hoặc độ mờ /60 không nằm trong danh sách đã sinh thì giữ nguyên màu tối

@@ -7,7 +7,7 @@ import { fetchTsStamps } from "../data.js";
 import { accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "../auth.js";
 import { fmt, pad } from "../core/date.jsx";
 import { dbTsSent, empHoursAll, loadXlsx, purgeEmpTs, useDataTick } from "../core/db.jsx";
-import { DEPTS, LEAVE_TASKS, NO_PROJECT, OT_TASKS, ROLES, fmtH, isLeaveTask, isResigned, norm, roleInfo, roleLabel, roleTitle, supportList, taskText, uid } from "../core/domain.jsx";
+import { DEPTS, LEAVE_TASKS, NO_PROJECT, OT_TASKS, ROLES, fmtH, isLeaveTask, isResigned, norm, roleInfo, roleLabel, roleTitle, supportList, taskText, uid, useIsMobile } from "../core/domain.jsx";
 import { ConfirmDialog, btnBase, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
 import { SupportPanel } from "../shared/support.jsx";
 import { Dashboard } from "./dashboard/Dashboard.jsx";
@@ -85,12 +85,18 @@ export function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = n
   const [orphanHrs, setOrphanHrs] = useState(null);   // v8.5: giờ công còn lại của nhân sự đã xoá trước đây { id: {...} }
   /* v6.9 (mẫu C) — sửa "Dự án đang tham gia" ngay trên danh sách: { kind: "add" | "copy", eid, x, y, q } */
   const [pp, setPp] = useState(null);
+  /* v12.28 — điện thoại: không tự bật bàn phím khi mở bảng chọn, để danh sách không bị bàn phím che ngay từ đầu */
+  const isWide = !useIsMobile();
   useEffect(() => {
     if (!pp) return;
     const close = () => setPp(null);
     const esc = (ev) => { if (ev.key === "Escape") setPp(null); };
-    document.addEventListener("click", close); document.addEventListener("keydown", esc); window.addEventListener("resize", close);
-    return () => { document.removeEventListener("click", close); document.removeEventListener("keydown", esc); window.removeEventListener("resize", close); };
+    /* v12.28 — chỉ đóng khi BỀ NGANG đổi (xoay máy, kéo cửa sổ). Trước đây đóng ở mọi lần resize, mà trên điện thoại
+       bàn phím ảo bật lên hoặc thanh địa chỉ co giãn khi cuộn đều đổi chiều cao và phát resize — bảng vừa mở đã tự tắt. */
+    const w0 = window.innerWidth;
+    const onResize = () => { if (window.innerWidth !== w0) close(); };
+    document.addEventListener("click", close); document.addEventListener("keydown", esc); window.addEventListener("resize", onResize);
+    return () => { document.removeEventListener("click", close); document.removeEventListener("keydown", esc); window.removeEventListener("resize", onResize); };
   }, [!!pp]); // eslint-disable-line react-hooks/exhaustive-deps
   const projLabel = (p) => (p.code ? `[${p.code}] ${p.name}` : p.name);
   const empProjs = (e) => (Array.isArray(e.projects) ? e.projects : []).filter((pid) => cfg.projects.some((p) => p.id === pid));
@@ -797,7 +803,7 @@ export function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = n
         const e = cfg.employees.find((x) => x.id === pp.eid); if (!e) return null;
         const mine = empProjs(e), kw = norm(pp.q.trim());
         const field = (
-          <input autoFocus value={pp.q} onChange={(ev) => setPp({ ...pp, q: ev.target.value })} placeholder={pp.kind === "add" ? "Tìm dự án (gõ không dấu được)" : "Tìm người"}
+          <input autoFocus={isWide} value={pp.q} onChange={(ev) => setPp({ ...pp, q: ev.target.value })} placeholder={pp.kind === "add" ? "Tìm dự án (gõ không dấu được)" : "Tìm người"}
             className={inputCls} />
         );
         let body;

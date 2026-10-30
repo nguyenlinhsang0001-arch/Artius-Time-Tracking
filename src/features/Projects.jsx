@@ -28,8 +28,12 @@ export function Projects({ cfg, saveCfg, flash, onSupport = null, supportRo = fa
     if (!tp) return;
     const close = () => setTp(null);
     const esc = (ev) => { if (ev.key === "Escape") setTp(null); };
-    document.addEventListener("click", close); document.addEventListener("keydown", esc); window.addEventListener("resize", close);
-    return () => { document.removeEventListener("click", close); document.removeEventListener("keydown", esc); window.removeEventListener("resize", close); };
+    /* v12.28 — chỉ đóng khi BỀ NGANG đổi (xoay máy, kéo cửa sổ). Trước đây đóng ở mọi lần resize, mà trên điện thoại
+       bàn phím ảo bật lên hoặc thanh địa chỉ co giãn khi cuộn đều đổi chiều cao và phát resize — bảng vừa mở đã tự tắt. */
+    const w0 = window.innerWidth;
+    const onResize = () => { if (window.innerWidth !== w0) close(); };
+    document.addEventListener("click", close); document.addEventListener("keydown", esc); window.addEventListener("resize", onResize);
+    return () => { document.removeEventListener("click", close); document.removeEventListener("keydown", esc); window.removeEventListener("resize", onResize); };
   }, [!!tp]); // eslint-disable-line react-hooks/exhaustive-deps
   const inProj = (e, pid) => empHasProj(e, pid);   // v8.8: người có quyền "Tất cả dự án" có mặt ở mọi dự án
   const toggleMember = (eid, pid) => (cfg.employees.find((e) => e.id === eid)?.allProjects
@@ -87,7 +91,7 @@ export function Projects({ cfg, saveCfg, flash, onSupport = null, supportRo = fa
     return (
       <div onClick={(ev) => ev.stopPropagation()} className="fixed z-50 w-[320px] rounded-xl border border-slate-700 bg-slate-950 p-1.5 shadow-2xl"
         style={below ? { left: tp.x, top: tp.y } : { left: tp.x, bottom: window.innerHeight - tp.top + 6 }}>
-        <div className="p-1"><input autoFocus value={tp.q} onChange={(ev) => setTp({ ...tp, q: ev.target.value })} placeholder="Tìm nhân sự (gõ không dấu được)" className={inputCls} /></div>
+        <div className="p-1"><input autoFocus={isWide} value={tp.q} onChange={(ev) => setTp({ ...tp, q: ev.target.value })} placeholder="Tìm nhân sự (gõ không dấu được)" className={inputCls} /></div>
         <div className="max-h-72 overflow-y-auto">
           {list.length === 0 && <div className="px-3 py-3 text-sm text-slate-500">Không có nhân sự khớp.</div>}
           {depts.map((d) => (
