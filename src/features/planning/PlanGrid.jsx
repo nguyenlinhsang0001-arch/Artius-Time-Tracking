@@ -9,6 +9,7 @@
      · khối "TOÀN CÔNG TY · CÒN" dính đáy ngay trong lưới, mỗi vai trò đúng một dòng (bỏ dòng "cần", bỏ bảng tổng riêng, bỏ dải dính đáy)
      · bỏ thanh nhập nhanh; "Về tuần này" chuyển lên hàng công cụ (ResourcePlan phát sự kiện artius:planNow)
    Màu đặt bằng biến CSS riêng của lưới (.pgx), có bộ sáng dưới html[data-theme=light] — không phụ thuộc LIGHT_CSS.
+   v12.31 — dòng dự án to ×1,2; tên vai trò mờ 80%; tuần hiện tại đậm hơn ở mode sáng; ô CÒN tô màu theo mức xanh / vàng / đỏ.
    Phím tắt giữ nguyên: + / − tăng giảm 0,25, Ctrl + D, Ctrl + C / V, Shift + mũi tên, Delete. */
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Eye, EyeOff, GripVertical, Plus, Trash2 } from "lucide-react";
@@ -34,9 +35,11 @@ const wShort = (w) => (w ? `T${w.m}·${w.w}` : "");
 
 const CSS = `
 .pgx{--card:#0f172a;--line:#1e293b;--line2:#111a2e;--ink:#e2e8f0;--ink2:#cbd5e1;--ink3:#94a3b8;--ink4:#64748b;
-  --teal:#5eead4;--tealbg:#042f2e;--red:#f87171;--redbg:#450a0a;--cell:#0b1220;--past:#0a0f1c;--now:#0b2a2a;--flash:#14532d;--hover:#111a2e}
+  --teal:#5eead4;--tealbg:#042f2e;--red:#f87171;--redbg:#450a0a;--cell:#0b1220;--past:#0a0f1c;--now:#0b2a2a;--flash:#14532d;--hover:#111a2e;
+  --g0:#052e16;--g1:#16a34a;--gt:#bbf7d0;--y:#422006;--yt:#fde68a;--r0:#450a0a;--r1:#dc2626;--rt:#fecaca}
 html[data-theme="light"] .pgx{--card:#ffffff;--line:#e2e8f0;--line2:#f1f5f9;--ink:#0f172a;--ink2:#334155;--ink3:#64748b;--ink4:#94a3b8;
-  --teal:#0f766e;--tealbg:#f0fdfa;--red:#dc2626;--redbg:#fef2f2;--cell:#ffffff;--past:#f8fafc;--now:#f0fdfa;--flash:#bbf7d0;--hover:#f8fafc}
+  --teal:#0f766e;--tealbg:#f0fdfa;--red:#dc2626;--redbg:#fef2f2;--cell:#ffffff;--past:#f8fafc;--now:#ccfbf1;--flash:#bbf7d0;--hover:#f8fafc;
+  --g0:#dcfce7;--g1:#16a34a;--gt:#166534;--y:#fef9c3;--yt:#854d0e;--r0:#fee2e2;--r1:#b91c1c;--rt:#991b1b}
 .pgx{background:var(--card);color:var(--ink)}
 .pgx .pg-wrap{position:relative;overflow:auto;max-height:72vh}
 .pgx table{border-collapse:separate;border-spacing:0;font-size:12px;table-layout:fixed}
@@ -51,16 +54,18 @@ html[data-theme="light"] .pgx{--card:#ffffff;--line:#e2e8f0;--line2:#f1f5f9;--in
 .pgx .mh.yr{border-left:2px solid var(--teal)}
 .pgx .wh{font-size:10px;color:var(--ink4);font-weight:400;text-align:center;border-bottom:1px solid var(--line)}
 .pgx .wh.now{color:var(--teal);font-weight:600;background:var(--now)}
+html[data-theme="light"] .pgx .wh.now{background:var(--teal);color:#fff}
 .pgx .ms{border-left:1px dashed var(--line)}
-.pgx tr.ph td{background:var(--line2);height:28px;border-top:1px solid var(--line)}
+.pgx tr.ph td{background:var(--line2);height:34px;border-top:1px solid var(--line)}
 .pgx tr.ph td.fz{background:var(--line2)}
-.pgx .pn{font-size:12.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis}
+.pgx .pn{font-size:15px;color:var(--ink);overflow:hidden;text-overflow:ellipsis}
 .pgx tr.ph.off .pn{color:var(--ink4);text-decoration:line-through}
-.pgx .code{font-size:10.5px;color:var(--ink4);margin-left:6px;font-variant-numeric:tabular-nums}
-.pgx .phr{font-size:11px;color:var(--ink3);padding-left:8px;white-space:nowrap}
+.pgx .code{font-size:12.5px;color:var(--ink4);margin-left:6px;font-variant-numeric:tabular-nums}
+.pgx .phr{font-size:13px;color:var(--ink3);padding-left:8px;white-space:nowrap}
 .pgx .rl{height:30px;font-size:12px;color:var(--ink2)}
 .pgx .rdot{display:inline-block;flex:none;width:9px;height:9px;border-radius:2px;margin-right:4px}
-.pgx .rn{color:var(--ink3);overflow:hidden;text-overflow:ellipsis}
+.pgx .rn{color:var(--ink3)}
+.pgx .rlab{opacity:.8;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pgx td.c{height:30px;background:var(--cell);border-bottom:1px solid var(--line2)}
 .pgx td.c.past{background:var(--past)}
 .pgx td.c.nowc{background:var(--now)}
@@ -82,8 +87,10 @@ html[data-theme="light"] .pgx{--card:#ffffff;--line:#e2e8f0;--line2:#f1f5f9;--in
 .pgx tr.gsep td{background:var(--line2);box-shadow:inset 0 2px 0 var(--line)}
 .pgx .gtl{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
 .pgx .lc{text-align:center;font-size:11px;color:var(--ink4);font-variant-numeric:tabular-nums}
-.pgx .lc.neg{color:var(--red);font-weight:600;background:var(--redbg)}
-.pgx .lc.pos{color:var(--ink3)}
+.pgx .lc.g{background:color-mix(in srgb,var(--g1) calc(var(--t) * 100%),var(--g0));color:var(--gt)}
+.pgx .lc.y{background:var(--y);color:var(--yt)}
+.pgx .lc.r{background:color-mix(in srgb,var(--r1) calc(var(--t) * 100%),var(--r0));color:var(--rt);font-weight:600}
+.pgx .lc.dk{color:#fff}
 .pgx tr.crow td{height:22px;border-bottom:1px solid var(--line);background:var(--card)}
 .pgx .cl{font-size:10.5px;color:var(--ink4);padding-left:26px}
 .pgx .pg-knob{position:absolute;z-index:1;width:9px;height:9px;background:var(--teal);border:2px solid var(--card);border-radius:2px;cursor:ew-resize;touch-action:none;box-sizing:content-box}
@@ -146,7 +153,7 @@ const Row = React.memo(function Row({ r, pid, rid, name, color, values, weeks, n
             </span>
           )}
           <span className="rdot" style={{ background: color }} />
-          <span>{rid}</span> <span className="rn">{name}</span>
+          <span className="rlab">{rid} <span className="rn">{name}</span></span>
           {!readOnly && (
             <button type="button" title="Bỏ vai trò này khỏi dự án" onClick={() => onDrop(pid, rid)} className="del"><Trash2 size={11} /></button>
           )}
@@ -537,7 +544,12 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
       dnd.end();
     },
   };
-  const lcCls = (lf) => `lc${lf < -0.001 ? " neg" : lf > 0.001 ? " pos" : ""}`;
+  /* v12.31 — màu ô CÒN: > 1 xanh lá (càng gần 1 càng nhạt, từ 4 trở lên đậm nhất) · 0 → 1 vàng nhạt · âm đỏ (càng âm càng đậm, từ −3 trở xuống đậm nhất) */
+  const lcCls = (lf) => {
+    if (lf < -0.001) { const t = Math.min(1, -lf / 3); return [`lc r${t >= 0.5 ? " dk" : ""}`, t]; }
+    if (lf > 1.001) { const t = Math.min(1, (lf - 1) / 3); return [`lc g${t >= 0.5 ? " dk" : ""}`, t]; }
+    return ["lc y", 0];
+  };
   const msCls = (w, k) => (w.ms && k > 0 ? " ms" : "");
 
   /* tiêu đề: hàng tháng (gộp ô theo tháng) và hàng tuần */
@@ -639,8 +651,8 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
                         <tr className="crow">
                           <td className="fz"><div className="fzi cl">CÒN toàn công ty · có {f0(cap.get(r.id) || 0)}</div></td>
                           {weeks.map((w, k) => {
-                            const lf = leftOf(plan, pids, r.id, w.i, cap);
-                            return <td key={w.i} className={`${lcCls(lf)}${msCls(w, k)}`}>{f0(lf)}</td>;
+                            const lf = leftOf(plan, pids, r.id, w.i, cap), [lc, t] = lcCls(lf);
+                            return <td key={w.i} className={`${lc}${msCls(w, k)}`} style={{ "--t": t.toFixed(2) }}>{f0(lf)}</td>;
                           })}
                         </tr>
                       )}
@@ -692,8 +704,8 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
                       </div>
                     </td>
                     {weeks.map((w, kk) => {
-                      const lf = leftOf(plan, pids, r.id, w.i, cap);
-                      return <td key={w.i} className={`${lcCls(lf)}${msCls(w, kk)}`} style={bt}>{f0(lf)}</td>;
+                      const lf = leftOf(plan, pids, r.id, w.i, cap), [lc, t] = lcCls(lf);
+                      return <td key={w.i} className={`${lc}${msCls(w, kk)}`} style={{ ...bt, "--t": t.toFixed(2) }}>{f0(lf)}</td>;
                     })}
                   </tr>
                 );

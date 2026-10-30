@@ -1,6 +1,12 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.30
+   ARTIUS — Quản lý giờ công theo dự án · v12.31
+   Mới ở v12.31 — Kế hoạch › Nhập liệu:
+     · Dòng tên dự án to ×1,2 (chữ 15px, dòng cao 34px); tên vai trò trong dự án mờ 80%.
+     · Tuần hiện tại ở mode sáng đậm hơn: ô nền #ccfbf1, số tuần ở tiêu đề chữ trắng nền teal.
+     · Ô CÒN (khối Toàn công ty và dòng CÒN ở Từng dự án): lớn hơn 1 nền xanh lá, càng gần 1 càng nhạt, từ 4 trở lên đậm nhất;
+       từ 0 đến 1 nền vàng nhạt; âm nền đỏ, càng âm càng đậm, từ −3 trở xuống đậm nhất. Nền đậm thì chữ trắng.
+
    Mới ở v12.30 — Kế hoạch › Nhập liệu:
      · Bỏ thanh nhập nhanh (Dự án · Vai trò · từ · đến · Áp dụng · Xoá đoạn). Núm kéo điền và mọi phím tắt giữ nguyên.
      · "Về tuần này" chuyển lên hàng công cụ, cạnh nút Toàn bộ | Từng dự án.
