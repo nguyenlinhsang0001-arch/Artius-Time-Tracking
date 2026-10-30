@@ -10,7 +10,7 @@
      · bỏ thanh nhập nhanh; "Về tuần này" chuyển lên hàng công cụ (ResourcePlan phát sự kiện artius:planNow)
    Màu đặt bằng biến CSS riêng của lưới (.pgx), có bộ sáng dưới html[data-theme=light] — không phụ thuộc LIGHT_CSS.
    v12.31 — dòng dự án to ×1,2; tên vai trò mờ 80%; tuần hiện tại đậm hơn ở mode sáng; ô CÒN tô màu theo mức xanh / vàng / đỏ.
-   v12.33 — thang màu ô CÒN: 0 → dưới 1 không tô · 1 → 2 xanh nhạt · trên 2 xanh đậm · dưới 0 → −1 vàng · dưới −1 đỏ đậm dần.
+   v12.33 — thang màu ô CÒN chỉ còn 3 loại: −0,5 → 0,5 không tô · trên 0,5 xanh lá đậm dần · dưới −0,5 đỏ đậm dần (đậm nhất từ ±3).
    v12.32 — vàng mode tối: nền vàng trong #3f3a17 (vàng ~22% trên nền tối), chữ #fde047.
    Phím tắt giữ nguyên: + / − tăng giảm 0,25, Ctrl + D, Ctrl + C / V, Shift + mũi tên, Delete. */
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -38,10 +38,10 @@ const wShort = (w) => (w ? `T${w.m}·${w.w}` : "");
 const CSS = `
 .pgx{--card:#0f172a;--line:#1e293b;--line2:#111a2e;--ink:#e2e8f0;--ink2:#cbd5e1;--ink3:#94a3b8;--ink4:#64748b;
   --teal:#5eead4;--tealbg:#042f2e;--red:#f87171;--redbg:#450a0a;--cell:#0b1220;--past:#0a0f1c;--now:#0b2a2a;--flash:#14532d;--hover:#111a2e;
-  --gl:#14532d;--glt:#bbf7d0;--gd:#16a34a;--y:#3f3a17;--yt:#fde047;--r0:#450a0a;--r1:#dc2626;--rt:#fecaca}
+  --g0:#14361f;--g1:#16a34a;--gt:#bbf7d0;--r0:#3b1212;--r1:#dc2626;--rt:#fecaca}
 html[data-theme="light"] .pgx{--card:#ffffff;--line:#e2e8f0;--line2:#f1f5f9;--ink:#0f172a;--ink2:#334155;--ink3:#64748b;--ink4:#94a3b8;
   --teal:#0f766e;--tealbg:#f0fdfa;--red:#dc2626;--redbg:#fef2f2;--cell:#ffffff;--past:#f8fafc;--now:#ccfbf1;--flash:#bbf7d0;--hover:#f8fafc;
-  --gl:#dcfce7;--glt:#166534;--gd:#16a34a;--y:#fef9c3;--yt:#854d0e;--r0:#fee2e2;--r1:#b91c1c;--rt:#991b1b}
+  --g0:#dcfce7;--g1:#15803d;--gt:#166534;--r0:#fee2e2;--r1:#b91c1c;--rt:#991b1b}
 .pgx{background:var(--card);color:var(--ink)}
 .pgx .pg-wrap{position:relative;overflow:auto;max-height:72vh}
 .pgx table{border-collapse:separate;border-spacing:0;font-size:12px;table-layout:fixed}
@@ -89,9 +89,7 @@ html[data-theme="light"] .pgx .wh.now{background:var(--teal);color:#fff}
 .pgx tr.gsep td{background:var(--line2);box-shadow:inset 0 2px 0 var(--line)}
 .pgx .gtl{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
 .pgx .lc{text-align:center;font-size:11px;color:var(--ink3);font-variant-numeric:tabular-nums}
-.pgx .lc.gl{background:var(--gl);color:var(--glt)}
-.pgx .lc.gd{background:var(--gd);color:#fff}
-.pgx .lc.y{background:var(--y);color:var(--yt)}
+.pgx .lc.g{background:color-mix(in srgb,var(--g1) calc(var(--t) * 100%),var(--g0));color:var(--gt)}
 .pgx .lc.r{background:color-mix(in srgb,var(--r1) calc(var(--t) * 100%),var(--r0));color:var(--rt);font-weight:600}
 .pgx .lc.dk{color:#fff}
 .pgx tr.crow td{height:22px;border-bottom:1px solid var(--line);background:var(--card)}
@@ -547,14 +545,13 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
       dnd.end();
     },
   };
-  /* v12.33 — thang màu ô CÒN:
-       dư trên 2 xanh đậm · dư 1 → 2 xanh nhạt · 0 → dưới 1 không tô (nền theme)
-       thiếu tới 1 (dưới 0 → −1) vàng · thiếu hơn 1 đỏ, càng thiếu càng đậm (−1 nhạt nhất, từ −3 trở xuống đậm nhất) */
+  /* v12.33 — thang màu ô CÒN, đúng 3 loại:
+       −0,5 → 0,5 không tô (nền theme)
+       trên 0,5 xanh lá, chuyển sắc liên tục: 0,5 nhạt nhất → từ 3 trở lên đậm nhất
+       dưới −0,5 đỏ, chuyển sắc liên tục: −0,5 nhạt nhất → từ −3 trở xuống đậm nhất · nền đậm thì chữ trắng */
   const lcCls = (lf) => {
-    if (lf < -1.001) { const t = Math.min(1, (-lf - 1) / 2); return [`lc r${t >= 0.5 ? " dk" : ""}`, t]; }
-    if (lf < -0.001) return ["lc y", 0];
-    if (lf > 2.001) return ["lc gd", 0];
-    if (lf >= 0.999) return ["lc gl", 0];
+    if (lf < -0.501) { const t = Math.min(1, (-lf - 0.5) / 2.5); return [`lc r${t >= 0.5 ? " dk" : ""}`, t]; }
+    if (lf > 0.501) { const t = Math.min(1, (lf - 0.5) / 2.5); return [`lc g${t >= 0.5 ? " dk" : ""}`, t]; }
     return ["lc", 0];
   };
   const msCls = (w, k) => (w.ms && k > 0 ? " ms" : "");

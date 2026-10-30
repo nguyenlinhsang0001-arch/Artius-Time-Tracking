@@ -1,11 +1,10 @@
 
 /* ============================================================
    ARTIUS — Quản lý giờ công theo dự án · v12.33
-   Mới ở v12.33 — Kế hoạch › Nhập liệu, thang màu ô CÒN (khối Toàn công ty và dòng CÒN ở Từng dự án):
-     · dư từ 0 đến dưới 1: không tô, giữ nền theme
-     · dư 1 đến 2: xanh nhạt · dư trên 2: xanh đậm
-     · thiếu tới 1 người (dưới 0 đến −1): vàng
-     · thiếu hơn 1 người: đỏ, càng thiếu càng đậm (−1 nhạt nhất, từ −3 trở xuống đậm nhất)
+   Mới ở v12.33 — Kế hoạch › Nhập liệu, thang màu ô CÒN (khối Toàn công ty và dòng CÒN ở Từng dự án), bỏ màu vàng, chỉ còn 3 loại:
+     · từ −0,5 đến 0,5: không tô, giữ nền theme
+     · trên 0,5: xanh lá, chuyển sắc liên tục — 0,5 nhạt nhất, từ 3 trở lên đậm nhất
+     · dưới −0,5: đỏ, chuyển sắc liên tục — −0,5 nhạt nhất, từ −3 trở xuống đậm nhất · nền đậm thì chữ trắng
 
    Mới ở v12.32 — Kế hoạch › Nhập liệu: ô CÒN từ 0 đến 1 ở mode tối đổi sang vàng trong (nền #3f3a17, chữ #fde047)
      thay cho nền nâu #422006 bị đục. Mode sáng giữ nguyên.
