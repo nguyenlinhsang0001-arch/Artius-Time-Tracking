@@ -1,6 +1,22 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.25
+   ARTIUS — Quản lý giờ công theo dự án · v12.26
+   Mới ở v12.26 — Dashboard › Tổng quan nguồn lực dựng lại phần hiển thị, số liệu và cách tính không đổi:
+     · Dải tóm tắt cho CẢ giai đoạn đang xem (12 / 24 / 36 tuần): bao nhiêu tuần có thiếu, thiếu bình quân mỗi tuần
+       kèm phần trăm quân số, đỉnh thiếu rơi vào tuần nào, vai trò thiếu nhiều nhất tính bằng người-tuần cộng dồn.
+       Trước đây màn chỉ có số của MỘT tuần đang chọn nên không biết thiếu là đỉnh tạm thời hay kéo dài —
+       hai thứ đó dẫn tới hai cách xử lý khác hẳn nhau. Thêm dòng vai trò đang dư ≥ 1 người trong ≥ 3 tuần.
+     · Bảng "Dự án chiếm vai trò đang thiếu" dưới biểu đồ: xếp hạng theo người-tuần mà dự án đặt vào các vai trò
+       đang thiếu, thanh màu tách theo vai trò, dải nhiệt từng tuần. Bấm một dòng thì biểu đồ làm mờ những tuần
+       dự án đó không góp mặt. Con số là NHU CẦU của dự án (giãn dự án này thì giải phóng được bấy nhiêu),
+       nên tổng các dòng lớn hơn tổng thiếu — một tuần thiếu 2 người có thể do bốn dự án cùng đặt người vào.
+     · Khung chi tiết bên phải gom theo từng vai trò thiếu, dự án nằm dưới vai trò đó nên mã vai trò không lặp
+       ở mỗi dòng; vai trò dư và vai trò vừa đủ gộp thành một dòng cuối. Khung cao đúng bằng cột trái rồi cuộn
+       bên trong, thay vì kéo dài làm cột trái bỏ trống gần nửa màn hình.
+     · Chip vai trò mang luôn đỉnh thiếu ("2D ▲6,5"), xếp theo mức nghẽn, và lọc đồng bộ cả bốn khối.
+     · Phần dư dưới vạch 0 sáng hơn và có viền màu vai trò (trước mờ 0,32 nên thành một mảng đục, không đọc được
+       vai trò nào đang rảnh); thêm tổng số dư ghi dưới chân cột, đối xứng với tổng thiếu trên đỉnh.
+
    Mới ở v12.25 — Trưởng phòng xem được Dashboard › Dự án và Ma trận: tab Dashboard của trưởng phòng thành thanh
      tab con "Của tôi | Dự án | Ma trận" (nhân viên thường không đổi, vẫn chỉ có Dashboard cá nhân).
      Hai tab mới dùng lại đúng Dashboard quản lý, chỉ xem, phạm vi nhân sự là phòng mình và GỒM cả chính trưởng phòng
