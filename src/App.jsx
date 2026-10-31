@@ -1,6 +1,10 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.33
+   ARTIUS — Quản lý giờ công theo dự án · v12.34
+   Mới ở v12.34 — Kế hoạch: bỏ chế độ Tổng quan, chỉ còn Nhập liệu | Theo dự án. Phần thiếu / dư người trùng với
+     Dashboard › Tổng quan nguồn lực (và dòng CÒN ở Nhập liệu) nên chỉ xem ở đó. Xuất Excel, Chốt bản, giờ thực tế giữ nguyên.
+     File features/planning/PlanOverview.jsx để lại, không còn dùng.
+
    Mới ở v12.33 — Kế hoạch › Nhập liệu, thang màu ô CÒN (khối Toàn công ty và dòng CÒN ở Từng dự án), bỏ màu vàng, chỉ còn 3 loại:
      · từ −0,5 đến 0,5: không tô, giữ nền theme
      · trên 0,5: xanh lá, chuyển sắc liên tục — 0,5 nhạt nhất, từ 3 trở lên đậm nhất

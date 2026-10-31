@@ -1,4 +1,5 @@
-/* ARTIUS TIME v12 — Tab "Kế hoạch": khung chung, các chế độ Nhập liệu (Toàn bộ | Từng dự án), Tổng quan, Theo dự án.
+/* ARTIUS TIME v12 — Tab "Kế hoạch": khung chung, hai chế độ Nhập liệu (Toàn bộ | Từng dự án) và Theo dự án.
+   v12.34 — bỏ chế độ Tổng quan: thiếu / dư người chỉ xem ở Dashboard › Tổng quan nguồn lực (PlanOverview.jsx giữ lại, không dùng).
    Admin nhập và lưu; BOD và trưởng phòng chỉ xem. Dữ liệu nằm ở bảng riêng (xem planStore.js). */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Camera, Download, Loader2, Merge, RotateCcw, Save } from "lucide-react";
@@ -9,7 +10,6 @@ import { CTRL, Panel, btnGhost, btnPrimary } from "../../core/ui.jsx";
 import { PER_YEAR, actualByCell, foldMerged, joinYears, normalizeYear, prunePlan, realWeeksOfPair, slotIndexOf, splitYears, weeksOfPair } from "./planCalc.js";
 import { PlanFocus } from "./PlanFocus.jsx";
 import { PlanGrid } from "./PlanGrid.jsx";
-import { PlanOverview } from "./PlanOverview.jsx";
 import { PlanProjects } from "./PlanProjects.jsx";
 import { SQL_HINT, errMsg, isMissingTable, listSnapshots, loadPlan, savePlan, snapshotPlan } from "./planStore.js";
 
@@ -247,8 +247,6 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
         <div className="flex rounded-xl border border-slate-800 bg-slate-900 p-1">
           <button onClick={() => setMode("in")} aria-pressed={mode === "in"}
             className={`${CTRL} rounded-lg px-6 text-sm font-medium ${mode === "in" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Nhập liệu</button>
-          <button onClick={() => setMode("ov")} aria-pressed={mode === "ov"}
-            className={`${CTRL} rounded-lg px-6 text-sm font-medium ${mode === "ov" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Tổng quan</button>
           <button onClick={() => setMode("pj")} aria-pressed={mode === "pj"}
             className={`${CTRL} rounded-lg px-6 text-sm font-medium ${mode === "pj" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Theo dự án</button>
         </div>
@@ -266,7 +264,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
       )}
 
       <Panel flush
-        title={mode === "in" ? "Lưới kế hoạch nguồn lực" : mode === "pj" ? "Kế hoạch theo dự án" : "Tổng quan nguồn lực"}
+        title={mode === "pj" ? "Kế hoạch theo dự án" : "Lưới kế hoạch nguồn lực"}
         sub={<>Năm {start}–{start + 1} · {weeks.length} cột (mỗi tháng 4 tuần) · đơn vị là số người (1 / 0,5 / 0,25)</>}
         right={busy ? <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} /> : null}>
 
@@ -351,14 +349,10 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
           <PlanFocus plan={plan} onChange={(p) => { setPlan(p); setDirty(true); }}
             projects={projects} hidden={hidden} mergedOf={mergedOf} roles={roles} weeks={view} nWeeks={weeks.length}
             cap={cap} head={head} readOnly={readOnly} nowIndex={nowIdx} scrollKey={start} />
-        ) : mode === "in" ? (
+        ) : (
           <PlanGrid plan={plan} onChange={(p) => { setPlan(p); setDirty(true); }}
             projects={projects} hidden={hidden} onToggleHide={readOnly ? undefined : toggleHide} totals={totals} onTotals={readOnly ? undefined : onTotals} mergedOf={mergedOf} roles={roles} weeks={view} nWeeks={weeks.length}
             cap={cap} head={head} readOnly={readOnly} nowIndex={nowIdx} scrollKey={start} />
-        ) : (
-          <PlanOverview plan={plan} projects={shownProjects} roles={statRoles} weeks={view}
-            cap={cap} availability={avail}
-            actual={actual} realWeeks={realWeeks} okWeeks={ts?.okWeeks || new Set()} nowIndex={nowIdx < 0 ? 0 : nowIdx} />
         )}
       </Panel>
     </div>
