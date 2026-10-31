@@ -11,10 +11,12 @@
    Màu đặt bằng biến CSS riêng của lưới (.pgx), có bộ sáng dưới html[data-theme=light] — không phụ thuộc LIGHT_CSS.
    v12.31 — dòng dự án to ×1,2; tên vai trò mờ 80%; tuần hiện tại đậm hơn ở mode sáng; ô CÒN tô màu theo mức xanh / vàng / đỏ.
    v12.33 — thang màu ô CÒN chỉ còn 3 loại: −0,5 → 0,5 không tô · trên 0,5 xanh lá đậm dần · dưới −0,5 đỏ đậm dần (đậm nhất từ ±3).
+   v12.35 — đường gióng ngang / dọc khi rê chuột; bỏ thùng rác: rê chuột hiện × (dòng có số thì hỏi lại),
+     điện thoại ấn giữ 1 giây tên vai trò để hiện hộp xoá; nút ẩn ở khối CÒN cũng chỉ hiện khi rê chuột / ấn giữ.
    v12.32 — vàng mode tối: nền vàng trong #3f3a17 (vàng ~22% trên nền tối), chữ #fde047.
    Phím tắt giữ nguyên: + / − tăng giảm 0,25, Ctrl + D, Ctrl + C / V, Shift + mũi tên, Delete. */
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Eye, EyeOff, GripVertical, Plus, Trash2 } from "lucide-react";
+import { Eye, EyeOff, GripVertical, Plus, X } from "lucide-react";
 import { moveInList, sortByProjOrder } from "../../shared/rowDrag.jsx";
 import { cellOf, leftOf, needOf, setCell, setMany } from "./planCalc.js";
 
@@ -38,10 +40,10 @@ const wShort = (w) => (w ? `T${w.m}·${w.w}` : "");
 const CSS = `
 .pgx{--card:#0f172a;--line:#1e293b;--line2:#111a2e;--ink:#e2e8f0;--ink2:#cbd5e1;--ink3:#94a3b8;--ink4:#64748b;
   --teal:#5eead4;--tealbg:#042f2e;--red:#f87171;--redbg:#450a0a;--cell:#0b1220;--past:#0a0f1c;--now:#0b2a2a;--flash:#14532d;--hover:#111a2e;
-  --g0:#14361f;--g1:#16a34a;--gt:#bbf7d0;--r0:#3b1212;--r1:#dc2626;--rt:#fecaca}
+  --g0:#14361f;--g1:#16a34a;--gt:#bbf7d0;--r0:#3b1212;--r1:#dc2626;--rt:#fecaca;--xh:rgba(94,234,212,.14)}
 html[data-theme="light"] .pgx{--card:#ffffff;--line:#e2e8f0;--line2:#f1f5f9;--ink:#0f172a;--ink2:#334155;--ink3:#64748b;--ink4:#94a3b8;
   --teal:#0f766e;--tealbg:#f0fdfa;--red:#dc2626;--redbg:#fef2f2;--cell:#ffffff;--past:#f8fafc;--now:#ccfbf1;--flash:#bbf7d0;--hover:#f8fafc;
-  --g0:#dcfce7;--g1:#15803d;--gt:#166534;--r0:#fee2e2;--r1:#b91c1c;--rt:#991b1b}
+  --g0:#dcfce7;--g1:#15803d;--gt:#166534;--r0:#fee2e2;--r1:#b91c1c;--rt:#991b1b;--xh:rgba(13,148,136,.12)}
 .pgx{background:var(--card);color:var(--ink)}
 .pgx .pg-wrap{position:relative;overflow:auto;max-height:72vh}
 .pgx table{border-collapse:separate;border-spacing:0;font-size:12px;table-layout:fixed}
@@ -82,8 +84,16 @@ html[data-theme="light"] .pgx .wh.now{background:var(--teal);color:#fff}
 .pgx .ib select{position:absolute;inset:0;opacity:0;cursor:pointer}
 .pgx .grip{display:inline-flex;flex:none;width:12px;justify-content:center;color:var(--ink4);cursor:grab;touch-action:none}
 .pgx .grip:hover{color:var(--ink2)}
-.pgx .del{flex:none;margin-left:4px;color:var(--ink4);opacity:.35;background:none;border:0;cursor:pointer;padding:0;display:inline-flex}
-.pgx tr:hover .del{opacity:1}.pgx .del:hover{color:var(--red)}
+.pgx .del{flex:none;margin-left:4px;width:18px;height:18px;border-radius:4px;color:var(--ink3);opacity:0;background:none;border:0;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center}
+.pgx tr:hover .del{opacity:1}.pgx .del:hover{color:var(--red);background:var(--line2)}
+@media (hover:none){.pgx .del{display:none}}
+.pgx .lp{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.pgx .pg-ask{position:fixed;inset:0;z-index:60;background:rgba(2,6,23,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+.pgx .pg-askc{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:16px 18px;width:min(380px,100%);box-shadow:0 12px 32px rgba(15,23,42,.3)}
+.pgx .pg-askt{font-size:14px;margin-bottom:4px}.pgx .pg-asks{font-size:12.5px;color:var(--ink3);margin-bottom:14px}
+.pgx .pg-askb{display:flex;gap:8px;justify-content:flex-end}
+.pgx .pg-askb button{height:40px;padding:0 18px;border-radius:8px;font:inherit;font-size:13.5px;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink2)}
+.pgx .pg-askb button.dz{background:#dc2626;border-color:#dc2626;color:#fff}
 .pgx tfoot td{position:sticky;z-index:2;height:${RH}px;background:var(--card)}
 .pgx tfoot td.fz{z-index:3}
 .pgx tr.gsep td{background:var(--line2);box-shadow:inset 0 2px 0 var(--line)}
@@ -137,16 +147,28 @@ const Cell = ({ r, k, v, readOnly, onType, onFocus }) => {
 };
 
 /* một dòng dự án × vai trò — chỉ vẽ lại khi mảng số của chính nó đổi */
-const Row = React.memo(function Row({ r, pid, rid, name, color, values, weeks, nowIndex, readOnly, onCell, onFocus, onDrop, dnd, flash, span }) {
+/* ấn giữ 1 giây trên điện thoại (chỉ ngón tay, không áp dụng chuột) — xê dịch quá 8px hoặc nhả sớm thì huỷ */
+const longPress = (cb) => {
+  let t = 0, x0 = 0, y0 = 0;
+  const stop = () => { clearTimeout(t); t = 0; };
+  return {
+    onPointerDown: (e) => { if (e.pointerType !== "touch" || e.target.closest?.(".grip,.del")) return; x0 = e.clientX; y0 = e.clientY; stop(); t = setTimeout(() => { t = 0; cb(); }, 1000); },
+    onPointerMove: (e) => { if (t && Math.hypot(e.clientX - x0, e.clientY - y0) > 8) stop(); },
+    onPointerUp: stop, onPointerCancel: stop,
+    onContextMenu: (e) => { if (e.nativeEvent?.pointerType === "touch" || "ontouchstart" in window) e.preventDefault(); },
+  };
+};
+
+const Row = React.memo(function Row({ r, pid, rid, name, color, values, weeks, nowIndex, readOnly, onCell, onFocus, onAskDrop, dnd, flash, span }) {
   const dropProps = readOnly ? {} : {
     onDragOver: (e) => dnd.over(e, pid, rid),
     onDragLeave: (e) => e.currentTarget.removeAttribute("data-drop"),
     onDrop: (e) => dnd.drop(e, pid, rid),
   };
   return (
-    <tr {...dropProps}>
+    <tr {...dropProps} data-rk={`${pid}|${rid}`} data-rid={rid}>
       <td className="fz rl">
-        <div className="fzi" title={`${rid} · ${name}`}>
+        <div className={`fzi${readOnly ? "" : " lp"}`} title={`${rid} · ${name}`} {...(readOnly ? {} : longPress(() => onAskDrop(pid, rid, true)))}>
           {readOnly ? <span style={{ width: 12 }} /> : (
             <span draggable onDragStart={(e) => dnd.start(e, pid, rid)} onDragEnd={dnd.end}
               title="Giữ và kéo để đổi vị trí vai trò trong dự án" className="grip">
@@ -156,7 +178,7 @@ const Row = React.memo(function Row({ r, pid, rid, name, color, values, weeks, n
           <span className="rdot" style={{ background: color }} />
           <span className="rlab">{rid} <span className="rn">{name}</span></span>
           {!readOnly && (
-            <button type="button" title="Bỏ vai trò này khỏi dự án" onClick={() => onDrop(pid, rid)} className="del"><Trash2 size={11} /></button>
+            <button type="button" title="Bỏ vai trò này khỏi dự án" onClick={() => onAskDrop(pid, rid, false)} className="del"><X size={13} /></button>
           )}
         </div>
       </td>
@@ -168,7 +190,7 @@ const Row = React.memo(function Row({ r, pid, rid, name, color, values, weeks, n
         if (span && (w.i < span.a || w.i > span.b)) cls.push("out");
         if (flash && w.i >= flash.a && w.i <= flash.b) cls.push("fl");
         return (
-          <td key={w.i} className={cls.join(" ")}>
+          <td key={w.i} className={cls.join(" ")} data-c={k}>
             <Cell r={r} k={k} v={v} readOnly={readOnly} onFocus={() => onFocus(rid, w.i, r, k)} onType={(x) => onCell(pid, rid, w.i, x, r, k)} />
           </td>
         );
@@ -455,6 +477,42 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
     delete next[pid][rid];
     changeRef.current(next);
   }, []);
+  /* v12.35 — xoá vai trò: dòng có số (hoặc ấn giữ trên điện thoại) thì hỏi lại trước khi xoá */
+  const [ask, setAsk] = useState(null);   // { title, sub, ok, run }
+  const onAskDrop = useCallback((pid, rid, touch) => {
+    const has = (planRef.current[pid]?.[rid] || []).some((v) => Number(v) > 0);
+    if (!has && !touch) { onDrop(pid, rid); return; }
+    const p = projectsRef.current.find((x) => x.id === pid), r = rolesRef.current.find((x) => x.id === rid);
+    setAsk({ title: `Xoá vai trò ${rid} ${r?.name || ""} khỏi ${p?.name || "dự án"}?`, sub: has ? "Các số kế hoạch đã nhập ở dòng này sẽ mất." : "Dòng này chưa có số nào.", ok: "Xoá", run: () => onDrop(pid, rid) });
+  }, [onDrop]);
+  useEffect(() => {
+    if (!ask) return undefined;
+    const k = (e) => { if (e.key === "Escape") setAsk(null); };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [ask]);
+
+  /* v12.35 — đường gióng: rê chuột vào lưới → tô nhạt cả dòng vai trò, cả cột tuần (từ tiêu đề tới khối CÒN)
+     và dòng CÒN của đúng vai trò đó. Viết thẳng vào một thẻ <style>, không qua state nên không vẽ lại lưới. */
+  const xhRef = useRef(null);
+  const xhKey = useRef("");
+  const G = "background-image:linear-gradient(var(--xh),var(--xh))!important";
+  const onHover = (e) => {
+    if (e.pointerType !== "mouse" || !xhRef.current) return;
+    const td = e.target.closest?.("td,th"), tr = td?.parentElement;
+    const c = td?.dataset.c ?? "", rk = tr?.dataset.rk ?? "", rid = tr?.dataset.rid ?? "";
+    const key = `${c}#${rk}#${rid}`;
+    if (key === xhKey.current) return;
+    xhKey.current = key;
+    const q = (v) => (window.CSS?.escape ? window.CSS.escape(v) : v.replace(/["\\]/g, "\\$&"));
+    let css = "";
+    if (c !== "") css += `.pgx [data-c="${c}"]{${G}}`;
+    if (rk) css += `.pgx tr[data-rk="${q(rk)}"]>td{${G}}`;
+    if (rid) css += `.pgx tfoot tr[data-rid="${q(rid)}"]>td{${G}}.pgx tfoot tr[data-rid="${q(rid)}"] .fzi{color:var(--teal)}`;
+    xhRef.current.textContent = css;
+  };
+  const offHover = () => { xhKey.current = ""; if (xhRef.current) xhRef.current.textContent = ""; };
+
   /* thêm vai trò = tạo một dòng toàn 0 để gõ. Lưu mà vẫn trống thì dòng tự biến mất (prunePlan). */
   const addRole = (pid, rid) => {
     if (!rid) return;
@@ -569,7 +627,8 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
   return (
     <div className="pgx">
       <style>{CSS}</style>
-      <div ref={wrap} onKeyDown={onKey} onCopy={onCopy} onCut={onCut} onPaste={onPaste}
+      <style ref={xhRef} />
+      <div ref={wrap} onPointerMove={onHover} onPointerLeave={offHover} onKeyDown={onKey} onCopy={onCopy} onCut={onCut} onPaste={onPaste}
         onPointerDown={readOnly ? undefined : onPointerDown} onPointerOver={readOnly ? undefined : onPointerOver}
         className="pg-wrap" style={{ "--frz": `${frz}px` }}>
         <table style={{ width: frz + nCol * CW }}>
@@ -594,7 +653,7 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
               <th className="fz" />
               {weeks.map((w, k) => {
                 const isNow = w.i === nowIndex;
-                return <th key={w.i} ref={isNow ? nowCell : null} title={isNow ? "Tuần này" : undefined}
+                return <th key={w.i} ref={isNow ? nowCell : null} title={isNow ? "Tuần này" : undefined} data-c={k}
                   className={`wh${isNow ? " now" : ""}${msCls(w, k)}`}>{w.w}</th>;
               })}
             </tr>
@@ -648,15 +707,15 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
                     <React.Fragment key={r.id}>
                       <Row r={idx} pid={p.id} rid={r.id} name={r.name} color={colorOf.get(r.id)} values={plan[p.id]?.[r.id]}
                         weeks={weeks} nowIndex={nowIndex} readOnly={readOnly}
-                        onCell={onCell} onFocus={onFocusCell} onDrop={onDrop} dnd={dnd}
+                        onCell={onCell} onFocus={onFocusCell} onAskDrop={onAskDrop} dnd={dnd}
                         flash={flash && flash.pid === p.id && flash.rid === r.id ? flash : null}
                         span={focusSpan} />
                       {focus && (
-                        <tr className="crow">
+                        <tr className="crow" data-rk={`${p.id}|${r.id}`}>
                           <td className="fz"><div className="fzi cl">CÒN toàn công ty · có {f0(cap.get(r.id) || 0)}</div></td>
                           {weeks.map((w, k) => {
                             const lf = leftOf(plan, pids, r.id, w.i, cap), [lc, t] = lcCls(lf);
-                            return <td key={w.i} className={`${lc}${msCls(w, k)}`} style={{ "--t": t.toFixed(2) }}>{f0(lf)}</td>;
+                            return <td key={w.i} className={`${lc}${msCls(w, k)}`} data-c={k} style={{ "--t": t.toFixed(2) }}>{f0(lf)}</td>;
                           })}
                         </tr>
                       )}
@@ -689,10 +748,11 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
               {totalRoles.map((r, k) => {
                 const bt = { bottom: (nT - 1 - k) * RH };
                 return (
-                  <tr key={r.id}
+                  <tr key={r.id} data-rid={r.id}
                     {...(canTot ? { onDragOver: (e) => tdnd.over(e, r.id), onDragLeave: (e) => e.currentTarget.removeAttribute("data-drop"), onDrop: (e) => tdnd.drop(e, r.id) } : {})}>
                     <td className="fz" style={bt}>
-                      <div className="fzi" title={`${r.id} · ${r.name}${mergedOf.get(r.id) ? ` (gộp ${mergedOf.get(r.id).join(", ")})` : ""}`}>
+                      <div className={`fzi${canTot ? " lp" : ""}`} title={`${r.id} · ${r.name}${mergedOf.get(r.id) ? ` (gộp ${mergedOf.get(r.id).join(", ")})` : ""}`}
+                        {...(canTot ? longPress(() => setAsk({ title: `Ẩn ${r.id} ${r.name} khỏi Toàn công ty · CÒN?`, sub: "Vai trò cũng ẩn ở Excel. Thêm lại bằng nút + ở dòng tiêu đề khối.", ok: "Ẩn", run: () => hideTot(r.id) })) : {})}>
                         {canTot && (
                           <span draggable onDragStart={(e) => tdnd.start(e, r.id)} onDragEnd={dnd.end} title="Giữ và kéo để đổi vị trí dòng" className="grip">
                             <GripVertical size={12} />
@@ -709,7 +769,7 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
                     </td>
                     {weeks.map((w, kk) => {
                       const lf = leftOf(plan, pids, r.id, w.i, cap), [lc, t] = lcCls(lf);
-                      return <td key={w.i} className={`${lc}${msCls(w, kk)}`} style={{ ...bt, "--t": t.toFixed(2) }}>{f0(lf)}</td>;
+                      return <td key={w.i} className={`${lc}${msCls(w, kk)}`} data-c={kk} style={{ ...bt, "--t": t.toFixed(2) }}>{f0(lf)}</td>;
                     })}
                   </tr>
                 );
@@ -724,6 +784,19 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
             className="pg-knob" style={{ left: knob.left, top: knob.top }} />
         )}
       </div>
+
+      {ask && (
+        <div className="pg-ask" onPointerDown={(e) => { if (e.target === e.currentTarget) setAsk(null); }}>
+          <div className="pg-askc" role="dialog" aria-modal="true">
+            <div className="pg-askt">{ask.title}</div>
+            <div className="pg-asks">{ask.sub}</div>
+            <div className="pg-askb">
+              <button type="button" onClick={() => setAsk(null)} autoFocus>Không</button>
+              <button type="button" className="dz" onClick={() => { const f = ask.run; setAsk(null); f(); }}>{ask.ok}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!readOnly && (
         <div className="pg-foot">

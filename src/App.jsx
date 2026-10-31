@@ -1,6 +1,13 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.34
+   ARTIUS — Quản lý giờ công theo dự án · v12.35
+   Mới ở v12.35 — Kế hoạch › Nhập liệu:
+     · Đường gióng khi rê chuột: tô nhạt cả dòng vai trò (kể cả ô tên), cả cột tuần từ tiêu đề xuống khối CÒN,
+       và dòng CÒN của đúng vai trò đó ở khối Toàn công ty. Không vẽ lại lưới khi rê (ghi thẳng vào một thẻ style).
+     · Bỏ icon thùng rác. Máy tính: rê chuột vào dòng vai trò hiện × nhỏ; dòng trống xoá ngay, dòng đã có số thì hỏi Xoá / Không.
+       Điện thoại: ấn giữ tên vai trò 1 giây hiện hộp Xoá / Không (xê dịch hoặc nhả sớm thì huỷ).
+     · Nút ẩn vai trò ở khối TOÀN CÔNG TY · CÒN cũng chỉ hiện khi rê chuột; điện thoại ấn giữ 1 giây để hỏi ẩn.
+
    Mới ở v12.34 — Kế hoạch: bỏ chế độ Tổng quan, chỉ còn Nhập liệu | Theo dự án. Phần thiếu / dư người trùng với
      Dashboard › Tổng quan nguồn lực (và dòng CÒN ở Nhập liệu) nên chỉ xem ở đó. Xuất Excel, Chốt bản, giờ thực tế giữ nguyên.
      File features/planning/PlanOverview.jsx để lại, không còn dùng.
