@@ -19,7 +19,16 @@ const PEN_CSS = `
 html[data-theme="light"] .pen-glow{border-color:#0d9488!important;color:#0f766e!important;background:#f0fdfa!important;animation-name:penGlowL}
 html[data-theme="light"] .pen-glow:hover{background:#ccfbf1!important}
 @keyframes penGlowL{0%,100%{box-shadow:0 0 5px rgba(13,148,136,.25)}50%{box-shadow:0 0 0 3px rgba(13,148,136,.14),0 0 12px rgba(13,148,136,.45)}}
-@media (prefers-reduced-motion:reduce){.pen-glow{animation:none!important;box-shadow:0 0 8px rgba(45,212,191,.45)}}`;
+@media (prefers-reduced-motion:reduce){.pen-glow{animation:none!important;box-shadow:0 0 8px rgba(45,212,191,.45)}}
+/* v12.37 — N1: ô giờ của khối đang đóng bấm được để sửa · N3: đường gióng dòng tác vụ / tiêu đề ngày của ô đang nhập */
+.ts-pick{cursor:text;border:1px solid transparent;border-radius:6px}
+.ts-pick:hover{border-color:#14b8a6;background:rgba(20,184,166,.10);color:#99f6e4}
+html[data-theme="light"] .ts-pick:hover{background:#f0fdfa;color:#0f766e}
+.ts-row:focus-within>td{background-image:linear-gradient(rgba(45,212,191,.08),rgba(45,212,191,.08))}
+html[data-theme="light"] .ts-row:focus-within>td{background-image:linear-gradient(rgba(13,148,136,.07),rgba(13,148,136,.07))}
+.ts-dh.ts-on{box-shadow:inset 0 -3px 0 #14b8a6}
+.ts-dh.ts-on .ts-dl{color:#5eead4!important;font-weight:600}
+html[data-theme="light"] .ts-dh.ts-on .ts-dl{color:#0f766e!important}`;
 if (typeof document !== "undefined" && !document.getElementById("artius-pen-glow")) {
   const st = document.createElement("style");
   st.id = "artius-pen-glow"; st.textContent = PEN_CSS;
@@ -55,6 +64,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   const mobileInputs = useRef([]);              // ô nhập giờ của từng dòng trên mobile
   const [noteRow, setNoteRow] = useState(null); // chỉ số dòng đang mở hộp mô tả
   const gridInputs = useRef({});                // ô nhập trên lưới desktop, khoá "dòng:cột"
+  const pendingFocus = useRef(null);            // v12.37 N1: { key: rowKey, k } — ô cần đặt con trỏ sau khi khối vừa mở
   const taskSel = useRef({});                   // ô chọn hạng mục của từng dòng, để nhảy con trỏ vào sau khi bấm +
   const otSel = useRef({});                     // v4.9: ô "Tăng ca cho tác vụ" của từng dòng tăng ca
   // báo lên App để chặn đổi tab khi còn thay đổi chưa lưu
@@ -197,6 +207,18 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   const editGroup = (gk) => {
     setRows(expandIn(rows, new Set([gk])));
     setOpenKeys((s) => new Set([...s, gk]));
+  };
+  /* v12.37 N1 — khối vừa mở do bấm vào ô giờ: đặt con trỏ vào đúng ô đó (chỉ số dòng đổi sau khi mở nên tìm lại theo rowKey) */
+  useEffect(() => {
+    const p = pendingFocus.current; if (!p) return;
+    const i = rows.findIndex((r) => rowKey(r) === p.key);
+    const el = i >= 0 ? gridInputs.current[`${i}:${p.k}`] : null;
+    if (el) { pendingFocus.current = null; el.focus(); el.select?.(); }
+  }, [rows, openKeys]);   // eslint-disable-line react-hooks/exhaustive-deps
+  /* v12.37 N3 — đường gióng: tô tiêu đề ngày của ô đang nhập (dòng tác vụ tô bằng CSS :focus-within) */
+  const markDay = (k) => {
+    document.querySelectorAll(".ts-dh.ts-on").forEach((x) => x.classList.remove("ts-on"));
+    if (k >= 0) document.querySelectorAll(`.ts-dh[data-dk="${k}"]`).forEach((x) => x.classList.add("ts-on"));
   };
   const delGroup = (gk) => {
     const at = rows.findIndex((r) => groupKey(r) === gk);
@@ -502,6 +524,25 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       if (!el) return;
       e.preventDefault(); el.focus(); el.select?.();
     };
+    /* v12.37 N6 — Esc = bấm ✓ (tạm lưu và đóng khối) */
+    if (e.key === "Escape") {
+      const gk = rows[i] && groupKey(rows[i]);
+      if (gk && openKeys.has(gk)) { e.preventDefault(); e.target.blur(); doneGroup(gk); }
+      return;
+    }
+    /* v12.37 N6 — Enter ở dòng cuối của khối: sang ngày kế tiếp, dòng đầu tiên của khối còn nhập được */
+    if (e.key === "Enter" && rows[i]) {
+      const gk = groupKey(rows[i]);
+      const same = (j) => rows[j] && groupKey(rows[j]) === gk;
+      const below = gridInputs.current[`${i + 1}:${k}`];
+      if (!(same(i + 1) && below)) {
+        for (let j = 0; j < rows.length; j++) {
+          if (!same(j)) continue;
+          const el = gridInputs.current[`${j}:${k + 1}`];
+          if (el && !el.disabled) { e.preventDefault(); el.focus(); el.select?.(); return; }
+        }
+      }
+    }
     if (e.key === "ArrowLeft" && e.target.selectionStart === 0) move(0, -1);
     else if (e.key === "ArrowRight" && e.target.selectionStart === e.target.value.length) move(0, 1);
     else if (e.key === "ArrowUp") move(-1, 0);
@@ -1189,7 +1230,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                   {days.map((d, i) => {
                     const hol = holidayMap.has(d); const lv = leaveInfo(leaveMap[d]);
                     return (
-                      <th key={d} className={`px-1 py-1.5 text-center font-medium ${dayCol(d)} ${hol ? "text-slate-100" : lv ? "text-sky-400" : isIncomplete(d) ? "text-amber-400" : i === 6 ? "text-slate-600" : ""}`}
+                      <th key={d} data-dk={i} className={`ts-dh px-1 py-1.5 text-center font-medium ${dayCol(d)} ${hol ? "text-slate-100" : lv ? "text-sky-400" : isIncomplete(d) ? "text-amber-400" : i === 6 ? "text-slate-600" : ""}`}
                         title={hol ? holidayMap.get(d) : lv ? lv.label : undefined}>
                         <div className={`mx-auto flex flex-col items-center justify-center bg-center bg-no-repeat ${hol ? "" : "w-fit"}`}
                           style={hol ? { width: 50, height: 50, backgroundImage: `url("data:image/svg+xml,${HOLIDAY_RING_SVG}")`, backgroundSize: "100% 100%" } : undefined}>
@@ -1198,7 +1239,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                             {isSent(d) && <Lock size={10} className="text-teal-500" />}
                             {hol ? null : lv ? <span className="text-[9px]">{lv.short}</span> : isIncomplete(d) ? <span className="h-1.5 w-1.5 rounded-full bg-amber-400" title="Chưa đủ giờ chuẩn" /> : null}
                           </div>
-                          <div className={`font-mono text-xs font-normal normal-case ${i === 6 ? "text-slate-600" : "text-slate-100"}`}>{dLabel(d)}</div>
+                          <div className={`ts-dl font-mono text-xs font-normal normal-case ${i === 6 ? "text-slate-600" : "text-slate-100"}`}>{dLabel(d)}</div>
                         </div>
                       </th>
                     );
@@ -1309,7 +1350,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                           const pb = last ? "pb-2.5" : "pb-0";
                           const ot = isOtTask(taskById.get(r.taskId));
                           return (
-                            <tr key={i} className="group/row">
+                            <tr key={i} className="ts-row group/row">
                               <td className={`px-3 ${open ? "pt-1" : "pt-0.5"} ${pb}`}>
                                 <div className="flex items-center gap-2">
                                   <div className="shrink-0" style={{ width: GUT }} />
@@ -1345,12 +1386,21 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                                     <input ref={(el) => { gridInputs.current[`${i}:${k}`] = el; }}
                                       type="number" min="0" max="24" step="0.5" value={r.days[d] ?? ""} placeholder="" disabled={dayLocked(d) || projClosed(r) || futureBlocked(r, d) || !rowReady(r)}
                                       onChange={(e) => setHour(i, d, e.target.value)}
-                                      onFocus={(e) => e.target.select()}
+                                      onFocus={(e) => { e.target.select(); markDay(k); }}
+                                      onBlur={() => markDay(-1)}
                                       onKeyDown={(e) => gridKey(e, i, k)}
                                       title={ot ? `Tối đa ${fmtH(otMaxHours(taskById.get(r.taskId)))} giờ` : undefined}
                                       className={`${CTRL} w-full rounded-md border bg-slate-950 px-1 text-center font-mono text-base font-medium focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[d] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "border-teal-900 text-slate-100" : isIncomplete(d) ? "border-amber-700/60 text-slate-100" : k === 6 ? "border-slate-800 text-slate-100" : "border-slate-700 text-slate-100"}`} />
                                   ) : (
-                                    <div className={`py-1.5 text-center font-mono text-sm ${r.days[d] > 0 ? (ot ? "text-teal-300" : "text-slate-200") : "text-slate-700"}`}>{r.days[d] > 0 ? r.days[d] : "·"}</div>
+                                    (() => {
+                                      /* v12.37 N1 — bấm thẳng vào ô giờ của khối đang đóng: mở khối và đặt con trỏ ở đúng ô đó */
+                                      const pick = canEdit && !dayLocked(d) && !projClosed(r) && !futureBlocked(r, d) && rowReady(r);
+                                      return (
+                                        <div onClick={pick ? () => { pendingFocus.current = { key: rowKey(r), k }; editGroup(g.key); } : undefined}
+                                          title={pick ? "Bấm để sửa giờ" : undefined}
+                                          className={`py-1.5 text-center font-mono text-sm ${pick ? "ts-pick" : ""} ${r.days[d] > 0 ? (ot ? "text-teal-300" : "text-slate-200") : "text-slate-700"}`}>{r.days[d] > 0 ? r.days[d] : "·"}</div>
+                                      );
+                                    })()
                                   )}
                                 </td>
                               ))}

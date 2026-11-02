@@ -1,6 +1,11 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.36
+   ARTIUS — Quản lý giờ công theo dự án · v12.37
+   Mới ở v12.37 — Chấm công (máy tính):
+     · N1 bấm thẳng vào ô giờ của khối đang đóng: khối tự mở, con trỏ nằm sẵn ở đúng ô đó (nút bút chì vẫn dùng được).
+     · N3 đường gióng: ô đang nhập thì cả dòng tác vụ tô nhạt và tiêu đề ngày của ô đó sáng lên.
+     · N6 phím Esc khi đang nhập = bấm ✓ (tạm lưu, đóng khối); Enter ở dòng cuối của khối nhảy sang ngày kế tiếp, dòng đầu khối.
+
    Mới ở v12.36 — Bảng công: nút bút chì "Sửa giờ của khối này" có viền teal, nền teal nhạt và quầng sáng nhịp nhẹ
      (chu kỳ 2,4 giây) để mọi người dễ thấy. Có màu riêng cho mode sáng / tối; máy bật giảm chuyển động thì sáng đứng yên.
 
