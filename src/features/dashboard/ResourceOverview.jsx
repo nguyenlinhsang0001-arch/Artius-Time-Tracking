@@ -1,4 +1,9 @@
 /* ARTIUS TIME v12.27 — Dashboard › Tổng quan nguồn lực.
+   v13.0 — chọn dự án ở bảng "Dự án chiếm vai trò đang thiếu":
+     · biểu đồ chỉ còn vai trò CÓ trong dự án (vai trò khác tạm tắt); trong đó chỉ tuần dự án đang làm thiếu
+       mới giữ màu — phần của chính dự án tô đậm có viền, phần dự án khác nhạt; còn lại xám
+     · khung bên phải chuyển sang tình trạng riêng của dự án; bấm một tuần trên biểu đồ thì quay về
+       nhân lực của tuần đó (có đường quay lại dự án)
    Bốn khối, đọc từ trên xuống là từ kết luận tới chi tiết:
      1. Dải tóm tắt — kết luận cho CẢ giai đoạn đang xem (bao nhiêu tuần thiếu, thiếu bình quân, đỉnh, vai trò nghẽn).
         Trước v12.26 màn này chỉ có số của MỘT tuần đang chọn, người xem phải tự cộng nhẩm mới biết
@@ -76,6 +81,9 @@ export default function ResourceOverview({ cfg }) {
   const [off, setOff] = useState(() => new Set());   /* vai trò đang tắt */
   const [selP, setSelP] = useState(null);    /* dự án đang chọn ở bảng xếp hạng */
   const [hovP, setHovP] = useState(null);    /* dòng đang rê chuột — tô bằng style, không dùng class hover: */
+  const [side, setSide] = useState("week");  /* v13.0: khung phải đang hiện "week" (tuần) hay "proj" (dự án đang chọn) */
+  const pickProj = (id) => { setSelP(id); setSide(id ? "proj" : "week"); };
+  const pickWeek = (wi) => { setPick(wi); setSide("week"); };
   useThemeTick();
   /* Bề ngang thật của khung vẽ. SVG vẽ đúng số pixel này thay vì để viewBox kéo giãn:
      kéo giãn thì cỡ chữ bị nhân theo bề ngang màn hình, màn rộng chữ phóng to gấp đôi. */
@@ -219,8 +227,17 @@ export default function ResourceOverview({ cfg }) {
   }, [view, live, projects, plan, cap]);   // eslint-disable-line react-hooks/exhaustive-deps
   const projMax = projRows.length ? projRows[0].tot : 1;
   const weekMax = Math.max(1, ...projRows.flatMap((o) => [...o.byWeek.values()]));
-  /* dự án đang chọn có góp mặt ở tuần này không — để làm mờ các cột còn lại */
-  const inWeek = (wi) => !selP || live.some((r) => gapOf(r.id, wi) < 0 && cellOf(plan, selP, r.id, wi) > 0);
+  /* v13.0 — phần thiếu của một vai trò chia cho các dự án theo số người đang chiếm */
+  const contribOf = (pid, rid, wi) => {
+    const g = gapOf(rid, wi); if (g >= -0.001) return 0;
+    const v = cellOf(plan, pid, rid, wi); if (v <= 0) return 0;
+    const nd = needOf(plan, pids, rid, wi);
+    return nd > 0 ? (v / nd) * -g : 0;
+  };
+  const selProj = selP ? projects.find((p) => p.id === selP) || null : null;
+  /* vai trò có trong dự án đang chọn (trong các tuần đang xem); chọn dự án thì biểu đồ chỉ còn những vai trò này */
+  const pRoleIds = selProj ? new Set(live.filter((r) => view.some((w) => cellOf(plan, selProj.id, r.id, w.i) > 0)).map((r) => r.id)) : null;
+  const chartRoles = pRoleIds ? live.filter((r) => pRoleIds.has(r.id)) : live;
 
   const sel = pick != null && view.some((w) => w.i === pick) ? pick : (view[0]?.i ?? null);
 
@@ -253,7 +270,7 @@ export default function ResourceOverview({ cfg }) {
   const val = (v) => (unit === "abs" ? v : capAll > 0 ? (v / capAll) * 100 : 0);
 
   let up = 0, dn = 0;
-  for (const w of view) { up = Math.max(up, val(shortAt(w.i, live))); dn = Math.max(dn, val(freeAt(w.i, live))); }
+  for (const w of view) { up = Math.max(up, val(shortAt(w.i, chartRoles))); dn = Math.max(dn, val(freeAt(w.i, chartRoles))); }
   /* Vạch 0 đặt theo đúng tỉ lệ thiếu / dư đang có, thay vì cố định:
      chia sao cho hai nửa cùng một thang đo mà không nửa nào thừa chỗ trống. */
   const mid = T + (up + dn < 1e-6 ? PH * 0.6
@@ -270,14 +287,22 @@ export default function ResourceOverview({ cfg }) {
   view.forEach((w, k) => {
     const x = L + k * step + step * 0.17, bw = step * 0.66;
     const seg = [];
-    const focus = inWeek(w.i);   /* v12.27: tuần không liên quan tô xám trung tính, không làm trong suốt */
-    let yU = mid, yD = mid + 1;
-    live.forEach((r) => {
+    const focus = !selProj;      /* v13.0: đang chọn dự án thì phần dư và vai trò dự án không làm thiếu đều xám */
+    let yU = mid, yD = mid + 1, mineTot = 0;
+    chartRoles.forEach((r) => {
       const g = gapOf(r.id, w.i);
       if (g < -0.001) {                                  /* thiếu → vẽ lên trên */
         const h = Math.max(FLOOR, val(-g) * sc); yU -= h;
-        seg.push(<rect key={`s${r.id}`} x={x} y={yU} width={bw} height={h - 1} rx="2" fill={focus ? colorOf.get(r.id) : C.dimShort}>
-          <title>{`T${w.m} tuần ${w.w} — ${r.id} thiếu ${f0(-g)}`}</title></rect>);
+        const mine = selProj ? contribOf(selProj.id, r.id, w.i) : 0;
+        const lit = !selProj || mine > 0;
+        seg.push(<rect key={`s${r.id}`} x={x} y={yU} width={bw} height={h - 1} rx="2" fill={lit ? colorOf.get(r.id) : C.dimShort} fillOpacity={selProj && lit ? 0.4 : 1}>
+          <title>{`T${w.m} tuần ${w.w} — ${r.id} thiếu ${f0(-g)}${mine > 0 ? ` · ${selProj.name} góp ${f0(Math.round(mine * 100) / 100)}` : ""}`}</title></rect>);
+        if (mine > 0) {   /* phần thiếu của chính dự án đang chọn: đặc màu, có viền, nằm sát đáy đoạn */
+          const hm = Math.max(FLOOR, Math.min(h, val(mine) * sc));
+          seg.push(<rect key={`m${r.id}`} x={x} y={yU + h - hm} width={bw} height={Math.max(1, hm - 1)} rx="2"
+            fill={colorOf.get(r.id)} stroke={axis} strokeWidth="1.2" pointerEvents="none" />);
+          mineTot += mine;
+        }
       } else if (g > 0.001) {                            /* dư → vẽ xuống dưới */
         /* v12.26: phần dư sáng hơn (0,45 thay vì 0,32) và có viền màu vai trò.
            Bản cũ mờ quá nên nửa dưới thành một mảng đục, không đọc được vai trò nào đang rảnh. */
@@ -289,10 +314,12 @@ export default function ResourceOverview({ cfg }) {
         yD += h;
       }
     });
-    const tot = shortAt(w.i, live), fre = freeAt(w.i, live);
-    if (tot > 0.02) seg.push(
-      <text key="st" x={x + bw / 2} y={yU - 5} fontSize={FS_TOTAL} textAnchor="middle" fill={focus ? C.shortLab : C.dimLab}>
-        {unit === "abs" ? f0(tot) : `${Math.round(val(tot))}%`}
+    const tot = shortAt(w.i, chartRoles), fre = freeAt(w.i, chartRoles);
+    /* đang chọn dự án: số trên đỉnh cột là phần thiếu dự án đó góp vào trong tuần */
+    const topV = selProj ? mineTot : tot;
+    if (topV > 0.02) seg.push(
+      <text key="st" x={x + bw / 2} y={yU - 5} fontSize={FS_TOTAL} textAnchor="middle" fill={C.shortLab}>
+        {unit === "abs" ? f0(Math.round(topV * 100) / 100) : `${Math.round(val(topV))}%`}
       </text>);
     /* v12.26: tổng dư ghi dưới chân cột, đối xứng với tổng thiếu trên đỉnh */
     if (fre > 0.02) seg.push(
@@ -302,7 +329,7 @@ export default function ResourceOverview({ cfg }) {
     /* chọn một dự án thì các tuần dự án đó không góp mặt bị làm mờ */
     bars.push(<g key={`g${w.i}`}>{seg}</g>);
     bars.push(<rect key={`h${w.i}`} x={L + k * step} y={T} width={step} height={H - B - T}
-      fill="transparent" style={{ cursor: "pointer" }} onClick={() => setPick(w.i)} />);
+      fill="transparent" style={{ cursor: "pointer" }} onClick={() => pickWeek(w.i)} />);
   });
 
   /* Nhãn tháng ở trên, số tuần ngay dưới, cùng nằm trên đầu biểu đồ.
@@ -323,23 +350,100 @@ export default function ResourceOverview({ cfg }) {
   });
   const wkLabels = view.map((w, k) => (
     <text key={`w${w.i}`} x={L + k * step + step / 2} y={30} fontSize={FS_WEEK} textAnchor="middle"
-      fill={w.i === sel ? C.selWk : mute} fontWeight={w.i === sel ? 600 : 400}>{w.w}</text>
+      fill={w.i === sel && side === "week" ? C.selWk : mute} fontWeight={w.i === sel && side === "week" ? 600 : 400}>{w.w}</text>
   ));
   /* v12.27: tuần đang chọn là một dải nền nhạt sau cột, thay cho khung nét đứt (trên nền trắng trông thô) */
   const selK = view.findIndex((w) => w.i === sel);
-  const selBand = selK >= 0
+  const selBand = selK >= 0 && side === "week"
     ? <rect x={L + selK * step + 1} y={4} width={step - 2} height={H - B - 4} rx="6" fill={C.selBand} />
     : null;
 
   /* ---------------------------- khung chi tiết ---------------------------- */
   const selW = weeks.find((w) => w.i === sel);
-  const rows = live.map((r) => {
+  const rows = chartRoles.map((r) => {
     const g = gapOf(r.id, sel), c = cap.get(r.id) || 0;
     return { r, g, c, need: needOf(plan, pids, r.id, sel), pct: c > 0 ? Math.round((-g / c) * 100) : null };
   }).sort((a, b) => a.g - b.g);
   const shortRows = rows.filter((o) => o.g < -0.001);
   const spareRows = rows.filter((o) => o.g > 0.001);
   const evenRows = rows.filter((o) => Math.abs(o.g) <= 0.001);
+
+  /* ---------------------------- v13.0: khung tình trạng dự án ---------------------------- */
+  const projPanel = () => {
+    const p = selProj;
+    const tot = view.map((w) => chartRoles.reduce((a, r) => a + cellOf(plan, p.id, r.id, w.i), 0));
+    const con = view.map((w) => chartRoles.reduce((a, r) => a + contribOf(p.id, r.id, w.i), 0));
+    const act = tot.filter((v) => v > 0);
+    const allShort = summary ? summary.total : 0, myShort = con.reduce((a, v) => a + v, 0);
+    const pk = Math.max(0, ...tot), pkW = view[tot.indexOf(pk)];
+    const firstK = tot.findIndex((v) => v > 0), lastK = tot.length - 1 - [...tot].reverse().findIndex((v) => v > 0);
+    const wl = (w) => `T${w.m}·${w.w}`;
+    const box = (v, k, red) => (
+      <div className="rounded-lg px-3 py-2" style={red ? { background: C.kpA, border: `1px solid ${C.kpAline}` } : { background: C.kpB, border: `1px solid ${C.kpBline}` }}>
+        <div className="font-mono text-lg" style={{ color: red ? C.kpAv : C.kpBv }}>{v}</div>
+        <div className="text-[10.5px] text-slate-500">{k}</div>
+      </div>
+    );
+    return (
+      <>
+        <div className="text-sm font-semibold" style={{ color: C.rowSelName }}>
+          {p.name}{p.code && <span className="ml-1.5 font-mono text-[11px] font-normal text-slate-500">{p.code}</span>}
+        </div>
+        <div className="mt-0.5 text-[11.5px] text-slate-500">
+          tình trạng nhân lực của dự án trong {view.length} tuần{firstK >= 0 ? ` · có kế hoạch ${wl(view[firstK])} → ${wl(view[lastK])}` : ""}
+        </div>
+        <div className="mb-3 mt-3 grid grid-cols-2 gap-2">
+          {box(`${con.filter((v) => v > 0.001).length}/${view.length}`, "tuần dùng vai trò đang thiếu", true)}
+          {box(allShort > 0 ? `${Math.round((myShort / allShort) * 100)}%` : "0%", "phần thiếu của công ty", true)}
+          {box(f0(act.length ? Math.round((act.reduce((a, v) => a + v, 0) / act.length) * 100) / 100 : 0), "người bình quân / tuần", false)}
+          {box(f0(pk), pkW ? `đỉnh · ${wl(pkW)}` : "đỉnh", false)}
+        </div>
+        <div className="text-[11px] text-slate-500">Từng tuần · số người dự án cần · bấm để xem tuần</div>
+        <div className="mb-3 mt-1 grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${view.length}, minmax(0,1fr))` }}>
+          {view.map((w, k) => (
+            <button key={w.i} onClick={() => pickWeek(w.i)} title={`T${w.m} tuần ${w.w}: cần ${f0(tot[k])}${con[k] > 0.001 ? ` · góp ${f0(Math.round(con[k] * 100) / 100)} vào phần thiếu` : ""}`}
+              className="flex h-6 items-center justify-center rounded-[3px] font-mono text-[10px]"
+              style={{ background: con[k] > 0.001 ? heatOf(C, Math.min(1, 0.35 + con[k] / 3)) : tot[k] ? C.dimShort : "transparent", color: con[k] > 0.001 ? "#fff" : "#94a3b8" }}>
+              {tot[k] ? f0(tot[k]) : ""}
+            </button>
+          ))}
+          {view.map((w) => <span key={`l${w.i}`} className="text-center text-[9.5px] text-slate-500">{view.length <= 12 || w.w === 1 ? wl(w) : ""}</span>)}
+        </div>
+        {chartRoles.map((r) => {
+          const pv = view.map((w) => cellOf(plan, p.id, r.id, w.i));
+          const ks = pv.map((v, k) => (v > 0 ? k : -1)).filter((k) => k >= 0);
+          const sk = ks.filter((k) => gapOf(r.id, view[k].i) < -0.001);
+          const worst = sk.reduce((b, k) => (b < 0 || gapOf(r.id, view[k].i) < gapOf(r.id, view[b].i) ? k : b), -1);
+          const my = view.reduce((a, w) => a + contribOf(p.id, r.id, w.i), 0);
+          const others = projects.filter((q) => q.id !== p.id && sk.some((k) => cellOf(plan, q.id, r.id, view[k].i) > 0)).length;
+          return (
+            <div key={r.id} className="border-t border-slate-800 pb-1.5 pt-2">
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono" style={{ color: colorOf.get(r.id) }}>{r.id}</span>
+                <span className="truncate text-slate-500">{r.name}</span>
+                <span className="ml-auto whitespace-nowrap font-mono" style={{ color: sk.length ? C.shortLab : "#64748b" }}>
+                  {sk.length ? `thiếu ${sk.length}/${ks.length} tuần` : "đủ người"}
+                </span>
+              </div>
+              <div className="mb-1 mt-0.5 text-[11.5px] text-slate-500">
+                dự án cần {f0(Math.round((pv.reduce((a, v) => a + v, 0) / Math.max(1, ks.length)) * 100) / 100)} người / tuần · {wl(view[ks[0]])} → {wl(view[ks[ks.length - 1]])}
+              </div>
+              {sk.length > 0 && [
+                ["Công ty thiếu nặng nhất", `${f0(-gapOf(r.id, view[worst].i))} người · ${wl(view[worst])}`, true],
+                ["Phần thiếu dự án góp vào", `${f0(Math.round(my * 100) / 100)} người-tuần`, false],
+                [`Dự án khác cùng chiếm ${r.id} lúc thiếu`, String(others), false],
+              ].map(([k, v, red]) => (
+                <div key={k} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 py-0.5 pl-3 text-[12px]">
+                  <span className="text-slate-300">{k}</span>
+                  <span className="text-right font-mono" style={{ color: red ? C.shortLab : undefined }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </>
+    );
+  };
 
   const seg = (on) => `${CTRL} whitespace-nowrap px-3 text-[13px] ${on ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`;
   const tile = (k, v, s, red) => (
@@ -402,11 +506,11 @@ export default function ResourceOverview({ cfg }) {
       {/* chip vai trò — mang luôn đỉnh thiếu, xếp theo mức nghẽn; lọc đồng bộ cả bốn khối */}
       <div className="flex flex-wrap gap-1.5 border-b border-slate-800 px-3 py-2.5 md:px-4">
         {shown.map((r) => {
-          const on = !off.has(r.id);
+          const on = !off.has(r.id) && (!pRoleIds || pRoleIds.has(r.id));
           const pk = Math.max(0, ...view.map((w) => -gapOf(r.id, w.i)));
           return (
             /* v12.27: chip tắt = ô màu chỉ còn viền + viền chip nét đứt, thay vì làm nhạt cả chip */
-            <button key={r.id} onClick={() => setOff((s) => { const t = new Set(s); t.has(r.id) ? t.delete(r.id) : t.add(r.id); return t; })}
+            <button key={r.id} title={pRoleIds && !pRoleIds.has(r.id) ? `${selProj.name} không có vai trò ${r.id}` : undefined} onClick={() => setOff((s) => { const t = new Set(s); t.has(r.id) ? t.delete(r.id) : t.add(r.id); return t; })}
               className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] ${on ? "border-slate-700 text-slate-300" : ""}`}
               style={on ? undefined : { borderStyle: "dashed", borderColor: C.chipOffLine, color: C.chipOffText }}>
               <span className="h-2.5 w-2.5 rounded-sm"
@@ -419,6 +523,19 @@ export default function ResourceOverview({ cfg }) {
           );
         })}
       </div>
+
+      {/* v13.0 — đang chọn dự án */}
+      {selProj && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2 text-[12.5px] md:px-4" style={{ background: C.rowSel }}>
+          <span className="text-slate-400">Đang xem dự án</span>
+          <span className="font-semibold" style={{ color: C.rowSelName }}>{selProj.name}</span>
+          <span className="text-slate-500">· vai trò của dự án:</span>
+          {chartRoles.map((r) => (
+            <span key={r.id} className="flex items-center gap-1 font-mono text-slate-300"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: colorOf.get(r.id) }} />{r.id}</span>
+          ))}
+          <button onClick={() => pickProj(null)} className="ml-auto h-8 rounded-md border border-slate-700 px-3 text-[12px] text-slate-300">× Bỏ chọn dự án</button>
+        </div>
+      )}
 
       {/* items-start: cột trái không bị kéo giãn theo cột phải, nhờ vậy phép đo chiều cao không lặp vô hạn */}
       <div className="grid items-start gap-0 xl:grid-cols-[minmax(0,1fr)_420px]">
@@ -450,7 +567,7 @@ export default function ResourceOverview({ cfg }) {
               </p>
             ) : projRows.map((o) => (
               /* v12.27: nền dòng tô bằng style theo theme. Dòng đang chọn có vạch xanh bên trái và giữ nền khi rê chuột. */
-              <div key={o.p.id} onClick={() => setSelP(selP === o.p.id ? null : o.p.id)}
+              <div key={o.p.id} onClick={() => pickProj(selP === o.p.id ? null : o.p.id)}
                 onMouseEnter={() => setHovP(o.p.id)} onMouseLeave={() => setHovP((h) => (h === o.p.id ? null : h))}
                 className="grid cursor-pointer grid-cols-[minmax(0,1fr)_90px] items-center gap-3 px-3 py-1.5 text-[12.5px] md:grid-cols-[230px_minmax(0,1fr)_84px_minmax(0,1fr)] md:px-4"
                 style={{
@@ -484,14 +601,18 @@ export default function ResourceOverview({ cfg }) {
         {/* chi tiết tuần đang soi — cao bằng cột trái, cuộn bên trong */}
         <div className="overflow-y-auto border-t border-slate-800 bg-slate-950/40 p-3 md:p-4 xl:border-t-0"
           style={leftH ? { maxHeight: leftH } : undefined}>
+          {side === "proj" && selProj ? projPanel() : (<>
+          {selProj && (
+            <button onClick={() => setSide("proj")} className="mb-2 text-[12px]" style={{ color: C.rowSelName }}>‹ Về tình trạng dự án {selProj.name}</button>
+          )}
           <div className="text-sm text-slate-200">T{selW?.m} · tuần {selW?.w}</div>
           <div className="mb-3 mt-3 grid grid-cols-2 gap-2">
             <div className="rounded-lg px-3 py-2" style={{ background: C.kpA, border: `1px solid ${C.kpAline}` }}>
-              <div className="font-mono text-lg" style={{ color: C.kpAv }}>{f0(shortAt(sel, live))}</div>
+              <div className="font-mono text-lg" style={{ color: C.kpAv }}>{f0(shortAt(sel, chartRoles))}</div>
               <div className="text-[10.5px] text-slate-500">người thiếu</div>
             </div>
             <div className="rounded-lg px-3 py-2" style={{ background: C.kpB, border: `1px solid ${C.kpBline}` }}>
-              <div className="font-mono text-lg" style={{ color: C.kpBv }}>{f0(freeAt(sel, live))}</div>
+              <div className="font-mono text-lg" style={{ color: C.kpBv }}>{f0(freeAt(sel, chartRoles))}</div>
               <div className="text-[10.5px] text-slate-500">người dư</div>
             </div>
           </div>
@@ -510,7 +631,7 @@ export default function ResourceOverview({ cfg }) {
               {projects.map((p) => ({ p, v: cellOf(plan, p.id, o.r.id, sel) })).filter((x) => x.v > 0)
                 .sort((a, b) => b.v - a.v).map((x) => (
                   <div key={x.p.id} className="grid grid-cols-[minmax(0,1fr)_48px] gap-2 py-0.5 pl-3 text-[12px]">
-                    <span className="truncate text-slate-300">
+                    <span className="truncate text-slate-300" style={selProj && x.p.id === selProj.id ? { color: C.rowSelName, fontWeight: 600 } : undefined}>
                       {x.p.name}
                       {x.p.code && <span className="ml-1.5 font-mono text-[11px] text-slate-600">{x.p.code}</span>}
                     </span>
@@ -529,6 +650,7 @@ export default function ResourceOverview({ cfg }) {
               Vừa đủ: {evenRows.map((o) => o.r.id).join(" · ")}
             </div>
           )}
+          </>)}
         </div>
       </div>
     </div>

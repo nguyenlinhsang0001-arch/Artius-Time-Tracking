@@ -1,6 +1,15 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.37
+   ARTIUS — Quản lý giờ công theo dự án · v13.0
+   Mới ở v13.0 — Dashboard › Tổng quan nguồn lực, chọn dự án ở bảng "Dự án chiếm vai trò đang thiếu":
+     · Biểu đồ chỉ còn các vai trò có trong dự án (vai trò khác tạm tắt, chip hiện nét đứt). Trong đó chỉ tuần dự án
+       đang làm thiếu mới giữ màu: phần thiếu của chính dự án tô đậm có viền, phần của dự án khác nhạt; còn lại xám.
+       Số trên đỉnh cột là phần thiếu dự án góp vào tuần đó. Có thanh "Đang xem dự án" và nút "× Bỏ chọn dự án".
+     · Khung bên phải chuyển sang tình trạng riêng của dự án: số tuần dùng vai trò đang thiếu, % phần thiếu của công ty,
+       người bình quân / tuần, đỉnh, dải từng tuần (bấm để xem tuần), và từng vai trò của dự án.
+     · Bấm một tuần trên biểu đồ thì khung phải hiện nhân lực tuần đó (chỉ các vai trò của dự án, dòng dự án tô teal),
+       có đường "‹ Về tình trạng dự án".
+
    Mới ở v12.37 — Chấm công (máy tính):
      · N1 bấm thẳng vào ô giờ của khối đang đóng: khối tự mở, con trỏ nằm sẵn ở đúng ô đó (nút bút chì vẫn dùng được).
      · N3 đường gióng: ô đang nhập thì cả dòng tác vụ tô nhạt và tiêu đề ngày của ô đó sáng lên.
