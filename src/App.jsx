@@ -1,6 +1,13 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.1
+   ARTIUS — Quản lý giờ công theo dự án · v13.2
+   Mới ở v13.2 — Kế hoạch › So với thực tế (features/planning/PlanActual.jsx):
+     · Công tắc Đơn vị Người / Giờ, mặc định Giờ. Giờ = tổng giờ trong khoảng đang xem (kế hoạch = số người × giờ chuẩn tuần);
+       Người = bình quân mỗi tuần như v13.1. Đổi theo cả hàng số liệu, bảng dự án, bảng vai trò và biểu đồ lũy kế.
+     · Bảng vai trò của dự án bấm mở / đóng từng vai trò (vai trò lệch tự mở): ai thuộc vai trò đã chấm bao nhiêu giờ,
+       chiếm bao nhiêu % giờ của người đó, gánh bao nhiêu % kế hoạch vai trò; vai trò thiếu thì liệt kê người cùng vai trò
+       đang làm ở dự án nào. Bỏ danh sách "Ai đã chấm" riêng vì đã nằm trong từng vai trò.
+
    Mới ở v13.1 — Kế hoạch thêm chế độ thứ ba "So với thực tế" (features/planning/PlanActual.jsx, chỉ đọc):
      · So kế hoạch (lưới hiện tại hoặc một bản chốt) với giờ ĐÃ GỬI vào từng dự án; thực tế (người) = giờ ÷ giờ chuẩn một tuần.
        Giờ tính theo vai trò của người chấm (vai trò gộp như lưới). Khoảng: tuần trước / 4 tuần gần nhất / từ khi có giờ chấm.

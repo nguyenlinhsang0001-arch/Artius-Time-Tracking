@@ -1,4 +1,6 @@
-/* ARTIUS TIME v13.1 — Kế hoạch › "So với thực tế".
+/* ARTIUS TIME v13.2 — Kế hoạch › "So với thực tế".
+   v13.2: công tắc Đơn vị Người / Giờ (mặc định Giờ; giờ = tổng giờ trong khoảng, người = bình quân / tuần);
+   bảng vai trò bấm mở danh sách người của vai trò, và vai trò thiếu thì cho biết người cùng vai trò đang làm ở đâu.
    So kế hoạch (lưới hiện tại hoặc một bản chốt) với giờ nhân sự ĐÃ GỬI vào từng dự án, cùng đơn vị số người:
      thực tế (người) = giờ đã gửi trong tuần ÷ giờ chuẩn một tuần (Thiết lập › giờ làm).
    Giờ tính theo vai trò của NGƯỜI chấm (vai trò gộp như lưới kế hoạch, vd TL-2D → 2D) — Sang chốt 02/11/2026.
@@ -40,6 +42,8 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
   const [snapPlan, setSnapPlan] = useState(null);
   const [sel, setSel] = useState(null);
   const [hov, setHov] = useState(null);
+  const [unit, setUnit] = useState("h");        /* h = giờ | p = người */
+  const [tog, setTog] = useState({});           /* "pid|rid" -> mở / đóng do người dùng bấm */
   const STD = weeklyTarget(hoursCfg) || 44;
   const colorOf = useMemo(() => new Map(roles.map((r, k) => [r.id, PALETTE[k % PALETTE.length]])), [roles]);
 
@@ -98,6 +102,8 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
     const rows = new Map();
     const get = (pid) => { if (!rows.has(pid)) rows.set(pid, { pid, kh: {}, tt: {}, ppl: new Map(), wk: weeks.map(() => ({ kh: 0, tt: 0 })) }); return rows.get(pid); };
     let common = 0, total = 0;
+    const per = new Map();   /* empId -> Map(pid | "" (việc chung / vắng) -> giờ) */
+    const add = (e, k, h) => { if (!per.has(e)) per.set(e, new Map()); const m = per.get(e); m.set(k, (m.get(k) || 0) + h); };
     weeks.forEach((w, k) => {
       const i = w.i;
       for (const pid of Object.keys(P || {})) for (const r of roles) {
@@ -107,7 +113,8 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
       for (const x of hoursBy.get(w.monday) || []) {
         if (!x.h) continue;
         total += x.h;
-        if (!x.pid || x.pid === NO_PROJECT || !projIds.has(x.pid) || isLeaveTask(x.task)) { common += x.h; continue; }
+        if (!x.pid || x.pid === NO_PROJECT || !projIds.has(x.pid) || isLeaveTask(x.task)) { common += x.h; add(x.empId, "", x.h); continue; }
+        add(x.empId, x.pid, x.h);
         const rid = roleOf.get(x.empId); if (!rid) continue;
         const o = get(x.pid);
         o.tt[rid] = (o.tt[rid] || 0) + x.h / STD / nW; o.wk[k].tt += x.h / STD;
@@ -129,7 +136,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
     const lastW = weeks[weeks.length - 1];
     const sent = new Set((lastW && hoursBy.get(lastW.monday) || []).map((x) => x.empId));
     const missing = staff.filter((e) => e.role && !sent.has(e.id)).length;
-    return { list, common, total, missing };
+    return { list, common, total, missing, per };
   }, [P, weeks, hoursBy, roles, projects, projIds, roleOf, STD, nW, staff]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <p className="px-4 py-8 text-sm text-slate-500">Đang tải giờ đã chấm…</p>;
@@ -154,7 +161,49 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
     </div>
   );
   const seg = (on) => `h-9 whitespace-nowrap px-3 text-[13px] ${on ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`;
-  const ddTxt = (d) => `${d > 0.005 ? "+" : d < -0.005 ? "−" : ""}${f0(r2(Math.abs(d)))}`;
+  /* số nội bộ theo người (bình quân / tuần); chế độ giờ = tổng giờ trong khoảng */
+  const isH = unit === "h";
+  const U = (v) => (isH ? f0(Math.round(v * STD * nW * 10) / 10) : f0(r2(v)));
+  const UL = isH ? "giờ" : "người";
+  const US = (v) => `${U(v)} ${UL}`;
+  const ddTxt = (d) => `${d > 0.005 ? "+" : d < -0.005 ? "−" : ""}${U(Math.abs(d))}`;
+  const pname = (pid) => (pid ? (projects.find((x) => x.id === pid)?.name || pid) : "việc chung / vắng");
+  const lagging = (a, b) => b < a - Math.max(0.15, a * 0.15);
+  const isOpen = (o, r) => { const k = `${o.pid}|${r.id}`; if (k in tog) return tog[k];
+    const a = o.kh[r.id] || 0, b = o.tt[r.id] || 0; return Math.abs(b - a) > Math.max(0.15, a * 0.15); };
+  const flip = (o, r) => setTog((t) => ({ ...t, [`${o.pid}|${r.id}`]: !isOpen(o, r) }));
+  /* danh sách người của một vai trò trong dự án đang chọn */
+  const rolePeople = (o, r) => {
+    const a = o.kh[r.id] || 0, b = o.tt[r.id] || 0, planH = a * STD * nW;
+    const inP = [...o.ppl].filter(([id]) => roleOf.get(id) === r.id).sort((x, y) => y[1] - x[1]);
+    const mxH = Math.max(planH, 1, ...inP.map((x) => x[1]));
+    const tot = (id) => [...(data.per.get(id) || new Map()).values()].reduce((s2, v) => s2 + v, 0);
+    const others = lagging(a, b) ? staff.filter((e) => e.role === r.id).map((e) => [e, [...(data.per.get(e.id) || new Map())].filter(([k]) => k !== o.pid).sort((x, y) => y[1] - x[1])]) : [];
+    return (
+      <div className="py-1.5 pl-5 pr-1 text-[12px]" style={{ background: C.grp }}>
+        {inP.length ? <>
+          <div className="mb-0.5 text-[10.5px] uppercase tracking-wider text-slate-500">Đã chấm vào dự án{planH ? ` · kế hoạch vai trò ${f0(Math.round(planH * 10) / 10)} h` : ""}</div>
+          {inP.map(([id, h]) => { const T2 = tot(id) || h; return (
+            <div key={id} className="py-0.5">
+              <div className="grid grid-cols-[minmax(0,1fr)_58px_110px] items-center gap-2">
+                <span className="truncate text-slate-200">{nameOf.get(id)}</span>
+                <span className="text-right font-mono text-slate-300">{f0(r2(h))} h</span>
+                <span className="relative h-1.5 overflow-hidden rounded" style={{ background: C.line }} title={`${f0(r2(h))} / ${f0(r2(T2))} h trong khoảng`}>
+                  <span className="absolute inset-y-0 left-0 rounded" style={{ width: `${Math.min(100, (h / mxH) * 100)}%`, background: colorOf.get(r.id) }} /></span>
+              </div>
+              <div className="text-[11px] text-slate-500">{Math.round((h / T2) * 100)}% giờ của người này{planH ? ` · gánh ${Math.round((h / planH) * 100)}% kế hoạch vai trò` : ""}</div>
+            </div>); })}
+        </> : <div className="mb-1" style={{ color: C.under }}>Không ai thuộc vai trò {r.id} chấm giờ vào dự án này.</div>}
+        {others.length > 0 && <>
+          <div className="mb-0.5 mt-1.5 text-[10.5px] uppercase tracking-wider text-slate-500">Người {r.id} trong khoảng này đang làm ở</div>
+          {others.map(([e, l]) => (
+            <div key={e.id} className="py-0.5"><span className="text-slate-200">{e.name || e.id}</span>{" "}
+              <span className="text-slate-500">— {l.length ? l.map(([k, h]) => `${pname(k)} ${f0(r2(h))} h`).join(" · ") : "chưa gửi giờ"}</span></div>
+          ))}
+        </>}
+      </div>
+    );
+  };
 
   /* lũy kế của dự án đang chọn: kế hoạch từ tuần đầu của khoảng tới hết kế hoạch dự án, thực tế tới tuần cuối có giờ */
   const cum = (o) => {
@@ -167,13 +216,13 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
     if (idx.length < 1) return null;
     let a = 0; const pc = idx.map((i) => (a += roles.reduce((s, r) => s + cellOf(P, o.pid, r.id, i), 0)));
     let b = 0; const ac = weeks.map((w, k) => (b += o.wk[k].tt));
-    const Wd = 380, Ht = 150, Lx = 30, R = 8, T = 12, B = 24, mxv = Math.max(1, pc[pc.length - 1] || 0, b) * 1.08;
+    const Wd = 380, Ht = 150, Lx = 38, R = 8, T = 12, B = 24, mxv = Math.max(1, pc[pc.length - 1] || 0, b) * 1.08;
     const x = (i) => Lx + ((i - first) * (Wd - Lx - R)) / Math.max(1, idx.length - 1), y = (v) => T + (Ht - T - B) * (1 - v / mxv);
     const ax = isLight() ? "#94a3b8" : "#64748b";
     return (
       <svg width={Wd} height={Ht} style={{ display: "block" }}>
         {[0, 1, 2, 3, 4].map((k) => <g key={k}><line x1={Lx} x2={Wd - R} y1={y((mxv * k) / 4)} y2={y((mxv * k) / 4)} stroke={C.line} />
-          <text x={Lx - 4} y={y((mxv * k) / 4) + 3} fontSize="9.5" fill={ax} textAnchor="end">{Math.round((mxv * k) / 4)}</text></g>)}
+          <text x={Lx - 4} y={y((mxv * k) / 4) + 3} fontSize="9.5" fill={ax} textAnchor="end">{isH ? Math.round((mxv * k * STD) / 4) : Math.round((mxv * k) / 4 * 10) / 10}</text></g>)}
         <polyline fill="none" stroke={C.plan} strokeWidth="2" strokeDasharray="5 4" points={idx.map((i, k) => `${x(i)},${y(pc[k])}`).join(" ")} />
         <polyline fill="none" stroke={C.over} strokeWidth="2.5" points={[`${x(first)},${y(0)}`, ...weeks.map((w, k) => `${x(w.i)},${y(ac[k])}`)].join(" ")} />
         {weeks.length > 0 && (() => { const w = weeks[weeks.length - 1], k = idx.indexOf(w.i); return <g>
@@ -200,20 +249,25 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
           <option value="">Lưới kế hoạch hiện tại</option>
           {snaps.map((s) => <option key={s.label} value={s.label}>{s.label}</option>)}
         </select>
+        <span className="ml-2 text-xs text-slate-500">Đơn vị</span>
+        <div className="flex overflow-hidden rounded-md border border-slate-700">
+          <button onClick={() => setUnit("p")} aria-pressed={!isH} className={seg(!isH)}>Người</button>
+          <button onClick={() => setUnit("h")} aria-pressed={isH} className={seg(isH)}>Giờ</button>
+        </div>
         <span className="ml-auto text-[11.5px] text-slate-500">{rangeTxt} · {f0(STD)} giờ = 1 người</span>
       </div>
 
       <div className="grid gap-2 border-b border-slate-800 px-3 py-3 sm:grid-cols-2 md:px-4 xl:grid-cols-5">
-        {tile(nW > 1 ? "Kế hoạch bình quân / tuần" : "Kế hoạch", `${f0(r2(KH))} người`, `${L.filter((o) => o.KH > 0.005).length} dự án có kế hoạch`)}
-        {tile("Thực tế đổ vào dự án", `${f0(r2(TT))} người`, `chưa tính ${f0(r2(data.common))} giờ việc chung / vắng${data.missing ? ` · ${data.missing} người chưa gửi tuần cuối` : ""}`)}
-        {tile("Đúng dự án, đúng vai trò", KH > 0 ? `${Math.round((okR / KH) * 100)}%` : "—", `${f0(r2(okR))} / ${f0(r2(KH))} người kế hoạch được làm đúng chỗ`)}
-        {tile("Có kế hoạch mà chưa ai làm", `${none.length} dự án`, none.length ? `${none.map((o) => o.p.name).join(", ")} · ${f0(r2(none.reduce((a, o) => a + o.KH, 0)))} người` : "không có", none.length ? C.red : undefined)}
-        {tile("Làm ngoài kế hoạch", `${f0(r2(out.reduce((a, o) => a + o.TT, 0)))} người`, out.length ? out.map((o) => o.p.name).join(", ") : "không có", out.length ? C.over : undefined)}
+        {tile(nW > 1 && !isH ? "Kế hoạch bình quân / tuần" : "Kế hoạch", US(KH), `${L.filter((o) => o.KH > 0.005).length} dự án có kế hoạch`)}
+        {tile("Thực tế đổ vào dự án", US(TT), `chưa tính ${f0(r2(data.common))} giờ việc chung / vắng${data.missing ? ` · ${data.missing} người chưa gửi tuần cuối` : ""}`)}
+        {tile("Đúng dự án, đúng vai trò", KH > 0 ? `${Math.round((okR / KH) * 100)}%` : "—", `${U(okR)} / ${US(KH)} kế hoạch được làm đúng chỗ`)}
+        {tile("Có kế hoạch mà chưa ai làm", `${none.length} dự án`, none.length ? `${none.map((o) => o.p.name).join(", ")} · ${US(none.reduce((a, o) => a + o.KH, 0))}` : "không có", none.length ? C.red : undefined)}
+        {tile("Làm ngoài kế hoạch", US(out.reduce((a, o) => a + o.TT, 0)), out.length ? out.map((o) => o.p.name).join(", ") : "không có", out.length ? C.over : undefined)}
       </div>
 
       <div className="grid items-start xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="min-w-0 border-slate-800 xl:border-r">
-          <div className="hidden grid-cols-[minmax(200px,1.3fr)_64px_64px_minmax(160px,1fr)_minmax(220px,1.5fr)_110px] items-center gap-3 border-b border-slate-800 px-4 py-2 text-[10.5px] uppercase tracking-wider text-slate-500 md:grid">
+          <div className="hidden grid-cols-[minmax(200px,1.3fr)_70px_70px_minmax(160px,1fr)_minmax(220px,1.5fr)_110px] items-center gap-3 border-b border-slate-800 px-4 py-2 text-[10.5px] uppercase tracking-wider text-slate-500 md:grid">
             <span>Dự án</span><span className="text-right">Kế hoạch</span><span className="text-right">Thực tế</span>
             <span className="text-center">thiếu ← lệch → vượt</span><span>Theo vai trò · kế hoạch → thực tế</span><span>Kết luận</span>
           </div>
@@ -227,13 +281,13 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
                   <div className="px-4 py-1.5 text-[10.5px] uppercase tracking-wider text-slate-500" style={{ background: C.grp, borderBottom: `1px solid ${C.line}` }}>{GROUPS[o.st]}</div>
                 )}
                 <div onClick={() => setSel(o.pid)} onMouseEnter={() => setHov(o.pid)} onMouseLeave={() => setHov((h) => (h === o.pid ? null : h))}
-                  className="grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 text-[12.5px] md:grid-cols-[minmax(200px,1.3fr)_64px_64px_minmax(160px,1fr)_minmax(220px,1.5fr)_110px]"
+                  className="grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 text-[12.5px] md:grid-cols-[minmax(200px,1.3fr)_70px_70px_minmax(160px,1fr)_minmax(220px,1.5fr)_110px]"
                   style={{ background: on ? C.sel : hov === o.pid ? C.hover : "transparent", borderLeft: `3px solid ${on ? C.selBar : "transparent"}`, borderBottom: `1px solid ${C.line}` }}>
                   <span className="truncate text-slate-200" style={on ? { color: C.selName } : undefined}>
                     {o.p.name}{o.p.code && <span className="ml-1.5 font-mono text-[11px] text-slate-500">{o.p.code}</span>}
                   </span>
-                  <span className="hidden text-right font-mono text-slate-300 md:block">{o.KH > 0.005 ? f0(r2(o.KH)) : "—"}</span>
-                  <span className="hidden text-right font-mono text-slate-100 md:block">{o.TT > 0.005 ? f0(r2(o.TT)) : "—"}</span>
+                  <span className="hidden text-right font-mono text-slate-300 md:block">{o.KH > 0.005 ? U(o.KH) : "—"}</span>
+                  <span className="hidden text-right font-mono text-slate-100 md:block">{o.TT > 0.005 ? U(o.TT) : "—"}</span>
                   <span className="relative hidden h-3.5 md:block">
                     <span className="absolute bottom-[-3px] top-[-3px]" style={{ left: "50%", borderLeft: `1px solid ${C.zero}` }} />
                     <span className="absolute top-[2px] h-2.5 rounded-sm" style={pos ? { left: "50%", width: `${w}%`, background: C.over } : { right: "50%", width: `${w}%`, background: C.under }} />
@@ -244,7 +298,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
                       const a = o.kh[r.id] || 0, b = o.tt[r.id] || 0, dd = b - a;
                       const c = Math.abs(dd) <= Math.max(0.15, a * 0.15) ? undefined : dd > 0 ? C.over : C.under;
                       return <span key={r.id} className="whitespace-nowrap text-slate-400" style={c ? { color: c } : undefined}>
-                        <b className="mr-1 font-semibold" style={{ color: colorOf.get(r.id) }}>{r.id}</b>{f0(r2(a))} → {f0(r2(b))}</span>;
+                        <b className="mr-1 font-semibold" style={{ color: colorOf.get(r.id) }}>{r.id}</b>{U(a)} → {U(b)}</span>;
                     })}
                   </span>
                   <span>{pill(o.st, o)}</span>
@@ -257,38 +311,33 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
         {cur && (
           <div className="border-t border-slate-800 p-3 md:p-4 xl:border-t-0">
             <div className="text-sm font-semibold" style={{ color: C.selName }}>{cur.p.name}{cur.p.code && <span className="ml-1.5 font-mono text-[11px] font-normal text-slate-500">{cur.p.code}</span>}</div>
-            <div className="mb-3 mt-1 flex items-center gap-2 text-[11.5px] text-slate-500">{rangeTxt} {pill(cur.st, cur)}</div>
+            <div className="mb-3 mt-1 flex flex-wrap items-center gap-2 text-[11.5px] text-slate-500">{rangeTxt} {pill(cur.st, cur)}<span>bấm một vai trò để mở / đóng danh sách người</span></div>
             <table className="mb-3 w-full text-[12.5px]">
               <thead><tr className="text-[10.5px] uppercase tracking-wider text-slate-500" style={{ borderBottom: `1px solid ${C.line}` }}>
                 <th className="py-1.5 text-left font-medium">Vai trò</th><th className="py-1.5 text-right font-medium">Kế hoạch</th><th className="py-1.5 text-right font-medium">Thực tế</th><th className="py-1.5 text-right font-medium">Lệch</th></tr></thead>
               <tbody>
                 {roles.filter((r) => cur.kh[r.id] || cur.tt[r.id]).map((r) => {
-                  const a = cur.kh[r.id] || 0, b = cur.tt[r.id] || 0, d = b - a;
+                  const a = cur.kh[r.id] || 0, b = cur.tt[r.id] || 0, d = b - a, op = isOpen(cur, r);
                   return (
-                    <tr key={r.id} style={{ borderBottom: `1px solid ${C.line}` }}>
-                      <td className="py-1.5"><span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: colorOf.get(r.id) }} /><span className="font-mono">{r.id}</span> <span className="text-slate-400">{r.name}</span></td>
-                      <td className="py-1.5 text-right font-mono">{a ? f0(r2(a)) : "—"}</td>
-                      <td className="py-1.5 text-right font-mono">{b ? f0(r2(b)) : "—"}</td>
+                    <React.Fragment key={r.id}>
+                    <tr onClick={() => flip(cur, r)} className="cursor-pointer" style={{ borderBottom: `1px solid ${C.line}` }}>
+                      <td className="py-1.5"><span className="mr-1 inline-block w-3 text-[10px] text-slate-500">{op ? "▾" : "▸"}</span><span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: colorOf.get(r.id) }} /><span className="font-mono">{r.id}</span> <span className="text-slate-400">{r.name}</span></td>
+                      <td className="py-1.5 text-right font-mono">{a ? U(a) : "—"}</td>
+                      <td className="py-1.5 text-right font-mono">{b ? U(b) : "—"}</td>
                       <td className="py-1.5 text-right font-mono" style={{ color: Math.abs(d) <= Math.max(0.15, a * 0.15) ? undefined : d > 0 ? C.over : C.under }}>{ddTxt(d)}</td>
                     </tr>
+                    {op && <tr style={{ borderBottom: `1px solid ${C.line}` }}><td colSpan={4} className="p-0">{rolePeople(cur, r)}</td></tr>}
+                    </React.Fragment>
                   );
                 })}
-                <tr className="font-semibold"><td className="py-1.5">Cả dự án</td><td className="py-1.5 text-right font-mono">{f0(r2(cur.KH))}</td><td className="py-1.5 text-right font-mono">{f0(r2(cur.TT))}</td><td className="py-1.5 text-right font-mono">{ddTxt(cur.d)}</td></tr>
+                <tr className="font-semibold"><td className="py-1.5">Cả dự án</td><td className="py-1.5 text-right font-mono">{U(cur.KH)}</td><td className="py-1.5 text-right font-mono">{U(cur.TT)}</td><td className="py-1.5 text-right font-mono">{ddTxt(cur.d)}</td></tr>
               </tbody>
             </table>
-            <div className="mb-1 text-[10.5px] uppercase tracking-wider text-slate-500">Ai đã chấm vào dự án</div>
-            {cur.ppl.size === 0 ? <div className="text-[12px] text-slate-500">Chưa ai chấm giờ vào dự án này trong khoảng đang xem.</div>
-              : [...cur.ppl].sort((a, b) => b[1] - a[1]).map(([id, h]) => (
-                <div key={id} className="flex justify-between py-0.5 text-[12.5px]" style={{ borderBottom: `1px solid ${C.line}` }}>
-                  <span className="text-slate-200">{nameOf.get(id)}<span className="ml-1.5 font-mono text-[11px] text-slate-500">{roleOf.get(id)}</span></span>
-                  <span className="font-mono text-slate-300">{f0(r2(h))} h · {f0(r2(h / STD / nW))} người</span>
-                </div>
-              ))}
-            <div className="mb-1 mt-3 text-[10.5px] uppercase tracking-wider text-slate-500">Lũy kế người-tuần · kế hoạch (nét đứt) so với thực tế</div>
+            <div className="mb-1 mt-3 text-[10.5px] uppercase tracking-wider text-slate-500">Lũy kế {isH ? "giờ" : "người-tuần"} · kế hoạch (nét đứt) so với thực tế</div>
             {(() => { const k0 = weeks[0]?.i ?? 0, kN = weeks[weeks.length - 1]?.i ?? k0;
               let pv = 0; for (let i = k0; i <= kN; i++) pv += roles.reduce((s2, r) => s2 + cellOf(P, cur.pid, r.id, i), 0);
               const av = cur.wk.reduce((s2, x) => s2 + x.tt, 0);
-              return <div className="mb-1 font-mono text-[12px]"><span style={{ color: C.plan }}>kế hoạch {f0(r2(pv))}</span><span className="text-slate-600"> · </span><span style={{ color: C.over }}>thực tế {f0(r2(av))}</span><span className="text-slate-500"> người-tuần tới tuần {weeks.length ? wLabel(weeks[weeks.length - 1]) : ""}</span></div>; })()}
+              return <div className="mb-1 font-mono text-[12px]"><span style={{ color: C.plan }}>kế hoạch {isH ? f0(Math.round(pv * STD * 10) / 10) : f0(r2(pv))}</span><span className="text-slate-600"> · </span><span style={{ color: C.over }}>thực tế {isH ? f0(Math.round(av * STD * 10) / 10) : f0(r2(av))}</span><span className="text-slate-500"> {isH ? "giờ" : "người-tuần"} tới tuần {weeks.length ? wLabel(weeks[weeks.length - 1]) : ""}</span></div>; })()}
             {cum(cur)}
           </div>
         )}
