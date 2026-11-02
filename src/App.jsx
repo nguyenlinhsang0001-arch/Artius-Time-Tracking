@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v12.35
+   ARTIUS — Quản lý giờ công theo dự án · v12.36
+   Mới ở v12.36 — Bảng công: nút bút chì "Sửa giờ của khối này" có viền teal, nền teal nhạt và quầng sáng nhịp nhẹ
+     (chu kỳ 2,4 giây) để mọi người dễ thấy. Có màu riêng cho mode sáng / tối; máy bật giảm chuyển động thì sáng đứng yên.
+
    Mới ở v12.35 — Kế hoạch › Nhập liệu:
      · Đường gióng khi rê chuột: tô nhạt cả dòng vai trò (kể cả ô tên), cả cột tuần từ tiêu đề xuống khối CÒN,
        và dòng CÒN của đúng vai trò đó ở khối Toàn công ty. Không vẽ lại lưới khi rê (ghi thẳng vào một thẻ style).

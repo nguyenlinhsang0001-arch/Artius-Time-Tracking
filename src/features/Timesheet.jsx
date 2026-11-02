@@ -9,6 +9,23 @@ import { DEFAULT_PHASE, LEAVE_TASKS, NO_PHASE, NO_PROJECT, OT_TASKS, activePhase
 import { CTRL, ConfirmDialog, GUT, NoteDialog, WeekPicker, btnBase, btnGhost, btnPrimary, iconBtn, selectCls } from "../core/ui.jsx";
 import { DeadlineBanner } from "../shared/deadline.jsx";
 
+/* v12.36 — nút bút chì "Sửa giờ của khối này" phát sáng nhịp nhẹ để dễ thấy.
+   CSS gắn một lần lúc nạp module; màu đặt riêng cho mode sáng / tối (không trông vào LIGHT_CSS).
+   Máy bật "giảm chuyển động" thì quầng sáng đứng yên. */
+const PEN_CSS = `
+.pen-glow{border-color:#14b8a6!important;color:#5eead4!important;background:rgba(20,184,166,.12)!important;animation:penGlow 2.4s ease-in-out infinite}
+.pen-glow:hover{background:rgba(20,184,166,.24)!important;color:#99f6e4!important}
+@keyframes penGlow{0%,100%{box-shadow:0 0 5px rgba(45,212,191,.30)}50%{box-shadow:0 0 0 3px rgba(45,212,191,.16),0 0 13px rgba(45,212,191,.55)}}
+html[data-theme="light"] .pen-glow{border-color:#0d9488!important;color:#0f766e!important;background:#f0fdfa!important;animation-name:penGlowL}
+html[data-theme="light"] .pen-glow:hover{background:#ccfbf1!important}
+@keyframes penGlowL{0%,100%{box-shadow:0 0 5px rgba(13,148,136,.25)}50%{box-shadow:0 0 0 3px rgba(13,148,136,.14),0 0 12px rgba(13,148,136,.45)}}
+@media (prefers-reduced-motion:reduce){.pen-glow{animation:none!important;box-shadow:0 0 8px rgba(45,212,191,.45)}}`;
+if (typeof document !== "undefined" && !document.getElementById("artius-pen-glow")) {
+  const st = document.createElement("style");
+  st.id = "artius-pen-glow"; st.textContent = PEN_CSS;
+  document.head.appendChild(st);
+}
+
 /* ============================ EMPLOYEE ============================ */
 export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initialMonday = null }) {
   const emp = cfg.employees.find((e) => e.id === empId);
@@ -1220,7 +1237,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                                 className={`${iconBtn} border-teal-600 bg-teal-600 text-white hover:border-teal-500 hover:bg-teal-500 hover:text-white`}><Check size={16} /></button>
                             ) : canEdit ? (
                               <button onClick={() => editGroup(g.key)} title="Sửa giờ của khối này"
-                                className={`${iconBtn} hover:border-teal-700 hover:text-teal-300`}><Pencil size={14} /></button>
+                                className={`${iconBtn} pen-glow`}><Pencil size={14} /></button>
                             ) : null}
                           </div>
                           <div className="min-w-0" style={{ flexBasis: "58%", flexGrow: 1 }}>
