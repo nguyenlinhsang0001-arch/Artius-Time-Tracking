@@ -1,6 +1,14 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.0
+   ARTIUS — Quản lý giờ công theo dự án · v13.1
+   Mới ở v13.1 — Kế hoạch thêm chế độ thứ ba "So với thực tế" (features/planning/PlanActual.jsx, chỉ đọc):
+     · So kế hoạch (lưới hiện tại hoặc một bản chốt) với giờ ĐÃ GỬI vào từng dự án; thực tế (người) = giờ ÷ giờ chuẩn một tuần.
+       Giờ tính theo vai trò của người chấm (vai trò gộp như lưới). Khoảng: tuần trước / 4 tuần gần nhất / từ khi có giờ chấm.
+     · Hàng số liệu: kế hoạch, thực tế đổ vào dự án (kèm giờ việc chung / vắng và số người chưa gửi), % làm đúng dự án đúng vai trò,
+       dự án có kế hoạch mà chưa ai làm, giờ làm ngoài kế hoạch.
+     · Bảng dự án nhóm theo kết luận: chưa ai làm · ngoài kế hoạch · đủ người nhưng lệch vai trò · nhiều hơn · ít hơn · đúng kế hoạch;
+       thanh lệch và từng vai trò "kế hoạch → thực tế". Bấm một dự án: bảng vai trò, ai đã chấm bao nhiêu giờ, biểu đồ lũy kế.
+
    Mới ở v13.0 — Dashboard › Tổng quan nguồn lực, chọn dự án ở bảng "Dự án chiếm vai trò đang thiếu":
      · Biểu đồ chỉ còn các vai trò có trong dự án (vai trò khác tạm tắt, chip hiện nét đứt). Trong đó chỉ tuần dự án
        đang làm thiếu mới giữ màu: phần thiếu của chính dự án tô đậm có viền, phần của dự án khác nhạt; còn lại xám.

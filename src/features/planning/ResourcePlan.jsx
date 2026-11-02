@@ -1,4 +1,4 @@
-/* ARTIUS TIME v12 — Tab "Kế hoạch": khung chung, hai chế độ Nhập liệu (Toàn bộ | Từng dự án) và Theo dự án.
+/* ARTIUS TIME v12 — Tab "Kế hoạch": khung chung, các chế độ Nhập liệu (Toàn bộ | Từng dự án), Theo dự án, So với thực tế (v13.1).
    v12.34 — bỏ chế độ Tổng quan: thiếu / dư người chỉ xem ở Dashboard › Tổng quan nguồn lực (PlanOverview.jsx giữ lại, không dùng).
    Admin nhập và lưu; BOD và trưởng phòng chỉ xem. Dữ liệu nằm ở bảng riêng (xem planStore.js). */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -8,6 +8,7 @@ import { dbTsSent, ensureMonths, useDataTick, weekDone } from "../../core/db.jsx
 import { ROLES, isResigned } from "../../core/domain.jsx";
 import { CTRL, Panel, btnGhost, btnPrimary } from "../../core/ui.jsx";
 import { PER_YEAR, actualByCell, foldMerged, joinYears, normalizeYear, prunePlan, realWeeksOfPair, slotIndexOf, splitYears, weeksOfPair } from "./planCalc.js";
+import { PlanActual } from "./PlanActual.jsx";
 import { PlanFocus } from "./PlanFocus.jsx";
 import { PlanGrid } from "./PlanGrid.jsx";
 import { PlanProjects } from "./PlanProjects.jsx";
@@ -249,6 +250,9 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
             className={`${CTRL} rounded-lg px-6 text-sm font-medium ${mode === "in" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Nhập liệu</button>
           <button onClick={() => setMode("pj")} aria-pressed={mode === "pj"}
             className={`${CTRL} rounded-lg px-6 text-sm font-medium ${mode === "pj" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Theo dự án</button>
+          {/* v13.1 — kế hoạch so với giờ đã gửi */}
+          <button onClick={() => setMode("ac")} aria-pressed={mode === "ac"}
+            className={`${CTRL} rounded-lg px-6 text-sm font-medium ${mode === "ac" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>So với thực tế</button>
         </div>
         {!readOnly && (saving ? <span className="text-xs text-teal-400">Đang lưu…</span>
           : saveErr ? <span className="text-xs text-rose-400" title={saveErr}>Chưa lưu được — bấm Lưu để thử lại</span>
@@ -264,7 +268,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
       )}
 
       <Panel flush
-        title={mode === "pj" ? "Kế hoạch theo dự án" : "Lưới kế hoạch nguồn lực"}
+        title={mode === "pj" ? "Kế hoạch theo dự án" : mode === "ac" ? "Kế hoạch so với thực tế" : "Lưới kế hoạch nguồn lực"}
         sub={<>Năm {start}–{start + 1} · {weeks.length} cột (mỗi tháng 4 tuần) · đơn vị là số người (1 / 0,5 / 0,25)</>}
         right={busy ? <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} /> : null}>
 
@@ -341,7 +345,10 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
           </div>
         )}
 
-        {mode === "pj" ? (
+        {mode === "ac" ? (
+          <PlanActual plan={plan} projects={everyProject} roles={roles} start={start} realWeeks={realWeeks}
+            detail={ts?.detail || []} staff={planStaff} hoursCfg={cfg.hours} prole={prole} loading={!ts} />
+        ) : mode === "pj" ? (
           <PlanProjects plan={plan} projects={everyProject} roles={roles} weeks={view} nowIndex={nowIdx}
             hidden={hidden} detail={ts?.detail || []} employees={cfg.employees || []}
             canToggle={!readOnly && canSaveProjects} onToggle={toggleActive} prole={prole} />
