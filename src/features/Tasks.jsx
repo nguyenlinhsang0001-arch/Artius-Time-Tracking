@@ -78,6 +78,17 @@ export function Tasks({ cfg, saveCfg, flash }) {
   const TL = "tl";
   const TL_TITLE = "Teamleader · chỉ teamleader";
   const isTlRole = (r) => (r ? (typeof r.tl === "boolean" ? r.tl : /^TL/i.test(r.id)) : false);
+  /* v13.14 — gộp vai trò vào team (thiết lập chung planning.merge = { con: cha }, vd TL-2D → 2D), chuyển từ tab Kế hoạch sang đây.
+     Một tầng: vai trò đã là team chính (có vai trò khác gộp vào) thì không gộp tiếp được. Dùng cho lưới Kế hoạch và bộ lọc theo team. */
+  const mergeRaw = cfg.planning?.merge || {};
+  const teamOfRole = (rid) => (mergeRaw[rid] && roles.some((x) => x.id === mergeRaw[rid]) && !mergeRaw[mergeRaw[rid]] ? mergeRaw[rid] : "");
+  const kidsOf = (rid) => roles.filter((x) => teamOfRole(x.id) === rid).map((x) => x.id);
+  const setTeam = async (child, parent) => {
+    const m = { ...mergeRaw };
+    if (parent) m[child] = parent; else delete m[child];
+    const ok = await saveCfg({ ...cfg, planning: { ...(cfg.planning || {}), merge: m } });
+    if (ok !== false) flash(parent ? `Đã gộp ${child} vào team ${parent}.` : `Đã tách ${child} ra riêng.`);
+  };
   const toggleTl = (r) => saveCfg({ ...cfg, roles: roles.map((x) => (x.id === r.id ? { ...x, tl: !isTlRole(r) } : x)) });
   const boxes = [
     ...roles.map((r) => ({ key: `r:${r.id}`, kind: "role", id: r.id, title: `${r.id} · ${r.name}` })),
@@ -277,7 +288,7 @@ export function Tasks({ cfg, saveCfg, flash }) {
      Bấm vào tên -> sửa tên. Bấm đúp vào mã -> sửa mã. */
   const deptAt = (x, y) => document.elementFromPoint(x, y)?.closest("[data-dept-row]")?.getAttribute("data-dept-row") || null;
   const onChipDown = (ev, r) => {
-    if (ev.button !== 0 || ev.target.closest("button")) return;
+    if (ev.button !== 0 || ev.target.closest("button,select")) return;
     const box = ev.currentTarget.getBoundingClientRect();
     const p = { id: r.id, onCode: !!ev.target.closest("[data-role-code]"), mouse: ev.pointerType !== "touch", x0: ev.clientX, y0: ev.clientY, dx: ev.clientX - box.left, dy: ev.clientY - box.top, w: box.width, moved: false };
     press.current = p;
@@ -558,6 +569,17 @@ export function Tasks({ cfg, saveCfg, flash }) {
                       {/* v13.6: tích cấp Teamleader — vai trò được tích thấy tác vụ ô "Teamleader" khi chấm công */}
                       <button onClick={() => toggleTl(r)} title={isTlRole(r) ? "Cấp Teamleader — bấm để bỏ" : "Bấm để đánh dấu cấp Teamleader"}
                         className={`rounded border px-1.5 text-[10px] ${isTlRole(r) ? "border-amber-700 text-amber-300" : "border-slate-700 text-slate-600 hover:text-slate-300"}`}>TL</button>
+                      {/* v13.14: gộp vào team — team chính thì ghi các vai trò gộp vào, không chọn tiếp */}
+                      {kidsOf(r.id).length ? (
+                        <span className="whitespace-nowrap text-[10px] text-teal-400" title="Team chính">+ {kidsOf(r.id).join(", ")}</span>
+                      ) : (
+                        <select value={teamOfRole(r.id)} onChange={(e) => setTeam(r.id, e.target.value)} title="Gộp vào team"
+                          aria-label={`Gộp ${r.id} vào team`}
+                          className={`h-6 max-w-[96px] rounded border bg-slate-900 px-1 text-[10px] ${teamOfRole(r.id) ? "border-teal-800 text-teal-300" : "border-slate-700 text-slate-500"}`}>
+                          <option value="">team —</option>
+                          {roles.filter((x) => x.id !== r.id && !teamOfRole(x.id)).map((x) => <option key={x.id} value={x.id}>→ {x.id}</option>)}
+                        </select>
+                      )}
                       <button onClick={() => setPendingRoleDel(r)} title="Xoá vai trò" className={miniDel}><Trash2 size={13} /></button>
                     </span>
                   ))}

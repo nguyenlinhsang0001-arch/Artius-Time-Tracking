@@ -110,13 +110,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
     if (readOnly) return;
     setPlan((p) => { const f = foldMerged(p, prole); if (f.changed) setDirty(true); return f.plan; });
   }, [prole, readOnly]);
-  const [mergeOpen, setMergeOpen] = useState(false);
-  const setMerge = async (child, parent) => {
-    const m = { ...(cfg.planning?.merge || {}) };
-    if (parent) m[child] = parent; else delete m[child];
-    const ok = await saveCfg({ ...cfg, planning: { ...(cfg.planning || {}), merge: m } });
-    if (ok !== false) flash(parent ? `Đã gộp ${child} vào ${parent} trong kế hoạch.` : `Đã tách ${child} ra riêng.`);
-  };
+  /* v13.14 — gộp vai trò vào team chỉnh ở Nhân sự › Tác vụ › Phòng ban & vai trò; Kế hoạch chỉ đọc planning.merge */
 
   /* ---------- tải lưới ---------- */
   useEffect(() => {
@@ -294,11 +288,6 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
           {mode === "in" && (
             <button onClick={() => window.dispatchEvent(new Event("artius:planNow"))} className={btnGhost}>Về tuần này</button>
           )}
-          {!readOnly && (
-            <button onClick={() => setMergeOpen(!mergeOpen)} aria-expanded={mergeOpen}
-              title="Gộp vai trò con vào vai trò chính trong kế hoạch, vd Teamleader 2D vào Họa viên 2D"
-              className={`${btnGhost} ${mergeOpen ? "border-teal-700 text-teal-300" : ""}`}><Merge size={15} /> Gộp vai trò{Object.keys(merge).length ? ` (${Object.keys(merge).length})` : ""}</button>
-          )}
           <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
             <button onClick={onExport} title="Xuất lưới, tổng theo vai trò, so với thực tế và các bản chốt"
               className={`flex-1 sm:flex-none ${btnGhost}`}><Download size={15} /> Xuất Excel</button>
@@ -313,37 +302,6 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
           )}
           </div>
         </div>
-
-        {mergeOpen && !readOnly && (
-          <div className="border-b border-slate-800 px-3 py-3 md:px-4">
-            <p className="mb-2 text-xs text-slate-500">
-              Vai trò được gộp không còn dòng riêng trong kế hoạch: quân số, nhu cầu và giờ thực tế của nó tính vào vai trò chính.
-              Vai trò của nhân sự ở tab Nhân sự không đổi.
-            </p>
-            <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2 xl:grid-cols-3">
-              {allRoles.map((r) => {
-                const kids = mergedOf.get(r.id);
-                return (
-                  <label key={r.id} className="flex items-center gap-2 text-sm">
-                    <span className="min-w-0 flex-1 truncate"><span className="font-mono text-slate-400">{r.id}</span> <span className="text-slate-300">{r.name}</span></span>
-                    {kids ? <span className="text-xs text-teal-400">nhóm chính · gồm {kids.join(", ")}</span> : (
-                      <select value={merge[r.id] || ""} onChange={(e) => setMerge(r.id, e.target.value)} aria-label={`Gộp ${r.id} vào`}
-                        className="h-8 w-44 rounded-md border border-slate-700 bg-slate-900 px-2 text-xs text-slate-100">
-                        <option value="">Không gộp</option>
-                        {allRoles.filter((x) => x.id !== r.id && !merge[x.id]).map((x) => <option key={x.id} value={x.id}>gộp vào {x.id} · {x.name}</option>)}
-                      </select>
-                    )}
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-        )}
-        {readOnly && Object.keys(merge).length > 0 && (
-          <div className="border-b border-slate-800 px-3 py-2 text-xs text-slate-500 md:px-4">
-            Gộp trong kế hoạch: {Object.entries(merge).map(([k, v]) => `${k} → ${v}`).join(" · ")}
-          </div>
-        )}
 
         {mode === "ac" ? (
           <PlanActual plan={plan} projects={everyProject} roles={roles} start={start} realWeeks={realWeeks} hidden={hidden}

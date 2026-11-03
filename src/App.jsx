@@ -1,6 +1,12 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.12
+   ARTIUS — Quản lý giờ công theo dự án · v13.14
+   Mới ở v13.14 — Gộp vai trò vào team (planning.merge) chuyển sang Nhân sự › Tác vụ › Phòng ban & vai trò: mỗi chip vai trò có ô
+     "team" (→ 2D…), team chính ghi các vai trò gộp vào. Bỏ nút / bảng Gộp vai trò ở tab Kế hoạch.
+
+   Mới ở v13.13 — Bộ lọc vai trò lọc theo TEAM: dùng bảng Gộp vai trò của Kế hoạch (cfg.planning.merge, vd TL-2D → 2D, TLTK → TK),
+     chọn 2D là ra cả Teamleader 2D. Ô chọn chỉ liệt kê team, ghi kèm vai trò gộp ("2D · Họa viên 2D + TL-2D").
+
    Mới ở v13.12 — Bảng công, Nhân sự, Giờ ngoài dự án, Ma trận: ô Bộ phận + Vai trò gom vào nút phễu lọc (FilterButton ở core/ui.jsx),
      phễu sáng và có số khi đang lọc. Bảng chú thích (?) bỏ chữ "Thanh tổng:".
 
