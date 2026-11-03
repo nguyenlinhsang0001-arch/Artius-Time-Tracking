@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from "react";
 import { Legend } from "recharts";
 import {
-  Download, ChevronLeft, ChevronRight, CheckCircle2, Loader2, Lock, Pencil, Check, X, Unlock, Search, Bell, MoreHorizontal,
+  Download, ChevronLeft, ChevronRight, CheckCircle2, Loader2, Lock, Pencil, Check, X, Unlock, Search, Bell,
 } from "lucide-react";
 import { sendNudge, fetchNudgeLog, fetchNudgeLogRange } from "../push.js";
 import { DEFAULT_HOURS, DOW, addDays, dLabel, effortHoursFor, fmt, lastOfMonth, makeHolidayIndex, minHoursFor, mondayOf, mondaysDue, mondaysOfMonth, pad, parseD, prevYm, weekDays, ymLabel, ymOf, ymsBetween } from "../core/date.jsx";
@@ -766,17 +766,16 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
   };
   const NameCell = ({ e }) => (
     <td className="sticky left-0 z-10 border-b border-slate-800/70 bg-slate-900 px-3 py-1.5 md:px-4">
-      {/* v13.24 — nút "..." mở bảng chi tiết giờ theo dự án / tác vụ, tách khỏi nút tên (vẫn mở ngăn kéo sửa giờ) */}
-      <div className="flex min-w-[150px] items-center gap-1">
-        <button onClick={() => { if (mode === "month") setMonday(fmt(mondayOf(ym === ymOf(today) ? new Date() : parseD(`${ym}-01`)))); openDrawer(e.id); }} title={readOnly ? undefined : "Sửa giờ công tuần này"} className={`block min-w-0 flex-1 text-left ${readOnly ? "cursor-default" : ""}`}>
-          <span className={`block truncate text-sm text-slate-100 ${readOnly ? "" : "hover:text-teal-300"}`}>{e.name}{isResigned(e) && <ResignedBadge />}</span>
-          <span className="block truncate text-[11px] text-slate-500">{roleTitle(e.role) || e.dept}</span>
-        </button>
-        <button onClick={() => toggleDet(e.id)} aria-expanded={openDet.has(e.id)} title="Chi tiết giờ theo dự án và tác vụ"
-          className={`shrink-0 rounded-md p-1 ${openDet.has(e.id) ? "bg-slate-800 text-teal-300" : "text-slate-500 hover:bg-slate-800 hover:text-slate-200"}`}>
-          <MoreHorizontal size={16} />
-        </button>
-      </div>
+      {/* v13.26 — bấm tên mở bảng chi tiết giờ theo dự án / tác vụ (trước là mở ngăn kéo sửa giờ);
+          nút "..." đã bỏ, sửa giờ công dùng nút bút chì ở cột MỞ KHOÁ / SỬA */}
+      <button onClick={() => toggleDet(e.id)} aria-expanded={openDet.has(e.id)} title="Chi tiết giờ theo dự án và tác vụ"
+        className="block w-full min-w-[150px] text-left">
+        <span className={`flex items-center gap-1 truncate text-sm ${openDet.has(e.id) ? "text-teal-300" : "text-slate-100 hover:text-teal-300"}`}>
+          <ChevronRight size={13} className={`shrink-0 text-slate-500 transition-transform ${openDet.has(e.id) ? "rotate-90" : ""}`} />
+          <span className="truncate">{e.name}{isResigned(e) && <ResignedBadge />}</span>
+        </span>
+        <span className="block truncate pl-[17px] text-[11px] text-slate-500">{roleTitle(e.role) || e.dept}</span>
+      </button>
     </td>
   );
   const DeptRow = ({ g, span }) => (

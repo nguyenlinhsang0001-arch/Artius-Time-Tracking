@@ -1,6 +1,10 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.25
+   ARTIUS — Quản lý giờ công theo dự án · v13.26
+   Mới ở v13.26 — Bảng công: bấm thẳng vào TÊN nhân sự để bung bảng chi tiết giờ theo dự án / tác vụ (trước là mở
+     ngăn kéo sửa giờ công); mũi tên ‹ › trước tên cho biết đang đóng hay mở. Bỏ hẳn nút "..." khỏi giao diện.
+     Sửa giờ công giờ đi qua nút bút chì ở cột MỞ KHOÁ / SỬA (chế độ Tuần) hoặc bấm vào ô ngày rồi chọn sửa.
+
    Mới ở v13.25 — Bảng công, bảng chi tiết "...": rê chuột vào một dòng dự án thì hiện thẻ chú thích giống tab
      Nhân sự — danh sách tác vụ của người đó trong đúng dự án đó (giờ và %, tăng ca xanh ngọc xếp cuối, trống việc
      xám), kèm "Chiếm trong tổng giờ dự án" (% trên tổng giờ đã gửi của dự án trong kỳ, tính trên toàn bộ nhân sự
