@@ -10,7 +10,7 @@ import { LAST_STORAGE_ERROR, bumpData, commitTs, daySent, dbTs, dbTsSent, ensure
 import { DEFAULT_PHASE, DEPTS, LEAVE_TASKS, NO_PROJECT, NUDGE_GAP_MIN, OT_TASKS, ResignedBadge, empNameTag, fmtH, goneOnDay, isIdleTask, isLeaveTask, isOtId, isResigned, norm, pastCut, pastOpenUntil, pastWeeks, phaseLabel, roleTitle, supportKind, taskText } from "../core/domain.jsx";
 import { isLight } from "../core/theme.jsx";
 import { CTRL, FilterButton, PeriodField, Kpi, Panel, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
-import { allocLimits } from "../shared/alloc.jsx";
+import { ALLOC_ST, allocLimits, allocState } from "../shared/alloc.jsx";
 import { dayStyle, dayStyleSm } from "../shared/dayStyle.jsx";
 import { SupportPanel } from "../shared/support.jsx";
 import { EmployeeArea } from "./Timesheet.jsx";
@@ -582,11 +582,16 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
     const low = s.std > 0 && base + (s.draft || 0) < (s.std * lim.under) / 100;
     // v7.2: trống việc là khúc xám nằm ngay sau khúc giờ chuẩn (vẫn tính là giờ công, không bị coi là thiếu)
     const shown = Math.min(base, s.std) || base, idle = Math.min(s.idle || 0, shown), blue = shown - idle;
+    /* v13.22 — bỏ ghi chú "trống x h", thay bằng chip trạng thái tải giống tab Nhân sự.
+       Dùng đúng allocState / pct của shared/alloc.jsx để hai tab luôn ra cùng một con số:
+       tải = tổng giờ − trống việc, % tải = tải / giờ chuẩn kỳ. */
+    const st = allocState(s.t, s.ot, s.eff, s.idle || 0, s.std, lim);
+    const loadPctE = s.std ? Math.round(((s.t - (s.idle || 0)) / s.std) * 100) : null;
     return (
-      <div className="min-w-[150px]" title={`Chuẩn ${fmtH(blue)} h${idle ? ` · trống việc ${fmtH(idle)} h` : ""} · cố gắng ${fmtH(s.eff)} h · OT ${fmtH(s.ot)} h${miss ? ` · thiếu ${fmtH(miss)} h` : ""}`}>
-        <div className="whitespace-nowrap font-mono text-sm"><span className="font-semibold text-slate-100">{fmtH(s.t)}</span><span className="text-slate-500"> / {fmtH(s.std)} h</span>
-          {idle > 0 && <span className="ml-1.5 text-[11px] text-slate-400">trống {fmtH(idle)}</span>}
-          {miss > 0 && <span className={`miss-txt ml-1.5 text-[11px] ${low ? "text-amber-400" : "text-slate-500"}`}>thiếu {fmtH(miss)}</span>}</div>
+      <div className="min-w-[215px]" title={`Chuẩn ${fmtH(blue)} h${idle ? ` · trống việc ${fmtH(idle)} h` : ""} · cố gắng ${fmtH(s.eff)} h · OT ${fmtH(s.ot)} h${miss ? ` · thiếu ${fmtH(miss)} h` : ""}`}>
+        <div className="flex items-center whitespace-nowrap font-mono text-sm"><span className="font-semibold text-slate-100">{fmtH(s.t)}</span><span className="text-slate-500"> / {fmtH(s.std)} h</span>
+          {miss > 0 && <span className={`miss-txt ml-1.5 text-[11px] ${low ? "text-amber-400" : "text-slate-500"}`}>thiếu {fmtH(miss)}</span>}
+          {s.std > 0 && <span className={`ml-auto rounded-full border px-1.5 font-sans text-[10px] leading-[15px] ${ALLOC_ST[st][1]}`}>{ALLOC_ST[st][0]}{loadPctE != null ? ` · ${loadPctE}%` : ""}</span>}</div>
         <div className="mt-1 flex h-[6px] gap-px overflow-hidden rounded-full bg-slate-800">
           {blue > 0 && <i className="block h-full bg-blue-400" style={{ width: w(blue) }} />}
           {idle > 0 && <i className="block h-full bg-slate-400" style={{ width: w(idle) }} />}

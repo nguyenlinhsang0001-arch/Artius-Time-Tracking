@@ -1,6 +1,11 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.21
+   ARTIUS — Quản lý giờ công theo dự án · v13.22
+   Mới ở v13.22 — Bảng công, cột TỔNG / CHUẨN của từng nhân sự: bỏ ghi chú "trống x h", thay bằng chip trạng thái tải
+     (Quá tải / Thiếu giờ / Trống việc / Bình thường · %) dùng chung allocState và công thức % của tab Nhân sự
+     (tải = tổng giờ − trống việc, % = tải / giờ chuẩn kỳ) nên hai tab luôn khớp nhau. Giờ trống việc vẫn còn ở
+     khúc xám trên thanh và ở tooltip.
+
    Mới ở v13.21 — Bảng công, thanh số liệu rút còn 4 ô và mỗi ô gói trong ĐÚNG MỘT dòng (nowrap, không xuống dòng thứ hai):
      Tổng giờ đã gửi hiện "657 / 616 h chuẩn · vượt 41 h (+6.7%)"; gộp "Giờ làm việc" với "Trong đó cố gắng · OT" thành một ô
      "Giờ làm việc" = số giờ · % trên tổng đã gửi · cố gắng (h và % trong giờ làm việc) · OT (h và % trong giờ làm việc);
