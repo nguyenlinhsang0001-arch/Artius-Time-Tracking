@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.11
+   ARTIUS — Quản lý giờ công theo dự án · v13.12
+   Mới ở v13.12 — Bảng công, Nhân sự, Giờ ngoài dự án, Ma trận: ô Bộ phận + Vai trò gom vào nút phễu lọc (FilterButton ở core/ui.jsx),
+     phễu sáng và có số khi đang lọc. Bảng chú thích (?) bỏ chữ "Thanh tổng:".
+
    Mới ở v13.11 — Bảng công, Nhân sự, Giờ ngoài dự án, Ma trận: ô lọc "Mọi vai trò" cạnh ô Bộ phận (vai trò đang có người,
      thu theo bộ phận đang chọn). Bảng công: chú thích màu gộp vào nút (?) cạnh Khoá quá hạn. Khung Hỗ trợ dự án luôn thu gọn
      khi mở trang.

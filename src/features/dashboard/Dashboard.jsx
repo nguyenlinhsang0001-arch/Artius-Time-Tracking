@@ -6,7 +6,7 @@ import {
 import { DEFAULT_HOURS, DOW, addDays, dFull, dLabel, effortHoursFor, firstOfMonth, lastOfMonth, fmt, makeHolidayIndex, minHoursFor, mondayOf, mondaysDue, parseD, prevYm, ymOf, ymsBetween } from "../../core/date.jsx";
 import { dbTs, dbTsSent, ensureMonths, loadDB, loadXlsx, useDataTick, weekDone } from "../../core/db.jsx";
 import { DEFAULT_PHASE, DEPTS, LEAVE_TASKS, NO_PROJECT, OT_TASKS, PHASES, budgetTotal, empNameTag, fmtH, isIdleTask, isLeaveTask, isOtId, isResigned, norm, otBandKey, otDayKind, otRateFor, otText, phaseLabel, projBudgets, roleTitle, supportKind, taskText } from "../../core/domain.jsx";
-import { CTRL, DateRangeField, Panel, btnGhost, btnPrimary, inputCls, selectCls } from "../../core/ui.jsx";
+import { CTRL, DateRangeField, FilterButton, Panel, btnGhost, btnPrimary, inputCls, selectCls } from "../../core/ui.jsx";
 import { ALLOC_ST, allocLimits, allocState } from "../../shared/alloc.jsx";
 import { ProjectProgress } from "./ProjectProgress.jsx";
 import { OffProject } from "./OffProject.jsx";
@@ -400,18 +400,17 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
               {!atNow && <button onClick={() => pickMode(pMode === "month" ? "month" : "week")} className="ml-1 shrink-0 whitespace-nowrap text-xs text-teal-400 hover:text-teal-300">{pMode === "month" ? "Tháng này" : "Tuần này"}</button>}
               {loading && <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} />}
             </div>
-            <div className="w-full sm:w-48">
+            {/* v13.12 — bộ phận + vai trò gom vào nút phễu */}
+            <FilterButton count={(fDept !== "all" ? 1 : 0) + (fRole !== "all" ? 1 : 0)} onClear={() => { setFDept("all"); setFRole("all"); }}>
               <select value={fDept} onChange={(e) => setFDept(e.target.value)} className={selectCls} aria-label="Bộ phận">
                 <option value="all">Tất cả bộ phận</option>
                 {DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
-            </div>
-            <div className="w-full sm:w-48">
               <select value={fRole} onChange={(e) => setFRole(e.target.value)} className={selectCls} aria-label="Vai trò">
                 <option value="all">Mọi vai trò</option>
                 {roleOpts.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
               </select>
-            </div>
+            </FilterButton>
             <div className="relative w-full sm:w-56">
               <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm nhân sự" className={`pl-9 ${inputCls}`} />

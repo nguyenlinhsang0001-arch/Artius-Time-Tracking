@@ -9,7 +9,7 @@ import { DEFAULT_HOURS, DOW, addDays, dLabel, effortHoursFor, fmt, lastOfMonth, 
 import { LAST_STORAGE_ERROR, bumpData, commitTs, daySent, dbTs, dbTsSent, ensureMonths, loadXlsx, refreshTs, slot, useDataTick, weekDone } from "../core/db.jsx";
 import { DEFAULT_PHASE, DEPTS, LEAVE_TASKS, NO_PROJECT, NUDGE_GAP_MIN, OT_TASKS, ResignedBadge, empNameTag, fmtH, goneOnDay, isIdleTask, isLeaveTask, isOtId, isResigned, norm, pastCut, pastOpenUntil, pastWeeks, phaseLabel, roleTitle, supportKind, taskText } from "../core/domain.jsx";
 import { isLight } from "../core/theme.jsx";
-import { CTRL, Kpi, Panel, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
+import { CTRL, FilterButton, Kpi, Panel, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
 import { allocLimits } from "../shared/alloc.jsx";
 import { dayStyle, dayStyleSm } from "../shared/dayStyle.jsx";
 import { SupportPanel } from "../shared/support.jsx";
@@ -622,8 +622,8 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
         <span key={k} className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded-[3px]" style={dayStyleSm(k)} />{l}</span>
       ))}
       <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full bg-teal-400" />Tăng ca (ô tuần ghi <span className="font-mono text-teal-400">+h</span>)</span>
-      <span className="flex flex-wrap items-center gap-1.5 border-t border-slate-800 pt-1.5 text-slate-500">Thanh tổng:
-        <i className="ml-1 inline-block h-2 w-3 rounded-sm bg-blue-400" />chuẩn
+      <span className="flex flex-wrap items-center gap-1.5 border-t border-slate-800 pt-1.5 text-slate-500">
+        <i className="inline-block h-2 w-3 rounded-sm bg-blue-400" />chuẩn
         <i className="ml-1 inline-block h-2 w-3 rounded-sm bg-violet-400" />cố gắng
         <i className="ml-1 inline-block h-2 w-3 rounded-sm bg-teal-400" />OT
         <i className="ml-1 inline-block h-2 w-3 rounded-sm" style={isLight() ? { background: "#fed7aa" } : { boxShadow: "inset 0 0 0 1px #fbbf24aa", background: "repeating-linear-gradient(135deg,#fbbf2455 0 2px,transparent 2px 4px)" }} />thiếu</span>
@@ -853,14 +853,17 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
           <button onClick={() => shift(1)} className={`${CTRL} w-11 rounded-md border border-slate-700 text-slate-400 hover:text-slate-100`}><ChevronRight size={16} className="mx-auto" /></button>
           {!isNow && <button onClick={() => { setMonday(fmt(mondayOf(new Date()))); setYm(ymOf(today)); }} className="ml-1 text-xs text-teal-400 hover:text-teal-300">{mode === "week" ? "Tuần này" : "Tháng này"}</button>}
         </div>
-        {!oneDept && <select value={fDept} onChange={(e) => setFDept(e.target.value)} className={`w-full sm:w-44 ${selectCls}`} aria-label="Bộ phận">
-          <option value="all">Mọi bộ phận</option>
-          {DEPTS.map((d) => <option key={d}>{d}</option>)}
-        </select>}
-        <select value={fRole} onChange={(e) => setFRole(e.target.value)} className={`w-full sm:w-48 ${selectCls}`} aria-label="Vai trò">
-          <option value="all">Mọi vai trò</option>
-          {roleOpts.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
-        </select>
+        {/* v13.12 — bộ phận + vai trò gom vào nút phễu */}
+        <FilterButton count={(fDept !== "all" ? 1 : 0) + (fRole !== "all" ? 1 : 0)} onClear={() => { setFDept("all"); setFRole("all"); }}>
+          {!oneDept && <select value={fDept} onChange={(e) => setFDept(e.target.value)} className={selectCls} aria-label="Bộ phận">
+            <option value="all">Mọi bộ phận</option>
+            {DEPTS.map((d) => <option key={d}>{d}</option>)}
+          </select>}
+          <select value={fRole} onChange={(e) => setFRole(e.target.value)} className={selectCls} aria-label="Vai trò">
+            <option value="all">Mọi vai trò</option>
+            {roleOpts.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
+          </select>
+        </FilterButton>
         <div className="relative w-full sm:w-56">
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm nhân sự" className={`pl-9 ${inputCls}`} />

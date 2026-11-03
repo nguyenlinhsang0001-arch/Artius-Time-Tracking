@@ -1,7 +1,7 @@
 /* ARTIUS TIME v11 — tách từ App.jsx, nội dung giữ nguyên. */
 import React, { useState, useEffect, useRef } from "react";
 import {
-  Download, Trash2, AlertTriangle, ChevronUp, ChevronDown, CheckCircle2, Check, CalendarDays, Share, Sun, Moon, Monitor,
+  Download, Trash2, AlertTriangle, ChevronUp, ChevronDown, CheckCircle2, Check, CalendarDays, Share, Sun, Moon, Monitor, Filter,
 } from "lucide-react";
 import { DEFAULT_HOURS, DOW_MINI, OT_ALERT, addDays, dFull, dLabel, effortHoursFor, fmt, holidayRingBg, makeHolidayIndex, minHoursFor, mondayOf, pad, parseD, weekDays, ymOf } from "./date.jsx";
 import { dbTs, ensureMonths } from "./db.jsx";
@@ -29,7 +29,7 @@ export function ThemeToggle() {
   );
 }
 
-export const APP_VERSION = "v13.11";
+export const APP_VERSION = "v13.12";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -165,6 +165,33 @@ export function ConfirmDialog({ open, title, desc, confirmLabel = "Xoá", cancel
    App đồng bộ từ cfg.holidays mỗi lần render (như syncRoles), CalendarPanel tự khoanh đỏ ngày lễ. */
 let HOL_IDX = makeHolidayIndex([]);
 export const syncHolidays = (list) => { HOL_IDX = makeHolidayIndex(Array.isArray(list) ? list : []); };
+
+/* v13.12 — nút phễu lọc: gom các ô lọc (bộ phận, vai trò…) vào một bảng nhỏ. count = số bộ lọc đang bật. */
+export function FilterButton({ count = 0, onClear, children }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+  return (
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} title="Lọc theo bộ phận, vai trò"
+        className={`${CTRL} relative flex w-11 items-center justify-center rounded-md border ${open || count ? "border-teal-600 text-teal-300" : "border-slate-700 text-slate-400 hover:text-slate-100"}`}>
+        <Filter size={15} />
+        {count > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-teal-600 px-1 font-mono text-[10px] text-white">{count}</span>}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-40 mt-1 flex w-64 flex-col gap-2 rounded-lg border border-slate-700 bg-slate-900 p-3 shadow-2xl">
+          {children}
+          {count > 0 && onClear && <button onClick={onClear} className="self-start text-xs text-teal-400 hover:text-teal-300">Bỏ lọc</button>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function CalendarPanel({ value, onSelect, dayStatus, view: viewProp, onViewChange, markSelected = true, markWeek = false, rangeStart = null, rangeEnd = null, hint = null }) {
   const base = value ? parseD(value) : new Date();
