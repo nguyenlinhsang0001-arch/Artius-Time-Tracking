@@ -137,9 +137,6 @@ export function StaffAllocation({ matrix, otByEmp, effortByEmp, idleByEmp = new 
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-slate-400" />Trống việc (không tính tải)</span>
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-teal-400" />OT</span>
             <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-violet-400" />Giờ cố gắng</span>
-            <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-px bg-slate-100/55" />{fmtH(std)} h giờ chuẩn của kỳ</span>
-            <span className="text-amber-400">⌃ thiếu giờ chuẩn</span>
-            <span className="text-slate-600">Bấm một người để xem theo dự án</span>
           </div>
           {groups.map((g) => (
             <div key={g.dept}>

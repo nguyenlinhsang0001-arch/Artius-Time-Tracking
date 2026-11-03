@@ -1,6 +1,12 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.7
+   ARTIUS — Quản lý giờ công theo dự án · v13.8
+   Mới ở v13.8 — Thanh thời gian của Nhân sự, Giờ ngoài dự án (Bảng công) và Ma trận (Dashboard):
+     · Bỏ tiêu đề + dòng kỳ / giờ chuẩn, bỏ nút Tuần này / Tuần trước / 7 ngày qua; bỏ chú thích "giờ chuẩn của kỳ",
+       "thiếu giờ chuẩn", "Bấm một người…" ở tab Nhân sự.
+     · [Tuần | Tháng] ‹ ô lịch › : mặc định tuần này (T2 → hôm nay); ‹ › lùi / tiến một tuần hoặc một tháng, không quá kỳ hiện tại;
+       ô lịch chọn khoảng tuỳ ý, khi đó ‹ › dịch đúng bằng độ dài khoảng.
+
    Mới ở v13.7 — Trưởng phòng: tab Bảng công có đủ 3 tab con Bảng công | Nhân sự | Giờ ngoài dự án như Admin.
      Nhân sự và Giờ ngoài dự án chỉ xem, chỉ nhân sự phòng mình (gồm cả trưởng phòng), cùng nguồn với Ma trận của trưởng phòng.
 

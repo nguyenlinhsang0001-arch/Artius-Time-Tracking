@@ -1,9 +1,9 @@
 /* ARTIUS TIME v11 — tách từ App.jsx, nội dung giữ nguyên. */
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
-  Download, Loader2, RotateCcw, X, Search,
+  Download, Loader2, RotateCcw, X, Search, ChevronLeft, ChevronRight,
 } from "lucide-react";
-import { DEFAULT_HOURS, DOW, addDays, dFull, dLabel, effortHoursFor, firstOfMonth, fmt, makeHolidayIndex, minHoursFor, mondayOf, mondaysDue, parseD, prevYm, ymOf, ymsBetween } from "../../core/date.jsx";
+import { DEFAULT_HOURS, DOW, addDays, dFull, dLabel, effortHoursFor, firstOfMonth, lastOfMonth, fmt, makeHolidayIndex, minHoursFor, mondayOf, mondaysDue, parseD, prevYm, ymOf, ymsBetween } from "../../core/date.jsx";
 import { dbTs, dbTsSent, ensureMonths, loadDB, loadXlsx, useDataTick, weekDone } from "../../core/db.jsx";
 import { DEFAULT_PHASE, DEPTS, LEAVE_TASKS, NO_PROJECT, OT_TASKS, PHASES, budgetTotal, empNameTag, fmtH, isIdleTask, isLeaveTask, isOtId, isResigned, norm, otBandKey, otDayKind, otRateFor, otText, phaseLabel, projBudgets, roleTitle, supportKind, taskText } from "../../core/domain.jsx";
 import { CTRL, DateRangeField, Panel, btnGhost, btnPrimary, inputCls, selectCls } from "../../core/ui.jsx";
@@ -20,8 +20,10 @@ import { ResourcePane } from "./ResourcePane.jsx";
 export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "mtx", "off"], hideBar = false }) {
   const dataTick = useDataTick();   // v1.9: số liệu tự cập nhật khi có người vừa gửi
   const now = new Date();
-  const [from, setFrom] = useState(fmt(firstOfMonth(now)));
+  /* v13.8 — kỳ mặc định là tuần này (T2 → hôm nay); chọn Tuần | Tháng, ‹ › lùi / tiến một kỳ, ô lịch chọn khoảng tuỳ ý */
+  const [from, setFrom] = useState(fmt(mondayOf(now)));
   const [to, setTo] = useState(fmt(now));
+  const [pMode, setPMode] = useState("week");   // week | month | custom
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [fDept, setFDept] = useState("all");   // lọc bộ phận
@@ -69,15 +71,33 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
   };
   const clearFilters = () => { setFDept("all"); setQ(""); };
   const hasFilter = fDept !== "all" || q.trim() !== "";
-  // v5.6: chọn nhanh kỳ — Tuần này (T2 → hôm nay), 7 ngày qua, Tháng này (ngày 1 → hôm nay)
   const today = fmt(now);
-  const QUICK = [
-    ["week", "Tuần này", fmt(mondayOf(now)), today],
-    ["lweek", "Tuần trước", fmt(addDays(mondayOf(now), -7)), fmt(addDays(mondayOf(now), -1))],   // v6.6: T2 → CN tuần trước
-    ["7d", "7 ngày qua", fmt(addDays(now, -6)), today],
-    ["month", "Tháng này", fmt(firstOfMonth(now)), today],
-  ];
-  const quickOn = QUICK.find(([, , a, b]) => a === from && b === to)?.[0];
+  /* v13.8 — kỳ theo Tuần / Tháng chứa ngày anchor; kỳ hiện tại tính tới hôm nay */
+  const clip = (d) => (d > today ? today : d);
+  const periodOf = (mode, anchor) => mode === "month"
+    ? [fmt(firstOfMonth(anchor)), clip(fmt(lastOfMonth(anchor)))]
+    : [fmt(mondayOf(anchor)), clip(fmt(addDays(mondayOf(anchor), 6)))];
+  const pickMode = (m) => { const [a, b] = periodOf(m, now); setPMode(m); setFrom(a); setTo(b); };
+  const atNow = to >= today;
+  const stepPeriod = (dir) => {
+    if (dir > 0 && atNow) return;
+    if (pMode === "custom") {
+      const n = Math.round((parseD(to) - parseD(from)) / 864e5) + 1;
+      const a = fmt(addDays(parseD(from), dir * n));
+      if (a > today) return;
+      setFrom(a); setTo(clip(fmt(addDays(parseD(to), dir * n))));
+      return;
+    }
+    const f = parseD(from);
+    const anchor = pMode === "month" ? new Date(f.getFullYear(), f.getMonth() + dir, 1) : addDays(f, 7 * dir);
+    const [a, b] = periodOf(pMode, anchor);
+    setFrom(a); setTo(b);
+  };
+  const pickRange = (a, b) => {
+    const [wa, wb] = periodOf("week", parseD(a)), [ma, mb] = periodOf("month", parseD(a));
+    setPMode(a === wa && b === wb ? "week" : a === ma && b === mb ? "month" : "custom");
+    setFrom(a); setTo(b);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -352,17 +372,22 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
       )}
 
       {(dTab === "ppl" || dTab === "mtx" || dTab === "off") && (
-        <Panel title={dTab === "mtx" ? "Ma trận giờ công" : dTab === "off" ? "Giờ ngoài dự án" : "Nhân sự theo kỳ"} flush
-          sub={<>{QUICK.find(([k]) => k === quickOn)?.[1] || "Kỳ tuỳ chọn"} · {dLabel(from)} – {dLabel(to)} · giờ chuẩn của kỳ <span className="font-mono text-amber-400">{fmtH(stdBase)} h</span>{stdToday > 0 && <span className="text-slate-500"> (hôm nay tính khi đã gửi)</span>}</>}
-          right={loading ? <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} /> : null}>
+        <Panel flush>
           {/* thanh công cụ của tab: kỳ, bộ phận, tìm người, tải lại, Excel — chỉ tác động lên tab Nhân sự */}
           <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
             <div className="flex max-w-full overflow-x-auto rounded-md border border-slate-700">
-              {QUICK.map(([k, l, a, b]) => (
-                <button key={k} onClick={() => setRange(a, b)} className={segBtn(quickOn === k)}>{l}</button>
+              {[["week", "Tuần"], ["month", "Tháng"]].map(([k, l]) => (
+                <button key={k} onClick={() => pickMode(k)} className={segBtn(pMode === k)}>{l}</button>
               ))}
             </div>
-            <div className="w-full sm:w-72"><DateRangeField from={from} to={to} onChange={setRange} /></div>
+            <div className="flex w-full items-center gap-1.5 sm:w-auto">
+              <button onClick={() => stepPeriod(-1)} title={pMode === "month" ? "Tháng trước" : pMode === "week" ? "Tuần trước" : "Lùi một khoảng"}
+                className={`${CTRL} w-11 shrink-0 rounded-md border border-slate-700 text-slate-400 hover:text-slate-100`}><ChevronLeft size={16} className="mx-auto" /></button>
+              <div className="min-w-0 flex-1 sm:w-72 sm:flex-none"><DateRangeField from={from} to={to} onChange={pickRange} /></div>
+              <button onClick={() => stepPeriod(1)} disabled={atNow} title={pMode === "month" ? "Tháng sau" : pMode === "week" ? "Tuần sau" : "Tiến một khoảng"}
+                className={`${CTRL} w-11 shrink-0 rounded-md border border-slate-700 text-slate-400 hover:text-slate-100 disabled:opacity-30`}><ChevronRight size={16} className="mx-auto" /></button>
+              {loading && <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} />}
+            </div>
             <div className="w-full sm:w-48">
               <select value={fDept} onChange={(e) => setFDept(e.target.value)} className={selectCls} aria-label="Bộ phận">
                 <option value="all">Tất cả bộ phận</option>
