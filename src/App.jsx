@@ -1,6 +1,11 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.30
+   ARTIUS — Quản lý giờ công theo dự án · v13.31
+   Mới ở v13.31 — Chấm công: gửi xong cả tuần thì ẩn hẳn banner "đang mở chấm bù / đã quá hạn" (lời nhắc bấm Gửi
+     không còn việc gì để làm). Nút "Excel tăng ca" hiện cả ở tab Dashboard cá nhân, lấy đúng tháng đang mở trên
+     Lịch tháng ở đó (phần gom giờ và dựng file tách sang shared/otReport.js để hai màn dùng chung một hàm).
+     Mode sáng: số tháng trên nút đổi sang teal đậm cho đủ tương phản.
+
    Mới ở v13.30 — Nút "Excel tăng ca" dời từ chân bảng Chấm công lên header, nằm ngay bên trái nút sáng/tối,
      và GHI RÕ THÁNG sẽ xuất ngay trên nút ("Excel tăng ca 11/2026") để nhân viên không xuất nhầm tháng.
      Tháng vẫn theo tuần đang mở, đổi tuần thì số trên nút đổi theo. Nút chỉ hiện khi đang ở tab Chấm công.
@@ -1039,6 +1044,10 @@ export function AppMain() {
         input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
+        /* v13.31 — số tháng trên nút "Excel tăng ca": mode sáng đổi sang teal đậm cho đủ tương phản
+           (teal-300 vốn dành cho nền tối, nằm trên nền trắng thì mờ) */
+        html[data-theme="light"] .ot-ym { color: #0f766e; }
+
         /* v7.9 — rê chuột vào ô ngày (Bảng công Tuần/Tháng, Lịch tháng cá nhân): viền xanh lá nhạt bám theo góc bo của ô */
         .cell-hov { position: relative; }
         .cell-hov:hover { outline: 2px solid #86efac; outline-offset: 1px; z-index: 2; }
@@ -1089,12 +1098,12 @@ export function AppMain() {
             <div className="flex min-w-0 items-center">
               <InstallButton />
               {/* v13.30 — Excel tăng ca: ghi rõ tháng sẽ xuất ngay trên nút, tránh xuất nhầm tháng */}
-              {tab === "ts" && otBtn && (
+              {(tab === "ts" || tab === "edash") && otBtn && (
                 <button onClick={otBtn.run} disabled={otBtn.busy}
                   title={`Xuất bảng chấm công ngoài giờ tháng ${otBtn.ym.slice(5)}/${otBtn.ym.slice(0, 4)} theo mẫu giấy công ty — chỉ gồm giờ đã gửi`}
                   className="mr-2 hidden h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-slate-100 disabled:opacity-40 md:inline-flex">
                   {otBtn.busy ? <Loader2 className="animate-spin" size={14} /> : <Download size={14} />}
-                  Excel tăng ca <span className="font-mono text-teal-300">{otBtn.ym.slice(5)}/{otBtn.ym.slice(0, 4)}</span>
+                  Excel tăng ca <span className="ot-ym font-mono font-semibold text-teal-300">{otBtn.ym.slice(5)}/{otBtn.ym.slice(0, 4)}</span>
                 </button>
               )}
               <span className={hasAcct ? "hidden md:contents" : "contents"}><ThemeToggle /></span>
@@ -1192,8 +1201,8 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
                     Nhân viên thường vẫn chỉ có Dashboard cá nhân như cũ. */}
                 {tab === "edash" && (me.type === "head" && headDashCfg
                   ? <HeadDashArea cfg={headDashCfg} flash={flash}
-                      me={<EmployeeDashboard cfg={cfg} empId={me.empId} onGoTimesheet={(mon) => { setTsMonday(mon || null); setTab("ts"); }} />} />
-                  : <EmployeeDashboard cfg={cfg} empId={me.empId} onGoTimesheet={(mon) => { setTsMonday(mon || null); setTab("ts"); }} />)}
+                      me={<EmployeeDashboard cfg={cfg} empId={me.empId} flash={flash} onOtReady={setOtBtn} onGoTimesheet={(mon) => { setTsMonday(mon || null); setTab("ts"); }} />} />
+                  : <EmployeeDashboard cfg={cfg} empId={me.empId} flash={flash} onOtReady={setOtBtn} onGoTimesheet={(mon) => { setTsMonday(mon || null); setTab("ts"); }} />)}
                 {tab === "eset" && <EmployeeSettings cfg={cfg} empId={me.empId} onSignOut={signOut} />}
                 {/* v13.7 — trưởng phòng thấy đủ 3 tab con của Bảng công; Nhân sự và Giờ ngoài dự án chỉ xem, nhân sự phòng mình gồm cả trưởng phòng */}
                 {tab === "sheet" && me.type === "head" && headCfg && <SheetArea cfg={headDashCfg || headCfg} flash={flash}><AdminTimesheet cfg={headCfg} flash={flash} onDirtyChange={setSheetDirty} oneDept onSupport={supportSave} /></SheetArea>}

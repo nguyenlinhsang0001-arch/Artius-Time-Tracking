@@ -9,6 +9,7 @@ import { dbTs, ensureMonths, isOn, sdel, sget, sset, useDataTick } from "../core
 import { DEFAULT_PHASE, fmtH, isIdleTask, isLeaveTask, isOtId, roleTitle } from "../core/domain.jsx";
 import { useTheme } from "../core/theme.jsx";
 import { APP_VERSION, Panel, btnGhost, btnPrimary } from "../core/ui.jsx";
+import { runOtExport } from "../shared/otReport.js";   // v13.31: xuất Excel tăng ca, dùng chung với màn Chấm công
 import { dayStyle, dayStyleSm } from "../shared/dayStyle.jsx";
 
 /* ============================ CÀI ĐẶT CÁ NHÂN (nhân sự) ============================ */
@@ -226,13 +227,21 @@ export function MonthCalendar({ cfg, empId, ym, setYm, loading, onOpenWeek }) {
   );
 }
 
-export function EmployeeDashboard({ cfg, empId, onGoTimesheet }) {
+export function EmployeeDashboard({ cfg, empId, onGoTimesheet, onOtReady, flash }) {
   const emp = cfg.employees.find((e) => e.id === empId);
   /* v7.0 — kỳ xem = tháng đang mở trên Lịch tháng (bỏ ô chọn khoảng ngày và các nút 4 tuần / Tháng này / Tháng trước) */
   const [ym, setYm] = useState(() => ymOf(fmt(new Date())));
   const from = `${ym}-01`, to = fmt(lastOfMonth(parseD(from)));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  /* v13.31 — nút "Excel tăng ca" trên header cũng dùng được ở tab Dashboard, theo đúng THÁNG
+     đang mở trên Lịch tháng ở đây (không phải tháng của màn Chấm công). */
+  const [otBusy, setOtBusy] = useState(false);
+  useEffect(() => {
+    if (!onOtReady) return undefined;
+    onOtReady({ ym, busy: otBusy, run: async () => { if (otBusy) return; setOtBusy(true); try { await runOtExport({ cfg, empId, ym, flash }); } finally { setOtBusy(false); } } });
+    return () => onOtReady(null);
+  }, [ym, otBusy, onOtReady]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async () => {
     setLoading(true);

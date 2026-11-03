@@ -8,7 +8,7 @@ import { LAST_STORAGE_ERROR, RATE_LIMITED, ck, commitTs, dbTs, ensureMonths, ref
 import { DEFAULT_PHASE, LEAVE_TASKS, NO_PHASE, NO_PROJECT, OT_TASKS, activePhases, empHasProj, fmtH, groupKey, guessPhase, isIdleTask, isLeaveTask, isOtId, isOtTask, leaveInfo, leaveTypeOfTask, norm, otBandKey, otBandTasks, otMaxHours, otText, pastLocked, pastOpenUntil, pastWeeks, phaseInfo, phaseLabel, projPhaseIsOpen, roleLabel, rowKey, sortByGroup, supportInRange, supportOn, taskRoles, taskText, tasksForDept, tone } from "../core/domain.jsx";
 import { CTRL, ConfirmDialog, GUT, NoteDialog, WeekPicker, btnBase, btnGhost, btnPrimary, iconBtn, selectCls } from "../core/ui.jsx";
 import { DeadlineBanner } from "../shared/deadline.jsx";
-import { otSpan } from "../core/domain.jsx";   // v13.29: khung giờ tăng ca, để xếp vào đúng dòng của mẫu giấy
+import { runOtExport } from "../shared/otReport.js";   // v13.31: xuất Excel tăng ca, dùng chung với Dashboard cá nhân
 
 /* v12.36 — nút bút chì "Sửa giờ của khối này" phát sáng nhịp nhẹ để dễ thấy.
    CSS gắn một lần lúc nạp module; màu đặt riêng cho mode sáng / tối (không trông vào LIGHT_CSS).
@@ -744,43 +744,13 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     return () => window.removeEventListener("artius:tuan", h);
   }, []);
   /* v13.29 — Xuất "BẢNG CHẤM CÔNG_NGOÀI GIỜ" của tháng đang xem, điền thẳng vào mẫu giấy công ty.
-     Chỉ lấy giờ ĐÃ GỬI: bảng này để ký và tính lương, giờ nháp chưa gửi không được tính.
+     v13.31: phần gom giờ và dựng file chuyển sang shared/otReport.js để Dashboard cá nhân dùng chung.
      Tháng lấy theo tuần đang mở; tuần vắt qua hai tháng thì lấy tháng của ngày thứ Hai. */
   const exportOt = async () => {
     if (otBusy) return;
     setOtBusy(true);
-    try {
-      const ym = ymOf(monday), [y, mo] = ym.split("-").map(Number);
-      await ensureMonths([ym]);
-      const b = dbTs(empId, ym) || { rows: [], sent: {} };
-      const sent = b.sent || {};
-      const projName = (id) => {
-        if (!id || id === NO_PROJECT) return "Việc chung";
-        const p = (cfg.projects || []).find((x) => x.id === id);
-        return p ? p.name : "(dự án đã xoá)";   // tên đầy đủ, không rút về mã
-      };
-      const entries = [];
-      for (const r of b.rows || []) {
-        if (!isOtId(r.taskId)) continue;
-        const sp = otSpan(OT_TASKS.find((t) => t.id === r.taskId));
-        if (!sp) continue;                       // khung giờ không đọc được thì bỏ, không đoán
-        for (const [d, hv] of Object.entries(r.days || {})) {
-          const h = Number(hv) || 0;
-          if (h <= 0 || !sent[d] || d.slice(0, 7) !== ym) continue;
-          entries.push({ day: +d.slice(8), projectId: r.projectId || NO_PROJECT, projName: projName(r.projectId), bandStart: sp.start, hours: h });
-        }
-      }
-      if (!entries.length) { flash(`Tháng ${mo}/${y} chưa có giờ tăng ca nào đã gửi.`, "err"); return; }
-      const { buildOtXlsx, otOverflow, downloadBytes } = await import("./otExcel.js");
-      const over = otOverflow(entries);
-      const bytes = await buildOtXlsx({ empName: emp?.name || "", year: y, month: mo, entries });
-      downloadBytes(bytes, `Tang ca ngoai gio ${String(mo).padStart(2, "0")}-${y} - ${emp?.name || empId}.xlsx`);
-      // mẫu giấy chỉ có 2 ô công trình cho mỗi nửa tháng — nói thẳng khi có công trình không lọt vào
-      if (over > 0) flash(`Đã xuất, nhưng mẫu chỉ chứa 2 công trình mỗi nửa tháng — ${over} công trình chưa được điền, cần ghi tay thêm.`, "err");
-      else flash("Đã xuất bảng chấm công ngoài giờ.");
-    } catch (e) {
-      flash(`Chưa xuất được — ${e.message}`, "err");
-    } finally { setOtBusy(false); }
+    try { await runOtExport({ cfg, empId, ym: ymOf(monday), flash }); }
+    finally { setOtBusy(false); }
   };
 
   /* v13.30 — nút "Excel tăng ca" nằm trên header (cạnh nút sáng/tối) chứ không còn ở chân bảng,
@@ -1281,8 +1251,9 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       </div>
 
 
-      {/* v8.6 — tuần đã quá hạn chấm công (khoá sau N tuần) / đang được mở chấm bù */}
-      {!admin && (pastDays.length > 0 || openUntil) && (
+      {/* v8.6 — tuần đã quá hạn chấm công (khoá sau N tuần) / đang được mở chấm bù
+          v13.31: gửi xong cả tuần thì ẩn hẳn — lời nhắc "nhớ bấm Gửi giờ công" không còn việc gì để làm */}
+      {!admin && (pastDays.length > 0 || openUntil) && !(sentDays.length > 0 && toSend.length === 0) && (
         <div className={`flex items-start gap-2.5 rounded-xl border p-3 text-sm ${openUntil ? "border-teal-900 bg-teal-950/60 text-teal-100" : "border-slate-700 bg-slate-900 text-slate-300"}`}>
           {openUntil ? <Unlock size={17} className="mt-0.5 shrink-0 text-teal-400" /> : <Lock size={17} className="mt-0.5 shrink-0 text-slate-400" />}
           <div>
