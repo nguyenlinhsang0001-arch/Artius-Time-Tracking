@@ -6,7 +6,11 @@
 
    Cột "Đang lệch" so KHOẢNG THỜI GIAN KẾ HOẠCH với trạng thái chấm công hiện tại.
    Nó chỉ gợi ý, không tự đổi gì: đóng một dự án là chặn nhân viên chấm công vào đó,
-   nên quyết định vẫn là của người bấm. */
+   nên quyết định vẫn là của người bấm.
+
+   v13.3 — trạng thái "Thiếu người được giao": dự án đang mở, có kế hoạch từ tuần hiện tại trở đi, mà có vai trò trong
+   kế hoạch chưa ai thuộc vai trò đó được giao. "Được giao" = thành viên dự án, hoặc đang hỗ trợ dự án hôm nay;
+   không tính người nghỉ việc, người bỏ khỏi kế hoạch (noPlan) và quyền "tất cả dự án" (thường là trưởng phòng). */
 import React, { useEffect, useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
 import { isResigned } from "../../core/domain.jsx";
@@ -27,7 +31,7 @@ const TONE = {
 };
 
 export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = new Set(),
-  detail = [], employees = [], canToggle = false, onToggle, prole = (r) => r }) {
+  detail = [], employees = [], canToggle = false, onToggle, prole = (r) => r, support = [] }) {
   const [flt, setFlt] = useState("all");
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(() => new Set());
@@ -81,6 +85,22 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
     return out;
   }, [projects, plan, weeks]);
 
+  /* ---------- v13.3: vai trò còn thiếu người được giao ---------- */
+  const today = useMemo(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }, []);
+  const rolesGiven = (pid) => {
+    const ids = new Set();
+    for (const e of employees) if (!isResigned(e) && !e.noPlan && Array.isArray(e.projects) && e.projects.includes(pid)) ids.add(e.id);
+    for (const x of support) if (x.pid === pid && x.from <= today && today <= x.until) ids.add(x.empId);
+    const out = new Set();
+    for (const id of ids) { const e = empById.get(id); if (e && !isResigned(e) && !e.noPlan && e.role) out.add(prole(e.role)); }
+    return out;
+  };
+  const missingOf = (p) => {
+    if (!p.active || nowIndex < 0) return [];
+    const have = rolesGiven(p.id);
+    return roles.map((r) => r.id).filter((rid) => !have.has(rid) && weeks.some((w) => w.i >= nowIndex && cellOf(plan, p.id, rid, w.i) > 0));
+  };
+
   /* ---------- so kế hoạch với trạng thái đóng / mở ---------- */
   const verdictOf = (p) => {
     const s = info.get(p.id);
@@ -98,11 +118,14 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
   };
 
   const rows = useMemo(() => projects.map((p) => {
-    const [v, label, why] = verdictOf(p);
-    return { p, s: info.get(p.id), v, label, why };
-  }), [projects, info, nowIndex]);   // eslint-disable-line react-hooks/exhaustive-deps
+    let [v, label, why] = verdictOf(p);
+    const miss = missingOf(p);
+    if (v === "ok" && miss.length) { v = "staff"; label = "Thiếu người được giao"; why = `Kế hoạch có ${miss.join(", ")} nhưng chưa ai thuộc vai trò này được giao vào dự án`; }
+    return { p, s: info.get(p.id), v, label, why, miss };
+  }), [projects, info, nowIndex, employees, support, plan, roles, weeks]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const nBad = rows.filter((r) => r.v !== "ok" && r.v !== "na").length;
+  const nStaff = rows.filter((r) => r.v === "staff").length;
   const shown = rows.filter(({ p, v }) => {
     if (flt === "bad" && (v === "ok" || v === "na")) return false;
     if (flt === "on" && !p.active) return false;
@@ -145,15 +168,15 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
         {nowIndex < 0
           ? <span className="text-slate-500">Tuần hiện tại không thuộc cặp năm đang xem — không so được kế hoạch với trạng thái.</span>
           : nBad > 0
-            ? <><span className="text-rose-400">{nBad} dự án</span> <span className="text-slate-400">đang lệch giữa kế hoạch và trạng thái chấm công · tuần hiện tại {wLbl(nowW)}</span></>
+            ? <><span className="text-rose-400">{nBad} dự án</span> <span className="text-slate-400">cần xem{nStaff ? ` · ${nBad - nStaff} lệch giữa kế hoạch và trạng thái chấm công · ${nStaff} thiếu người được giao` : " · lệch giữa kế hoạch và trạng thái chấm công"} · tuần hiện tại {wLbl(nowW)}</span></>
             : <span className="text-slate-400">Mọi dự án khớp với kế hoạch · tuần hiện tại {wLbl(nowW)}</span>}
       </div>
 
       {shown.length === 0 && <p className="px-4 py-8 text-sm text-slate-500">Không có dự án nào khớp bộ lọc.</p>}
 
-      {shown.map(({ p, s, v, label, why }) => {
+      {shown.map(({ p, s, v, label, why, miss }) => {
         const isOpen = open.has(p.id);
-        const vcls = v === "open" ? "border-rose-900 bg-rose-950 text-rose-300"
+        const vcls = v === "open" || v === "staff" ? "border-rose-900 bg-rose-950 text-rose-300"
           : v === "close" ? "border-amber-900 bg-amber-950 text-amber-300"
             : "border-slate-800 text-slate-600";
         const names = new Set();
@@ -187,7 +210,7 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
             <div onClick={(e) => { if (e.target.closest("button")) return; setOpen((sx) => { const t = new Set(sx); t.has(p.id) ? t.delete(p.id) : t.add(p.id); return t; }); }}
               onMouseEnter={() => setHovP(p.id)} onMouseLeave={() => setHovP((h) => (h === p.id ? null : h))}
               style={{ background: hovP === p.id ? C.rowHover : "transparent" }}
-              className="grid cursor-pointer grid-cols-[116px_minmax(0,1fr)_84px_20px] items-center gap-3 px-3 py-2.5 md:grid-cols-[132px_minmax(0,1fr)_280px_120px_88px_20px] md:px-4">
+              className="grid cursor-pointer grid-cols-[116px_minmax(0,1fr)_84px_20px] items-center gap-3 px-3 py-2.5 md:grid-cols-[132px_minmax(0,1fr)_280px_150px_88px_20px] md:px-4">
               {/* trạng thái */}
               <span className={`flex h-[30px] items-center justify-center rounded-md border text-[11.5px] ${p.active ? "border-teal-900 bg-teal-950 text-teal-300" : "border-slate-700 bg-slate-950 text-slate-500"}`}>
                 {p.active ? "Đang chấm công" : "Đã đóng"}
@@ -203,6 +226,7 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
                   {s && s.tot > 0
                     ? `${wLbl(weeks.find((w) => w.i === s.a))} → ${wLbl(weeks.find((w) => w.i === s.b))} · ${s.b - s.a + 1} tuần · ${f0(s.tot)} người-tuần`
                     : "chưa nhập kế hoạch tuần nào"}
+                  {miss.length > 0 && <span className="text-rose-400"> · chưa giao {miss.join(", ")}</span>}
                 </span>
               </span>
               {/* dải thời gian — mỗi vai trò một thanh, vạch đỏ là tuần hiện tại */}

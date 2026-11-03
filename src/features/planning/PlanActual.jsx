@@ -6,6 +6,9 @@
    Giờ tính theo vai trò của NGƯỜI chấm (vai trò gộp như lưới kế hoạch, vd TL-2D → 2D) — Sang chốt 02/11/2026.
    Tuần được tính: tuần đã qua, giờ đã gửi của từng người (không chờ cả công ty gửi đủ); tuần còn người
    chưa gửi thì ghi rõ số người chưa gửi ở hàng số liệu.
+   v13.3: dự án đã đóng hoặc tạm ẩn không tính phần kế hoạch (giống Nhập liệu và Tổng quan nguồn lực); nếu có giờ chấm
+   trong khoảng thì vẫn hiện phần thực tế kèm nhãn "đã đóng". Dòng "chưa ai làm" ghi thêm "chưa giao ai" khi dự án
+   không có ai được giao (thành viên dự án, quyền tất cả dự án, hoặc đang hỗ trợ dự án) trong số người tính kế hoạch.
    Màn này CHỈ ĐỌC. */
 import React, { useEffect, useMemo, useState } from "react";
 import { addDays, fmt, mondayOf, weeklyTarget } from "../../core/date.jsx";
@@ -33,7 +36,8 @@ const useThemeTick = () => {
 const GROUPS = { none: "Có kế hoạch, chưa ai làm", out: "Làm ngoài kế hoạch", mix: "Đủ người nhưng sai vai trò", over: "Thực tế nhiều hơn kế hoạch", under: "Thực tế ít hơn kế hoạch", ok: "Đúng kế hoạch" };
 const ORDER = { none: 0, out: 1, mix: 2, over: 3, under: 4, ok: 5 };
 
-export function PlanActual({ plan, projects, roles, start, realWeeks, detail, staff, hoursCfg, prole = (r) => r, loading = false }) {
+export function PlanActual({ plan, projects, roles, start, realWeeks, detail, staff, hoursCfg, prole = (r) => r, loading = false,
+  hidden = new Set(), support = [] }) {
   useThemeTick();
   const C = isLight() ? TONE.light : TONE.dark;
   const [range, setRange] = useState("last");   /* last | 4 | all */
@@ -74,6 +78,11 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
   const roleOf = useMemo(() => new Map(staff.map((e) => [e.id, e.role || ""])), [staff]);
   const nameOf = useMemo(() => new Map(staff.map((e) => [e.id, e.name || e.id])), [staff]);
   const projIds = useMemo(() => new Set(projects.map((p) => p.id)), [projects]);
+  const liveIds = useMemo(() => new Set(projects.filter((p) => p.active && !hidden.has(p.id)).map((p) => p.id)), [projects, hidden]);
+  /* v13.3: dự án có ai được giao không — thành viên, quyền tất cả dự án, hoặc đang hỗ trợ hôm nay */
+  const today = fmt(new Date());
+  const assigned = (pid) => staff.some((e) => e.allProjects || (Array.isArray(e.projects) && e.projects.includes(pid)))
+    || support.some((x) => x.pid === pid && x.from <= today && today <= x.until && staff.some((e) => e.id === x.empId));
   const thisMon = fmt(mondayOf(new Date()));
   const hoursBy = useMemo(() => {
     const m = new Map();   /* monday -> [{ empId, pid, h }] */
@@ -106,9 +115,12 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
     const add = (e, k, h) => { if (!per.has(e)) per.set(e, new Map()); const m = per.get(e); m.set(k, (m.get(k) || 0) + h); };
     weeks.forEach((w, k) => {
       const i = w.i;
-      for (const pid of Object.keys(P || {})) for (const r of roles) {
+      for (const pid of Object.keys(P || {})) {
+        if (!liveIds.has(pid)) continue;   /* v13.3: dự án đã đóng / tạm ẩn không tính kế hoạch */
+        for (const r of roles) {
         const v = cellOf(P, pid, r.id, i); if (!v) continue;
         const o = get(pid); o.kh[r.id] = (o.kh[r.id] || 0) + v / nW; o.wk[k].kh += v;
+        }
       }
       for (const x of hoursBy.get(w.monday) || []) {
         if (!x.h) continue;
@@ -137,7 +149,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
     const sent = new Set((lastW && hoursBy.get(lastW.monday) || []).map((x) => x.empId));
     const missing = staff.filter((e) => e.role && !sent.has(e.id)).length;
     return { list, common, total, missing, per };
-  }, [P, weeks, hoursBy, roles, projects, projIds, roleOf, STD, nW, staff]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [P, weeks, hoursBy, roles, projects, projIds, liveIds, roleOf, STD, nW, staff]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <p className="px-4 py-8 text-sm text-slate-500">Đang tải giờ đã chấm…</p>;
   if (!doneWeeks.length) return <p className="px-4 py-8 text-sm text-slate-500">Chưa có tuần nào đã qua có giờ gửi trong hai năm đang xem.</p>;
@@ -285,6 +297,8 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
                   style={{ background: on ? C.sel : hov === o.pid ? C.hover : "transparent", borderLeft: `3px solid ${on ? C.selBar : "transparent"}`, borderBottom: `1px solid ${C.line}` }}>
                   <span className="truncate text-slate-200" style={on ? { color: C.selName } : undefined}>
                     {o.p.name}{o.p.code && <span className="ml-1.5 font-mono text-[11px] text-slate-500">{o.p.code}</span>}
+                    {o.p.active === false && <span className="ml-1.5 rounded border border-slate-700 px-1.5 text-[10px] text-slate-500">đã đóng</span>}
+                    {o.st === "none" && !assigned(o.pid) && <span className="ml-1.5 rounded border px-1.5 text-[10px]" style={{ color: C.red, borderColor: C.red }}>chưa giao ai</span>}
                   </span>
                   <span className="hidden text-right font-mono text-slate-300 md:block">{o.KH > 0.005 ? U(o.KH) : "—"}</span>
                   <span className="hidden text-right font-mono text-slate-100 md:block">{o.TT > 0.005 ? U(o.TT) : "—"}</span>
@@ -311,7 +325,9 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
         {cur && (
           <div className="border-t border-slate-800 p-3 md:p-4 xl:border-t-0">
             <div className="text-sm font-semibold" style={{ color: C.selName }}>{cur.p.name}{cur.p.code && <span className="ml-1.5 font-mono text-[11px] font-normal text-slate-500">{cur.p.code}</span>}</div>
-            <div className="mb-3 mt-1 flex flex-wrap items-center gap-2 text-[11.5px] text-slate-500">{rangeTxt} {pill(cur.st, cur)}<span>bấm một vai trò để mở / đóng danh sách người</span></div>
+            <div className="mb-3 mt-1 flex flex-wrap items-center gap-2 text-[11.5px] text-slate-500">{rangeTxt} {pill(cur.st, cur)}
+              {cur.p.active === false && <span>dự án đã đóng — không tính kế hoạch</span>}
+              {cur.st === "none" && !assigned(cur.pid) && <span style={{ color: C.red }}>chưa giao ai vào dự án</span>}<span>bấm một vai trò để mở / đóng danh sách người</span></div>
             <table className="mb-3 w-full text-[12.5px]">
               <thead><tr className="text-[10.5px] uppercase tracking-wider text-slate-500" style={{ borderBottom: `1px solid ${C.line}` }}>
                 <th className="py-1.5 text-left font-medium">Vai trò</th><th className="py-1.5 text-right font-medium">Kế hoạch</th><th className="py-1.5 text-right font-medium">Thực tế</th><th className="py-1.5 text-right font-medium">Lệch</th></tr></thead>

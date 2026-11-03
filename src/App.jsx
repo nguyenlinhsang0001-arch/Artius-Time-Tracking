@@ -1,6 +1,14 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.2
+   ARTIUS — Quản lý giờ công theo dự án · v13.3
+   Mới ở v13.3 — Kế hoạch:
+     · So với thực tế: dự án đã đóng hoặc tạm ẩn không tính phần kế hoạch (đồng bộ với Nhập liệu và Tổng quan nguồn lực);
+       có giờ chấm trong khoảng thì vẫn hiện phần thực tế kèm nhãn "đã đóng". Dòng "chưa ai làm" ghi thêm "chưa giao ai"
+       khi dự án không có ai được giao.
+     · Theo dự án: trạng thái mới "Thiếu người được giao" khi dự án đang mở, có kế hoạch từ tuần này trở đi, mà có vai trò
+       trong kế hoạch chưa ai thuộc vai trò đó được giao (thành viên dự án hoặc đang hỗ trợ; không tính quyền tất cả dự án,
+       người bỏ khỏi kế hoạch, người nghỉ việc). Dòng dự án ghi rõ "chưa giao TK, 3D…". Lọc "Đang lệch" gồm cả trạng thái này.
+
    Mới ở v13.2 — Kế hoạch › So với thực tế (features/planning/PlanActual.jsx):
      · Công tắc Đơn vị Người / Giờ, mặc định Giờ. Giờ = tổng giờ trong khoảng đang xem (kế hoạch = số người × giờ chuẩn tuần);
        Người = bình quân mỗi tuần như v13.1. Đổi theo cả hàng số liệu, bảng dự án, bảng vai trò và biểu đồ lũy kế.

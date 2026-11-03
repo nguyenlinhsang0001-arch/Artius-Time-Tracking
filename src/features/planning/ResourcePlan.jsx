@@ -346,11 +346,12 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
         )}
 
         {mode === "ac" ? (
-          <PlanActual plan={plan} projects={everyProject} roles={roles} start={start} realWeeks={realWeeks}
+          <PlanActual plan={plan} projects={everyProject} roles={roles} start={start} realWeeks={realWeeks} hidden={hidden}
+            support={Array.isArray(cfg.support) ? cfg.support : []}
             detail={ts?.detail || []} staff={planStaff} hoursCfg={cfg.hours} prole={prole} loading={!ts} />
         ) : mode === "pj" ? (
           <PlanProjects plan={plan} projects={everyProject} roles={roles} weeks={view} nowIndex={nowIdx}
-            hidden={hidden} detail={ts?.detail || []} employees={cfg.employees || []}
+            hidden={hidden} detail={ts?.detail || []} employees={cfg.employees || []} support={Array.isArray(cfg.support) ? cfg.support : []}
             canToggle={!readOnly && canSaveProjects} onToggle={toggleActive} prole={prole} />
         ) : mode === "in" && inView === "one" ? (
           <PlanFocus plan={plan} onChange={(p) => { setPlan(p); setDirty(true); }}
