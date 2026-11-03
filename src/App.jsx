@@ -1,6 +1,10 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.29
+   ARTIUS — Quản lý giờ công theo dự án · v13.30
+   Mới ở v13.30 — Nút "Excel tăng ca" dời từ chân bảng Chấm công lên header, nằm ngay bên trái nút sáng/tối,
+     và GHI RÕ THÁNG sẽ xuất ngay trên nút ("Excel tăng ca 11/2026") để nhân viên không xuất nhầm tháng.
+     Tháng vẫn theo tuần đang mở, đổi tuần thì số trên nút đổi theo. Nút chỉ hiện khi đang ở tab Chấm công.
+
    Mới ở v13.29 — Chấm công (màn nhân viên): nút "Excel tăng ca tháng" xuất BẢNG CHẤM CÔNG_NGOÀI GIỜ của tháng đang
      xem, điền thẳng vào mẫu giấy của công ty (public/mau-tang-ca.xlsx) nên in ra giống hệt bản đang dùng: giữ khung,
      đường kẻ, ô ký tên, khổ giấy và công thức cột Số giờ. Chỉ lấy giờ ĐÃ GỬI. App không lưu giờ vào/ra nên
@@ -661,6 +665,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Clock, Users, FolderKanban, LayoutDashboard, AlertTriangle, LogOut, Settings, CheckCircle2, Loader2, ListChecks, RotateCcw, ClipboardList, User, Eye, CalendarDays,
+  Download,
 } from "lucide-react";
 import { LIGHT_CSS } from "./lightTheme.js";
 import { supabase } from "./storage.js";
@@ -716,6 +721,7 @@ export function AppMain() {
   const [toast, setToast] = useState(null);
   const [tab, setTab] = useState("dash");
   const [sheetDirty, setSheetDirty] = useState(false);   // bảng công còn thay đổi chưa lưu
+  const [otBtn, setOtBtn] = useState(null);   // v13.30: { ym, run, busy } do EmployeeArea đẩy lên, hiện thành nút trên header
   const [pendingTab, setPendingTab] = useState(null);    // tab muốn sang, đang chờ xác nhận
   const [tsMonday, setTsMonday] = useState(null);        // v7.0: bấm ngày trên Lịch tháng → mở Chấm công đúng tuần đó
   // Rời khỏi màn chấm công khi còn thay đổi chưa lưu thì hỏi lại — trước đây mất dữ liệu lặng lẽ
@@ -1082,6 +1088,15 @@ export function AppMain() {
             {me && <BrandLogo className="pointer-events-none absolute left-1/2 top-1/2 hidden h-9 w-auto -translate-x-1/2 -translate-y-1/2 md:block" />}
             <div className="flex min-w-0 items-center">
               <InstallButton />
+              {/* v13.30 — Excel tăng ca: ghi rõ tháng sẽ xuất ngay trên nút, tránh xuất nhầm tháng */}
+              {tab === "ts" && otBtn && (
+                <button onClick={otBtn.run} disabled={otBtn.busy}
+                  title={`Xuất bảng chấm công ngoài giờ tháng ${otBtn.ym.slice(5)}/${otBtn.ym.slice(0, 4)} theo mẫu giấy công ty — chỉ gồm giờ đã gửi`}
+                  className="mr-2 hidden h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-slate-100 disabled:opacity-40 md:inline-flex">
+                  {otBtn.busy ? <Loader2 className="animate-spin" size={14} /> : <Download size={14} />}
+                  Excel tăng ca <span className="font-mono text-teal-300">{otBtn.ym.slice(5)}/{otBtn.ym.slice(0, 4)}</span>
+                </button>
+              )}
               <span className={hasAcct ? "hidden md:contents" : "contents"}><ThemeToggle /></span>
               {me?.type === "bod" && ["dash", "sheet", "proj", "emp", "set"].includes(tab) && (
                 <span className="ml-3 inline-flex shrink-0 items-center gap-1.5 rounded-md border border-violet-900 bg-violet-950/60 px-2 py-1 text-[11px] text-violet-200" title="Tài khoản BOD xem được mục này nhưng không chỉnh sửa được">
@@ -1156,7 +1171,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
                   task={<ReadOnlyView><Tasks cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>} />}
                 {tab === "set" && <ReadOnlyView><SettingsTab cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
                 {tab === "plan" && <PlanPane cfg={cfg} saveCfg={bodPlanSave} flash={flash} />}
-                {tab === "ts" && me.empId && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} mgrOk />}
+                {tab === "ts" && me.empId && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} onOtReady={setOtBtn} initialMonday={tsMonday} mgrOk />}
                 {tab === "eset" && me.empId && <EmployeeSettings cfg={cfg} empId={me.empId} onSignOut={signOut} />}
               </>
             )
@@ -1172,7 +1187,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
               </>
             ) : (
               <>
-                {tab === "ts" && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} mgrOk={me.type === "head"} />}
+                {tab === "ts" && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} onOtReady={setOtBtn} initialMonday={tsMonday} mgrOk={me.type === "head"} />}
                 {/* v12.25 — trưởng phòng: tab Dashboard có thanh tab con Của tôi | Dự án | Ma trận.
                     Nhân viên thường vẫn chỉ có Dashboard cá nhân như cũ. */}
                 {tab === "edash" && (me.type === "head" && headDashCfg

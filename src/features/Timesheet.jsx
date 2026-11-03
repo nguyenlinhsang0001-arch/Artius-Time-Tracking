@@ -1,7 +1,7 @@
 /* ARTIUS TIME v11 — tách từ App.jsx, nội dung giữ nguyên. */
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
-  Plus, Trash2, Save, AlertTriangle, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, CheckCircle2, Loader2, Lock, Pencil, Check, X, Copy, Unlock, Zap, Eraser, Minus, Download,
+  Plus, Trash2, Save, AlertTriangle, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, CheckCircle2, Loader2, Lock, Pencil, Check, X, Copy, Unlock, Zap, Eraser, Minus,
 } from "lucide-react";
 import { DEFAULT_HOURS, DOW, HOLIDAY_RING_SVG, OT_ALERT, addDays, dLabel, effortHoursFor, fmt, makeHolidayIndex, minHoursFor, mondayOf, parseD, prevYm, stdHoursFor, weekDays, ymOf } from "../core/date.jsx";
 import { LAST_STORAGE_ERROR, RATE_LIMITED, ck, commitTs, dbTs, ensureMonths, refreshTs, slot, useDataTick, useNet } from "../core/db.jsx";
@@ -39,7 +39,7 @@ if (typeof document !== "undefined" && !document.getElementById("artius-pen-glow
 /* ============================ EMPLOYEE ============================ */
 /* v13.4 — mgrOk: người có bảng công đang mở là cấp Trưởng phòng / BOD / Admin → thấy tác vụ quản lý (task.mgr).
    Tác vụ quản lý chọn được ở cả dự án lẫn "Khác"; dòng cũ đã có giờ vẫn hiện dù người đó không còn ở cấp quản lý. */
-export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initialMonday = null, mgrOk = false }) {
+export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initialMonday = null, mgrOk = false, onOtReady }) {
   const emp = cfg.employees.find((e) => e.id === empId);
   // v2.6: bấm thông báo nhắc thì mở thẳng tuần cần gửi (?tuan=YYYY-MM-DD), đọc xong xoá khỏi thanh địa chỉ
   const [monday, setMonday] = useState(() => {
@@ -782,6 +782,15 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       flash(`Chưa xuất được — ${e.message}`, "err");
     } finally { setOtBusy(false); }
   };
+
+  /* v13.30 — nút "Excel tăng ca" nằm trên header (cạnh nút sáng/tối) chứ không còn ở chân bảng,
+     và phải hiện rõ THÁNG sẽ xuất để nhân viên không xuất nhầm. EmployeeArea đẩy tháng đang xem
+     cùng hàm xuất lên App; App lo phần hiển thị. Rời màn này thì gỡ nút đi. */
+  useEffect(() => {
+    if (!onOtReady) return undefined;
+    onOtReady({ ym: ymOf(monday), run: exportOt, busy: otBusy });
+    return () => onOtReady(null);
+  }, [monday, otBusy, onOtReady]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const askSubmitWeek = () => {
     if (toSend.length === 0) return flash("Chưa có giờ mới để gửi. Nhập giờ vào các ngày chưa gửi (tới hôm nay) trước đã.", "err");
@@ -1720,11 +1729,6 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       {/* v8.4: điện thoại — nhân sự dùng thanh Lưu nháp / Gửi cố định ở đáy màn (bên dưới); quản lý giữ nút như cũ */}
       <div className={`${admin ? "grid grid-cols-2" : "hidden"} gap-2 md:flex md:flex-wrap md:items-center`}>
         <button onClick={focusQuick} disabled={locked} className={`${btnGhost} hidden disabled:opacity-40 md:inline-flex`}><Plus size={15} /> Thêm tác vụ</button>
-        {/* v13.29 — xuất bảng chấm công ngoài giờ của THÁNG đang xem, theo đúng mẫu giấy của công ty */}
-        <button onClick={exportOt} disabled={otBusy} title="Xuất bảng chấm công ngoài giờ của tháng đang xem, theo mẫu giấy công ty"
-          className={`${btnGhost} hidden disabled:opacity-40 md:inline-flex`}>
-          {otBusy ? <Loader2 className="animate-spin" size={15} /> : <Download size={15} />} Excel tăng ca tháng
-        </button>
         {/* v1.9: quản lý lưu được khi sửa bảng công của người khác · v8.1: nhân sự có lại nút Lưu nháp (ghi lên server, chưa gửi) */}
         {!admin && (
           <button onClick={() => save("draft")} disabled={saving || locked} title="Lưu tạm giờ đang nhập lên hệ thống, chưa gửi — quản lý thấy là Nháp, chưa tính vào báo cáo"
