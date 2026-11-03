@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.6
+   ARTIUS — Quản lý giờ công theo dự án · v13.7
+   Mới ở v13.7 — Trưởng phòng: tab Bảng công có đủ 3 tab con Bảng công | Nhân sự | Giờ ngoài dự án như Admin.
+     Nhân sự và Giờ ngoài dự án chỉ xem, chỉ nhân sự phòng mình (gồm cả trưởng phòng), cùng nguồn với Ma trận của trưởng phòng.
+
    Mới ở v13.6 — Tác vụ Teamleader:
      · Nhân sự › Tác vụ: ô "Teamleader · chỉ teamleader" trong nhóm Cấp quản lý (task.tl = true).
      · Phòng ban & vai trò: mỗi vai trò có nút TL để đánh dấu cấp Teamleader (role.tl); chưa bấm lần nào thì mã bắt đầu bằng TL
@@ -1081,7 +1084,8 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
                       me={<EmployeeDashboard cfg={cfg} empId={me.empId} onGoTimesheet={(mon) => { setTsMonday(mon || null); setTab("ts"); }} />} />
                   : <EmployeeDashboard cfg={cfg} empId={me.empId} onGoTimesheet={(mon) => { setTsMonday(mon || null); setTab("ts"); }} />)}
                 {tab === "eset" && <EmployeeSettings cfg={cfg} empId={me.empId} onSignOut={signOut} />}
-                {tab === "sheet" && me.type === "head" && headCfg && <AdminTimesheet cfg={headCfg} flash={flash} onDirtyChange={setSheetDirty} oneDept onSupport={supportSave} />}
+                {/* v13.7 — trưởng phòng thấy đủ 3 tab con của Bảng công; Nhân sự và Giờ ngoài dự án chỉ xem, nhân sự phòng mình gồm cả trưởng phòng */}
+                {tab === "sheet" && me.type === "head" && headCfg && <SheetArea cfg={headDashCfg || headCfg} flash={flash}><AdminTimesheet cfg={headCfg} flash={flash} onDirtyChange={setSheetDirty} oneDept onSupport={supportSave} /></SheetArea>}
                 {/* v9.3 — trưởng phòng: Dự án (chỉ xem, thêm / gỡ nhân sự phòng mình) · Nhân sự (phòng mình, giao dự án; không xem tài khoản / mật khẩu) */}
                 {tab === "proj" && me.type === "head" && headCfg && <ReadOnlyView><Projects cfg={headCfg} saveCfg={headSave} flash={flash} onSupport={supportSave} /></ReadOnlyView>}
                 {tab === "emp" && me.type === "head" && headCfg && <Employees cfg={headCfg} saveCfg={headSave} flash={flash} limited />}
