@@ -258,6 +258,13 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
   const [ym, setYm] = useState(ymOf(today));
   const [q, setQ] = useState("");
   const [fDept, setFDept] = useState("all");
+  /* v13.11 — lọc theo vai trò: chỉ vai trò đang có người (chưa nghỉ việc), thu theo bộ phận đang chọn */
+  const [fRole, setFRole] = useState("all");
+  useEffect(() => { setFRole("all"); }, [fDept]);
+  const roleOpts = useMemo(() => {
+    const have = new Set((cfg.employees || []).filter((e) => !isResigned(e) && e.role && (fDept === "all" || (e.dept || "") === fDept)).map((e) => e.role));
+    return (cfg.roles || []).filter((r) => have.has(r.id));
+  }, [cfg.employees, cfg.roles, fDept]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [tip, setTip] = useState(null);                         // { eid, d, x, y } — thẻ chi tiết một ngày
   const [nudged, setNudged] = useState(() => new Map());        // empId -> giờ đã nhắc (tuần đang xem)
   const [nudging, setNudging] = useState(false);
@@ -271,6 +278,13 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
   const laterIso = (a, b) => (!a || (b && b > a) ? b : a);
   const [mNudged, setMNudged] = useState(() => new Map());      // v6.4: empId -> Map(thứ Hai tuần -> giờ đã nhắc), các tuần của tháng đang xem
   const [unlockFor, setUnlockFor] = useState(null);             // empId đang chờ xác nhận mở khoá tuần
+  const [helpOpen, setHelpOpen] = useState(false);   // v13.11: bảng chú thích màu
+  const helpRef = useRef(null);
+  useEffect(() => {
+    if (!helpOpen) return undefined;
+    const h = (e) => { if (helpRef.current && !helpRef.current.contains(e.target)) setHelpOpen(false); };
+    document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
+  }, [helpOpen]);
   const [drawer, setDrawer] = useState(null);                   // v6.0 (A): empId đang mở ngăn kéo sửa cả tuần
   /* v13.4 — cấp tài khoản của từng nhân sự để biết có hiện tác vụ quản lý trong ngăn kéo không.
      Chỉ Admin / BOD đọc được danh sách tài khoản; trưởng phòng mở bảng công nhân viên thì không hiện tác vụ quản lý. */
@@ -413,6 +427,7 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
     // v8.5: người đã nghỉ chỉ hiện khi các tuần đang xem còn giờ của họ
     if (isResigned(e) && ![...cellOf.keys()].some((k) => k.startsWith(`${e.id}|`))) return false;
     if (fDept !== "all" && (e.dept || "") !== fDept) return false;
+    if (fRole !== "all" && (e.role || "") !== fRole) return false;   // v13.11
     const kw = norm(q.trim());   // v6.6: gõ không dấu vẫn tìm ra
     return !kw || norm(`${e.name} ${e.code || ""} ${e.dept || ""} ${e.role || ""} ${roleTitle(e.role)}`).includes(kw);
   });
@@ -602,12 +617,12 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
     window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
   });
   const Legend = () => (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-800 px-3 py-2 text-xs text-slate-400 md:px-4">
+    <div className="flex flex-col gap-y-1.5 px-3 py-2.5 text-xs text-slate-400">
       {[["full", "Đủ giờ chuẩn"], ["part", "Thiếu giờ"], ["draft", "Nháp chưa gửi"], ["none", "Bỏ trống"], ["leave", "Nghỉ phép"], ["hol", "Ngày lễ"], ["fut", "CN / chưa tới"]].map(([k, l]) => (
         <span key={k} className="flex items-center gap-1.5"><i className="inline-block h-3 w-3 rounded-[3px]" style={dayStyleSm(k)} />{l}</span>
       ))}
       <span className="flex items-center gap-1.5"><i className="inline-block h-2 w-2 rounded-full bg-teal-400" />Tăng ca (ô tuần ghi <span className="font-mono text-teal-400">+h</span>)</span>
-      <span className="flex items-center gap-1.5 text-slate-500">Thanh tổng:
+      <span className="flex flex-wrap items-center gap-1.5 border-t border-slate-800 pt-1.5 text-slate-500">Thanh tổng:
         <i className="ml-1 inline-block h-2 w-3 rounded-sm bg-blue-400" />chuẩn
         <i className="ml-1 inline-block h-2 w-3 rounded-sm bg-violet-400" />cố gắng
         <i className="ml-1 inline-block h-2 w-3 rounded-sm bg-teal-400" />OT
@@ -842,15 +857,25 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
           <option value="all">Mọi bộ phận</option>
           {DEPTS.map((d) => <option key={d}>{d}</option>)}
         </select>}
+        <select value={fRole} onChange={(e) => setFRole(e.target.value)} className={`w-full sm:w-48 ${selectCls}`} aria-label="Vai trò">
+          <option value="all">Mọi vai trò</option>
+          {roleOpts.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
+        </select>
         <div className="relative w-full sm:w-56">
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm nhân sự" className={`pl-9 ${inputCls}`} />
         </div>
+        {/* v13.11 — chú thích màu gộp vào nút (?) */}
+        <div ref={helpRef} className="relative sm:ml-auto">
+          <button onClick={() => setHelpOpen((o) => !o)} aria-expanded={helpOpen} title="Chú thích màu"
+            className={`${CTRL} w-11 rounded-md border text-sm font-semibold ${helpOpen ? "border-teal-600 text-teal-300" : "border-slate-700 text-slate-400 hover:text-slate-100"}`}>?</button>
+          {helpOpen && <div className="absolute right-0 top-full z-40 mt-1 w-[300px] rounded-lg border border-slate-700 bg-slate-900 shadow-2xl">{Legend()}</div>}
+        </div>
         {pastLockSave && !readOnly && !oneDept && (
           <button onClick={() => setPlOpen(true)} title="Khoá chấm công quá hạn: đổi số tuần nhân viên được sửa, mở chấm bù cho một người"
-            className={`w-full sm:ml-auto sm:w-auto ${btnGhost}`}><Lock size={14} /> Khoá quá hạn · {pastWeeks(cfg) ? `${pastWeeks(cfg)} tuần` : "tắt"}</button>
+            className={`w-full sm:w-auto ${btnGhost}`}><Lock size={14} /> Khoá quá hạn · {pastWeeks(cfg) ? `${pastWeeks(cfg)} tuần` : "tắt"}</button>
         )}
-        <button onClick={exportXlsx} disabled={emps.length === 0} className={`w-full ${pastLockSave && !readOnly && !oneDept ? "" : "sm:ml-auto"} sm:w-auto ${btnPrimary} disabled:opacity-40`}><Download size={15} /> Xuất Excel</button>
+        <button onClick={exportXlsx} disabled={emps.length === 0} className={`w-full sm:w-auto ${btnPrimary} disabled:opacity-40`}><Download size={15} /> Xuất Excel</button>
       </div>
 
       {plOpen && pastLockSave && (
@@ -871,7 +896,6 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
         <Kpi l={`Thiếu giờ chuẩn (<${lim.under}%)`} v={lowN} sub="người" cls={lowN ? "text-amber-400" : "text-slate-50"} />
       </div>
 
-      {Legend()}
       {emps.length === 0 ? <p className="px-4 py-6 text-sm text-slate-500">Không có nhân sự nào khớp bộ lọc.</p> : (
         <div ref={mWrapRef} className="relative overflow-x-auto pb-1" data-band={bandTick}>
           {mode === "month" && band && isLight() && <div aria-hidden className="pointer-events-none absolute rounded-lg" style={{ ...band, background: TODAY_BAND, zIndex: 0 }} />}

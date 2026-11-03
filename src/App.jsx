@@ -1,6 +1,10 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.10
+   ARTIUS — Quản lý giờ công theo dự án · v13.11
+   Mới ở v13.11 — Bảng công, Nhân sự, Giờ ngoài dự án, Ma trận: ô lọc "Mọi vai trò" cạnh ô Bộ phận (vai trò đang có người,
+     thu theo bộ phận đang chọn). Bảng công: chú thích màu gộp vào nút (?) cạnh Khoá quá hạn. Khung Hỗ trợ dự án luôn thu gọn
+     khi mở trang.
+
    Mới ở v13.10 — Nhân sự, Giờ ngoài dự án, Ma trận: nút "Tuần này" / "Tháng này" cạnh mũi tên ›, chỉ hiện khi đang xem kỳ khác
      (giống tab Bảng công). Mọi lịch tự vẽ (CalendarPanel: ô chọn khoảng ngày, ô chọn ngày, lịch Chấm công) khoanh đỏ ngày lễ
      theo danh sách ở Thiết lập, rê chuột hiện tên ngày lễ.

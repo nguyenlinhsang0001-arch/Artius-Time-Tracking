@@ -27,6 +27,14 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [fDept, setFDept] = useState("all");   // lọc bộ phận
+  /* v13.11 — lọc theo vai trò: chỉ vai trò đang có người (chưa nghỉ việc), thu theo bộ phận đang chọn */
+  const [fRole, setFRole] = useState("all");
+  useEffect(() => { setFRole("all"); }, [fDept]);
+  const roleOpts = useMemo(() => {
+    const have = new Set((cfg.employees || []).filter((e) => !isResigned(e) && e.role && (fDept === "all" || (e.dept || "") === fDept)).map((e) => e.role));
+    return (cfg.roles || []).filter((r) => have.has(r.id));
+  }, [cfg.employees, cfg.roles, fDept]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   /* v5.6 — Dashboard tách hai tab: "Dự án" (tiến độ từ trước tới nay, không theo kỳ) và "Nhân sự" (theo kỳ).
      Bỏ ô lọc Dự án / Giai đoạn chung ở đầu trang — mỗi tab có bộ lọc riêng, chỉ tác động lên chính tab đó. */
   const fProj = "all", fPhase = "all";
@@ -69,8 +77,8 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
     }
     return stdToday && !sentToday.has(eid) ? stdBase : stdPeriod;
   };
-  const clearFilters = () => { setFDept("all"); setQ(""); };
-  const hasFilter = fDept !== "all" || q.trim() !== "";
+  const clearFilters = () => { setFDept("all"); setFRole("all"); setQ(""); };
+  const hasFilter = fDept !== "all" || fRole !== "all" || q.trim() !== "";
   const today = fmt(now);
   /* v13.8 — kỳ theo Tuần / Tháng chứa ngày anchor; kỳ hiện tại tính tới hôm nay */
   const clip = (d) => (d > today ? today : d);
@@ -171,10 +179,11 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
   const matchEmp = useCallback((eid) => {
     const e = empMap.get(eid);
     if (fDept !== "all" && (e?.dept || "") !== fDept) return false;
+    if (fRole !== "all" && (e?.role || "") !== fRole) return false;   // v13.11
     const kw = norm(q.trim());   // v6.6: gõ không dấu vẫn tìm ra ("nguyen linh sang" → Nguyễn Linh Sang)
     if (kw && !norm(`${e?.name || ""} ${e?.code || ""}`).includes(kw)) return false;
     return true;
-  }, [empMap, fDept, q]);
+  }, [empMap, fDept, fRole, q]);
 
   const agg = useMemo(() => {
     if (!data) return null;
@@ -225,6 +234,7 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
       "Kỳ báo cáo": `${dFull(from)} – ${dFull(to)}`, "Tổng giờ": agg.total, "Giờ OT": +agg.otTotal.toFixed(1), "Giờ cố gắng": +agg.effortTotal.toFixed(1),
       "Số nhân sự": agg.byEmp.size, "Số dự án": agg.projCount,
       "Bộ phận": fDept === "all" ? "Tất cả" : fDept,
+      "Vai trò": fRole === "all" ? "Tất cả" : fRole,
       "Dự án lọc": fProj === "all" ? "Tất cả" : projLabel(fProj),
       "Giai đoạn lọc": fPhase === "all" ? "Tất cả" : phaseLabel(fPhase),
       "Từ khoá tìm": q.trim() || "—",
@@ -394,6 +404,12 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
               <select value={fDept} onChange={(e) => setFDept(e.target.value)} className={selectCls} aria-label="Bộ phận">
                 <option value="all">Tất cả bộ phận</option>
                 {DEPTS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <div className="w-full sm:w-48">
+              <select value={fRole} onChange={(e) => setFRole(e.target.value)} className={selectCls} aria-label="Vai trò">
+                <option value="all">Mọi vai trò</option>
+                {roleOpts.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
               </select>
             </div>
             <div className="relative w-full sm:w-56">

@@ -143,7 +143,7 @@ export function SupportPanel({ cfg, onSupport, readOnly = false, collapsible = f
   const today = fmt(new Date());
   const [dlg, setDlg] = useState(false);
   const [editId, setEditId] = useState(null);   // đợt đang sửa ngày
-  const [open, setOpen] = useState(() => !collapsible || supportList(cfg).some((x) => x.until >= fmt(new Date())));   // có đợt đang mở thì mở sẵn
+  const [open, setOpen] = useState(() => !collapsible);   // v13.11: khung thu gọn được thì luôn thu gọn khi mở trang, bấm tiêu đề để mở
   const emps = cfg.employees.filter((e) => !isResigned(e) && !e.allProjects).sort((a, b) => a.name.localeCompare(b.name, "vi"));   // v8.8: người có Tất cả dự án không cần hỗ trợ
   const empMap = new Map(cfg.employees.map((e) => [e.id, e]));
   const old = fmt(addDays(new Date(), -30));
