@@ -262,6 +262,7 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
   /* v13.11 — lọc theo vai trò: chỉ vai trò đang có người (chưa nghỉ việc), thu theo bộ phận đang chọn */
   const [fRole, setFRole] = useState("all");
   const [openDet, setOpenDet] = useState(() => new Set());   // v13.24: empId đang mở bảng chi tiết "..."
+  const [detTip, setDetTip] = useState(null);                // v13.25: { eid, pk, x, y } — rê chuột dòng dự án trong bảng chi tiết
   const [fLoad, setFLoad] = useState("all");       // v13.23: lọc theo mức tải — all | hi | ok | idle | lo
   const [sortLoad, setSortLoad] = useState("none");   // v13.23: none | desc (tải nhiều → ít) | asc (ít → nhiều)
   useEffect(() => { setFRole("all"); }, [fDept]);
@@ -379,7 +380,7 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
         if (!ok) c.draft += h; else if (isOtId(r.taskId)) c.ot += h; else if (isLeaveTask(r.taskId)) c.leave += h; else { c.reg += h; if (isIdleTask(r.taskId)) c.idle += h; }
         c.items.push({ ot: isOtId(r.taskId), sent: ok, h,
           // v13.24: giữ thêm dự án / tác vụ rời để dựng bảng chi tiết "..." giống tab Nhân sự
-          pid: r.projectId, idleTask: isIdleTask(r.taskId), leaveTask: isLeaveTask(r.taskId),
+          pid: r.projectId, idleTask: isIdleTask(r.taskId), leaveTask: isLeaveTask(r.taskId), phase: r.phaseId || DEFAULT_PHASE,
           task: isOtId(r.taskId) ? `Tăng ca · ${r.otFor ? tName(r.otFor) : "chưa rõ tác vụ"}` : tName(r.taskId),
           label: isOtId(r.taskId) ? `Tăng ca · ${r.otFor ? tName(r.otFor) : "chưa rõ tác vụ"}` : isLeaveTask(r.taskId) ? tName(r.taskId) : `${pName(r.projectId)} · ${tName(r.taskId)}` });
         m.set(k, c);
@@ -689,21 +690,39 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
   /* v13.24 — chi tiết giờ của một người trong kỳ đang xem: giờ theo dự án và theo tác vụ.
      Chỉ tính giờ ĐÃ GỬI (bỏ nháp), giống dữ liệu tab Nhân sự dùng. */
   const detailOf = (eid) => {
-    const proj = new Map(), task = new Map();
+    const proj = new Map(), task = new Map(), byProj = new Map();
     for (const d of days) for (const it of (cellOf.get(`${eid}|${d}`)?.items || [])) {
       if (!it.sent) continue;
       const pk = it.leaveTask ? NO_PROJECT : (it.pid || NO_PROJECT);
       proj.set(pk, (proj.get(pk) || 0) + it.h);
       const t = task.get(it.task) || { h: 0, ot: it.ot, idle: it.idleTask };
       t.h += it.h; task.set(it.task, t);
+      // v13.25: tác vụ + giai đoạn theo từng dự án, cho thẻ hiện khi rê chuột
+      const o = byProj.get(pk) || { tasks: new Map(), phases: new Set() };
+      const tp = o.tasks.get(it.task) || { h: 0, ot: it.ot, idle: it.idleTask };
+      tp.h += it.h; o.tasks.set(it.task, tp);
+      if (pk !== NO_PROJECT && !it.leaveTask) o.phases.add(it.phase);
+      byProj.set(pk, o);
     }
     return {
       proj: [...proj.entries()].sort((a, b) => b[1] - a[1]),
       // tăng ca xếp cuối, giống thứ tự bên tab Nhân sự
       task: [...task.entries()].map(([name, t]) => ({ name, ...t })).sort((a, b) => (a.ot - b.ot) || b.h - a.h),
+      byProj,
     };
   };
-  const toggleDet = (eid) => setOpenDet((s) => { const n = new Set(s); n.has(eid) ? n.delete(eid) : n.add(eid); return n; });
+  /* v13.25 — tổng giờ đã gửi của từng dự án trong kỳ, tính trên TOÀN BỘ nhân sự (không theo bộ lọc),
+     để tính "chiếm bao nhiêu trong tổng giờ dự án" giống thẻ bên tab Nhân sự */
+  const projTotOf = useMemo(() => {
+    const m = new Map();
+    for (const e of cfg.employees) for (const d of days) for (const it of (cellOf.get(`${e.id}|${d}`)?.items || [])) {
+      if (!it.sent) continue;
+      const pk = it.leaveTask ? NO_PROJECT : (it.pid || NO_PROJECT);
+      m.set(pk, (m.get(pk) || 0) + it.h);
+    }
+    return m;
+  }, [cellOf, days.join(","), cfg.employees]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleDet = (eid) => { setDetTip(null); setOpenDet((s) => { const n = new Set(s); n.has(eid) ? n.delete(eid) : n.add(eid); return n; }); };
   /* v13.24 — hàng chi tiết bung dưới dòng nhân sự: hai bảng Dự án / Tác vụ, chỉ chữ và số như tab Nhân sự */
   const DetailRow = ({ e, span }) => {
     const d = detailOf(e.id);
@@ -717,8 +736,10 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
                 <div className="grid grid-cols-[minmax(0,1fr)_72px_52px] gap-3 py-0.5 text-[10.5px] uppercase tracking-wider text-slate-600">
                   <span>Dự án</span><span className="text-right">Giờ</span><span className="text-right">%</span>
                 </div>
+                {/* v13.25 — rê chuột vào dòng dự án → thẻ tác vụ của người này trong dự án đó */}
                 {d.proj.map(([k, h], i) => (
-                  <div key={k} className="grid grid-cols-[minmax(0,1fr)_72px_52px] items-baseline gap-3 py-0.5">
+                  <div key={k} className="-mx-1.5 grid cursor-default grid-cols-[minmax(0,1fr)_72px_52px] items-baseline gap-3 rounded-md px-1.5 py-0.5 hover:bg-slate-800/70"
+                    onMouseMove={(ev) => setDetTip({ eid: e.id, pk: k, x: ev.clientX, y: ev.clientY })} onMouseLeave={() => setDetTip(null)}>
                     <span className="truncate text-slate-200">{k === NO_PROJECT ? "Việc chung, vắng mặt" : pName(k)}</span>
                     <span className="text-right font-mono text-slate-100">{fmtH(h)} h</span>
                     <span className="text-right font-mono text-slate-400">{pp[i]}%</span>
@@ -930,6 +951,33 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
     </table>
   );
 
+  /* v13.25 — thẻ hiện khi rê chuột dòng dự án trong bảng chi tiết "...", giống thẻ bên tab Nhân sự */
+  const detTipBox = detTip && (() => {
+    const d = detailOf(detTip.eid), o = d.byProj.get(detTip.pk);
+    const ph = (d.proj.find(([k]) => k === detTip.pk) || [, 0])[1];
+    if (!o || !ph) return null;
+    const tasks = [...o.tasks.entries()].sort((a, b) => (a[1].ot - b[1].ot) || b[1].h - a[1].h);
+    const pt = projTotOf.get(detTip.pk) || 0;
+    const W = 360, left = Math.min(window.innerWidth - W - 12, detTip.x + 14), top = Math.min(window.innerHeight - 40 - (tasks.length + 3) * 24, detTip.y + 14);
+    const pc = pct100(tasks.map(([, t]) => t.h));
+    return (
+      <div className="pointer-events-none fixed z-50 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-[12.5px] shadow-2xl" style={{ left, top, width: W }}>
+        <div className="grid grid-cols-[minmax(0,1fr)_52px_40px] gap-2 pb-1 text-[10.5px] uppercase tracking-wider text-slate-600"><span>Tác vụ</span><span className="text-right">Giờ</span><span className="text-right">%</span></div>
+        {tasks.map(([lbl, t], i) => (
+          <div key={lbl} className="grid grid-cols-[minmax(0,1fr)_52px_40px] gap-2 py-0.5">
+            <span className={`truncate ${t.ot ? "text-teal-400" : t.idle ? "text-slate-400" : "text-slate-100"}`}>{lbl}</span>
+            <span className="text-right font-mono text-slate-200">{fmtH(t.h)}</span>
+            <span className="text-right font-mono text-slate-400">{pc[i]}%</span>
+          </div>
+        ))}
+        <div className="mt-1.5 grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 border-t border-slate-800 pt-1.5">
+          {pt > 0 && <><span className="text-slate-500">Chiếm trong tổng giờ dự án</span><span className="text-right font-mono text-slate-100">{Math.round((ph / pt) * 100)}% <span className="text-slate-600">/ {fmtH(pt)} h</span></span></>}
+          {o.phases.size > 0 && <><span className="text-slate-500">Giai đoạn</span><span className="text-right text-slate-100">{[...o.phases].sort().map((p) => phaseLabel(p)).join(", ")}</span></>}
+        </div>
+      </div>
+    );
+  })();
+
   const tipBox = tip && (() => {
     const x = dayInfo(tip.eid, tip.d), e = cfg.employees.find((y) => y.id === tip.eid);
     const W = 320, left = tip.x + 14 + W > window.innerWidth - 8 ? tip.x - W - 14 : tip.x + 14;
@@ -1060,6 +1108,7 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
         </div>
       )}
       {!pop && !drawer && tipBox}
+      {!pop && !drawer && detTipBox}
 
       {/* v6.0 (C) — hộp sửa nhanh một ô ngày */}
       {pop && (() => {

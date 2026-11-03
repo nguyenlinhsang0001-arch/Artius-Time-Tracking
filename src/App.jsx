@@ -1,6 +1,11 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.24
+   ARTIUS — Quản lý giờ công theo dự án · v13.25
+   Mới ở v13.25 — Bảng công, bảng chi tiết "...": rê chuột vào một dòng dự án thì hiện thẻ chú thích giống tab
+     Nhân sự — danh sách tác vụ của người đó trong đúng dự án đó (giờ và %, tăng ca xanh ngọc xếp cuối, trống việc
+     xám), kèm "Chiếm trong tổng giờ dự án" (% trên tổng giờ đã gửi của dự án trong kỳ, tính trên toàn bộ nhân sự
+     chứ không theo bộ lọc) và "Giai đoạn".
+
    Mới ở v13.24 — Bảng công: thêm nút "..." cạnh tên từng nhân sự (cả chế độ Tuần và Tháng). Bấm vào bung một hàng
      chi tiết ngay dưới dòng đó, gồm hai bảng Dự án và Tác vụ (giờ và %), đúng như phần chi tiết của tab Nhân sự:
      chỉ tính giờ đã gửi, vắng mặt và việc chung gom vào "Việc chung, vắng mặt", tăng ca ghi "Tăng ca · tác vụ"
