@@ -25,7 +25,7 @@ export function OffProject({ cfg, detail, staff, stdOf, empName, taskLabel }) {
     () => new Set((cfg.tasks || []).filter((t) => taskRoles(t).length === 0).map((t) => t.id)),
     [cfg.tasks]);
   /* v13.4 — tác vụ quản lý chấm dưới một dự án là giờ của dự án đó, chấm ở "Khác" mới là việc chung */
-  const mgrIds = useMemo(() => new Set((cfg.tasks || []).filter((t) => t.mgr).map((t) => t.id)), [cfg.tasks]);
+  const mgrIds = useMemo(() => new Set((cfg.tasks || []).filter((t) => t.mgr || t.tl).map((t) => t.id)), [cfg.tasks]);   // v13.6: cả tác vụ Teamleader
   const kindOf = (taskId, projectId) => {
     if (isLeaveTask(taskId)) return "leave";
     if (isIdleTask(taskId)) return "idle";

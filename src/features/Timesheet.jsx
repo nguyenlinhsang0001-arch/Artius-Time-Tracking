@@ -136,8 +136,11 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   const assignedP = new Set(emp?.allProjects ? cfg.projects.map((p) => p.id) : Array.isArray(emp?.projects) ? emp.projects : []);   // v8.8: Tất cả dự án
   const activeProjects = cfg.projects.filter((p) => p.active && (admin || (openPhasesOf(p.id).length > 0 && (assignedP.has(p.id) || isSupProj(p.id)))));
   // Chỉ hiện hạng mục thuộc bộ phận của nhân sự — bớt danh sách dài và tránh chấm nhầm việc của bộ phận khác
-  const myTasks = useMemo(() => tasksForDept(cfg.tasks, emp?.dept, emp?.role).filter((t) => !t.mgr || mgrOk), [cfg.tasks, emp?.dept, emp?.role, mgrOk]);
-  const mgrIds = useMemo(() => new Set(cfg.tasks.filter((t) => t.mgr).map((t) => t.id)), [cfg.tasks]);
+  /* v13.6 — tác vụ Teamleader (task.tl): chỉ người có vai trò cấp Teamleader thấy (role.tl; chưa tích thì mã bắt đầu TL) */
+  const tlOk = useMemo(() => { const r = (cfg.roles || []).find((x) => x.id === emp?.role); return !!r && (typeof r.tl === "boolean" ? r.tl : /^TL/i.test(r.id)); }, [cfg.roles, emp?.role]);
+  const myTasks = useMemo(() => tasksForDept(cfg.tasks, emp?.dept, emp?.role).filter((t) => (!t.mgr || mgrOk) && (!t.tl || tlOk)), [cfg.tasks, emp?.dept, emp?.role, mgrOk, tlOk]);
+  /* tác vụ theo cấp (quản lý, teamleader): chọn được ở cả dự án lẫn "Khác" */
+  const mgrIds = useMemo(() => new Set(cfg.tasks.filter((t) => t.mgr || t.tl).map((t) => t.id)), [cfg.tasks]);
   /* v2.9 — "Khác" (projectId = NO_PROJECT, không có giai đoạn) gồm tác vụ chung của công ty (không gắn vai trò) và vắng mặt.
      Dự án thật chỉ chọn được tác vụ gắn vai trò. Giờ cũ đã chấm tác vụ chung dưới một dự án vẫn giữ nguyên. */
   const commonIds = useMemo(() => new Set(cfg.tasks.filter((t) => taskRoles(t).length === 0).map((t) => t.id)), [cfg.tasks]);
@@ -149,9 +152,11 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   const projTasks = myTasks.filter((t) => !commonIds.has(t.id) || mgrIds.has(t.id));
   /* v13.5 — tác vụ quản lý đứng thành nhóm "Quản lý" riêng, không lẫn vào Công việc chung / Công việc dự án */
   const mgrTasks = myTasks.filter((t) => t.mgr);
-  const commonPlain = commonTasks.filter((t) => !t.mgr);
-  const projPlain = projTasks.filter((t) => !t.mgr);
+  const tlTasks = myTasks.filter((t) => t.tl);
+  const commonPlain = commonTasks.filter((t) => !t.mgr && !t.tl);
+  const projPlain = projTasks.filter((t) => !t.mgr && !t.tl);
   const MGR_CHIP = "#a78bfa";
+  const TL_CHIP = "#f59e0b";
   // v4.9: khung giờ tăng ca (hạng mục [OT]) và các tác vụ dự án chọn được làm "Tăng ca cho tác vụ"
   const otBands = otBandTasks();   // v6.3: khung giờ chung từ Thiết lập → Tăng ca, mọi vai trò như nhau
   const otTargets = projTasks.filter((t) => !isOtTask(t));
@@ -245,12 +250,12 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   const sectionsOf = (g, open = false) => {
     const khac = g.projectId === NO_PROJECT;
     const s2 = khac
-      ? [{ label: "Công việc chung", chip: "#2dd4bf", items: [] }, { label: "Quản lý", chip: MGR_CHIP, items: [] }, { label: "Vắng mặt", chip: "#38bdf8", items: [] }]
-      : [{ label: "Công việc dự án", noHead: true, items: [] }, { label: "Quản lý", chip: MGR_CHIP, items: [] }, { label: "Tăng ca", ot: true, items: [] }];   // v6.2: bỏ chữ "Công việc dự án"
+      ? [{ label: "Công việc chung", chip: "#2dd4bf", items: [] }, { label: "Teamleader", chip: TL_CHIP, items: [] }, { label: "Quản lý", chip: MGR_CHIP, items: [] }, { label: "Vắng mặt", chip: "#38bdf8", items: [] }]
+      : [{ label: "Công việc dự án", noHead: true, items: [] }, { label: "Teamleader", chip: TL_CHIP, items: [] }, { label: "Quản lý", chip: MGR_CHIP, items: [] }, { label: "Tăng ca", ot: true, items: [] }];   // v6.2: bỏ chữ "Công việc dự án"
     for (const it of g.items) {
       const t = taskById.get(it.r.taskId);
-      const mg = !!t?.mgr;   // v13.5: nhóm Quản lý riêng
-      s2[khac ? (isLeaveTask(it.r.taskId) ? 2 : mg ? 1 : 0) : (isOtTask(t) ? 2 : mg ? 1 : 0)].items.push(it);
+      const lv = t?.tl ? 1 : t?.mgr ? 2 : 0;   // v13.5 nhóm Quản lý · v13.6 nhóm Teamleader
+      s2[khac ? (isLeaveTask(it.r.taskId) ? 3 : lv) : (isOtTask(t) ? 3 : lv)].items.push(it);
     }
     // v4.4: hạng mục hiện theo thứ tự quản lý sắp ở tab Tác vụ (kéo thả); hạng mục không còn trong danh sách xếp cuối
     for (const x of s2) x.items.sort((a, b) => (taskOrder.get(a.r.taskId) ?? 1e9) - (taskOrder.get(b.r.taskId) ?? 1e9));
@@ -986,6 +991,11 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
             <optgroup label="Công việc chung">
               {commonPlain.map((t) => <option key={t.id} value={t.id}>{taskText(t)}</option>)}
             </optgroup>
+            {tlTasks.length > 0 && (
+              <optgroup label="Teamleader">
+                {tlTasks.map((t) => <option key={t.id} value={t.id}>{taskText(t)}</option>)}
+              </optgroup>
+            )}
             {mgrTasks.length > 0 && (
               <optgroup label="Quản lý">
                 {mgrTasks.map((t) => <option key={t.id} value={t.id}>{taskText(t)}</option>)}
@@ -1000,6 +1010,11 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
             <optgroup label="Công việc dự án">
               {projPlain.map((t) => <option key={t.id} value={t.id}>{taskText(t)}</option>)}
             </optgroup>
+            {tlTasks.length > 0 && (
+              <optgroup label="Teamleader">
+                {tlTasks.map((t) => <option key={t.id} value={t.id}>{taskText(t)}</option>)}
+              </optgroup>
+            )}
             {mgrTasks.length > 0 && (
               <optgroup label="Quản lý">
                 {mgrTasks.map((t) => <option key={t.id} value={t.id}>{taskText(t)}</option>)}
@@ -1720,8 +1735,8 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
         const khac = pid === NO_PROJECT;
         const phases = pid && !khac ? openPhasesOf(pid) : [];
         const lists = !pid ? [] : khac
-          ? [["Công việc chung", commonPlain], ...(mgrTasks.length ? [["Quản lý", mgrTasks]] : []), ["Vắng mặt", LEAVE_TASKS]]
-          : [["", projPlain.filter((t) => !isOtTask(t))], ...(mgrTasks.length ? [["Quản lý", mgrTasks]] : [])];
+          ? [["Công việc chung", commonPlain], ...(tlTasks.length ? [["Teamleader", tlTasks]] : []), ...(mgrTasks.length ? [["Quản lý", mgrTasks]] : []), ["Vắng mặt", LEAVE_TASKS]]
+          : [["", projPlain.filter((t) => !isOtTask(t))], ...(tlTasks.length ? [["Teamleader", tlTasks]] : []), ...(mgrTasks.length ? [["Quản lý", mgrTasks]] : [])];
         const chip = (on) => `rounded-lg border px-2.5 py-1.5 text-[13px] ${on ? "border-teal-600 bg-teal-600 font-medium text-white" : "border-slate-700 bg-slate-900 text-slate-200"}`;
         const toggle = (tid) => setAddSheet((s) => ({ ...s, picked: s.picked.includes(tid) ? s.picked.filter((x) => x !== tid) : [...s.picked, tid] }));
         return (

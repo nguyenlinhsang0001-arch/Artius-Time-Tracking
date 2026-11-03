@@ -1,6 +1,13 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.5
+   ARTIUS — Quản lý giờ công theo dự án · v13.6
+   Mới ở v13.6 — Tác vụ Teamleader:
+     · Nhân sự › Tác vụ: ô "Teamleader · chỉ teamleader" trong nhóm Cấp quản lý (task.tl = true).
+     · Phòng ban & vai trò: mỗi vai trò có nút TL để đánh dấu cấp Teamleader (role.tl); chưa bấm lần nào thì mã bắt đầu bằng TL
+       (TLTK, TL-2D) coi như đã đánh dấu.
+     · Chấm công: chỉ người có vai trò cấp Teamleader thấy tác vụ Teamleader (Trưởng phòng, BOD không thấy); nhóm "Teamleader"
+       (nhãn vàng) đứng trước nhóm Quản lý, chọn được dưới dự án và ở Khác như tác vụ quản lý.
+
    Mới ở v13.5 — Chấm công: tác vụ quản lý đứng thành nhóm "Quản lý" riêng (nhãn tím).
      Khối Khác: Công việc chung → Quản lý → Vắng mặt. Khối dự án: Công việc dự án → Quản lý → Tăng ca.
      Ô chọn hạng mục và bảng thêm tác vụ trên điện thoại cũng tách nhóm Quản lý.
