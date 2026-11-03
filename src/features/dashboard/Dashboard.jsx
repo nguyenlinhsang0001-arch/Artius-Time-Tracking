@@ -386,6 +386,8 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
               <div className="min-w-0 flex-1 sm:w-72 sm:flex-none"><DateRangeField from={from} to={to} onChange={pickRange} /></div>
               <button onClick={() => stepPeriod(1)} disabled={atNow} title={pMode === "month" ? "Tháng sau" : pMode === "week" ? "Tuần sau" : "Tiến một khoảng"}
                 className={`${CTRL} w-11 shrink-0 rounded-md border border-slate-700 text-slate-400 hover:text-slate-100 disabled:opacity-30`}><ChevronRight size={16} className="mx-auto" /></button>
+              {/* v13.10: về kỳ hiện tại — giống tab Bảng công */}
+              {!atNow && <button onClick={() => pickMode(pMode === "month" ? "month" : "week")} className="ml-1 shrink-0 whitespace-nowrap text-xs text-teal-400 hover:text-teal-300">{pMode === "month" ? "Tháng này" : "Tuần này"}</button>}
               {loading && <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} />}
             </div>
             <div className="w-full sm:w-48">

@@ -1,6 +1,10 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.9
+   ARTIUS — Quản lý giờ công theo dự án · v13.10
+   Mới ở v13.10 — Nhân sự, Giờ ngoài dự án, Ma trận: nút "Tuần này" / "Tháng này" cạnh mũi tên ›, chỉ hiện khi đang xem kỳ khác
+     (giống tab Bảng công). Mọi lịch tự vẽ (CalendarPanel: ô chọn khoảng ngày, ô chọn ngày, lịch Chấm công) khoanh đỏ ngày lễ
+     theo danh sách ở Thiết lập, rê chuột hiện tên ngày lễ.
+
    Mới ở v13.9 — Giờ ngoài dự án: thanh năng lực ghi "% · giờ" trong từng đoạn, chú thích chỉ còn tên; bỏ thanh "So với giờ chuẩn
      của kỳ" và đoạn giải thích. Xem theo Tác vụ: ba cột Việc chung | Trống việc | Vắng mặt, mỗi tác vụ mở sẵn danh sách người.
 
@@ -585,7 +589,7 @@ import { DEFAULT_HOURS } from "./core/date.jsx";
 import { LAST_STORAGE_ERROR, NET_OK, STORAGE_OK, commitConfig, errText, loadDB, pullTs, resetDB, useNet, useStorageHealth } from "./core/db.jsx";
 import { DEFAULT_DEPTS, DEFAULT_LEAVE_TYPES, DEFAULT_PHASES, DEFAULT_ROLES, DEFAULT_TASKS, IDLE_PENDING, IDLE_TASK_ID, OT_PENDING, emptyConfig, isDeptTask, migrateOtCfg, setIdlePending, setOtMigNote, setOtPending, supportList, syncDepts, syncLeave, syncOtBands, syncPhases, syncRoles, withIdleTask } from "./core/domain.jsx";
 import { useTheme } from "./core/theme.jsx";
-import { APP_VERSION, BrandLogo, CTRL, ConfirmDialog, InstallButton, ThemeToggle, btnDanger, btnGhost, btnPrimary } from "./core/ui.jsx";
+import { syncHolidays, APP_VERSION, BrandLogo, CTRL, ConfirmDialog, InstallButton, ThemeToggle, btnDanger, btnGhost, btnPrimary } from "./core/ui.jsx";
 import { EmployeeDashboard, EmployeeSettings } from "./features/EmployeeHome.jsx";
 import { Employees } from "./features/Employees.jsx";
 import { Projects } from "./features/Projects.jsx";
@@ -761,6 +765,7 @@ export function AppMain() {
   syncLeave(cfg?.leaveTypes);
   syncOtBands(cfg);
   syncRoles(cfg?.roles);   // đồng bộ trước khi các màn con render (cfg còn null lúc app vừa mở)
+  syncHolidays(cfg?.holidays);   // v13.10: mọi lịch tự vẽ khoanh đỏ ngày lễ
   syncPhases(cfg?.phases);
 
   const signOut = async () => {

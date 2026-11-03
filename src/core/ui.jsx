@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   Download, Trash2, AlertTriangle, ChevronUp, ChevronDown, CheckCircle2, Check, CalendarDays, Share, Sun, Moon, Monitor,
 } from "lucide-react";
-import { DEFAULT_HOURS, DOW_MINI, OT_ALERT, addDays, dFull, dLabel, effortHoursFor, fmt, holidayRingBg, minHoursFor, mondayOf, pad, parseD, weekDays, ymOf } from "./date.jsx";
+import { DEFAULT_HOURS, DOW_MINI, OT_ALERT, addDays, dFull, dLabel, effortHoursFor, fmt, holidayRingBg, makeHolidayIndex, minHoursFor, mondayOf, pad, parseD, weekDays, ymOf } from "./date.jsx";
 import { dbTs, ensureMonths } from "./db.jsx";
 import { isIdleTask, isOtId, leaveTypeOfTask, tone } from "./domain.jsx";
 import { useTheme } from "./theme.jsx";
@@ -29,7 +29,7 @@ export function ThemeToggle() {
   );
 }
 
-export const APP_VERSION = "v13.9";
+export const APP_VERSION = "v13.10";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -161,6 +161,11 @@ export function ConfirmDialog({ open, title, desc, confirmLabel = "Xoá", cancel
 /* ============================================================
    DATE PICKER (dark, tự vẽ — không dùng picker mặc định của trình duyệt)
    ============================================================ */
+/* v13.10 — ngày lễ dùng chung cho mọi lịch tự vẽ (ô chọn khoảng ngày, ô chọn ngày, lịch Chấm công):
+   App đồng bộ từ cfg.holidays mỗi lần render (như syncRoles), CalendarPanel tự khoanh đỏ ngày lễ. */
+let HOL_IDX = makeHolidayIndex([]);
+export const syncHolidays = (list) => { HOL_IDX = makeHolidayIndex(Array.isArray(list) ? list : []); };
+
 export function CalendarPanel({ value, onSelect, dayStatus, view: viewProp, onViewChange, markSelected = true, markWeek = false, rangeStart = null, rangeEnd = null, hint = null }) {
   const base = value ? parseD(value) : new Date();
   const [internalView, setInternalView] = useState({ y: base.getFullYear(), m: base.getMonth() });
@@ -202,7 +207,9 @@ export function CalendarPanel({ value, onSelect, dayStatus, view: viewProp, onVi
                 const inMonth = d.getMonth() === view.m;
                 const selected = s === value;
                 const isToday = s === todayStr;
-                const status = dayStatus ? dayStatus(s) : null; // "under" | "over" | "effort" | "otHigh" | "holiday" | "leave" | null
+                const status0 = dayStatus ? dayStatus(s) : null; // "under" | "over" | "effort" | "otHigh" | "holiday" | "leave" | null
+                const status = status0 || (HOL_IDX.has(s) ? "holiday" : null);   // v13.10: lịch không có dayStatus vẫn khoanh ngày lễ
+                const holName = HOL_IDX.get(s);
                 const isSelected = markSelected && selected;
                 const isEdge = (rangeStart && s === rangeStart) || (rangeEnd && s === rangeEnd);
                 const inRange = rangeStart && rangeEnd && s > rangeStart && s < rangeEnd;
@@ -225,7 +232,7 @@ export function CalendarPanel({ value, onSelect, dayStatus, view: viewProp, onVi
                 return (
                   <button key={s} onClick={() => onSelect(s)}
                     style={status === "holiday" ? holidayRingBg(30) : undefined}
-                    title={isToday ? "Hôm nay" : status === "under" ? "Chưa đủ giờ" : status === "otHigh" ? `OT trên ${OT_ALERT} giờ` : status === "over" ? "Có giờ tăng ca" : status === "effort" ? "Có giờ cố gắng (vượt giờ chuẩn)" : status === "holiday" ? "Ngày lễ" : status === "leave" ? "Nghỉ phép" : undefined}
+                    title={holName ? `${holName}${isToday ? " · Hôm nay" : ""}` : isToday ? "Hôm nay" : status === "under" ? "Chưa đủ giờ" : status === "otHigh" ? `OT trên ${OT_ALERT} giờ` : status === "over" ? "Có giờ tăng ca" : status === "effort" ? "Có giờ cố gắng (vượt giờ chuẩn)" : status === "holiday" ? "Ngày lễ" : status === "leave" ? "Nghỉ phép" : undefined}
                     className={`flex h-8 items-center justify-center rounded text-xs hover:bg-slate-800 ${tone} ${ring}`}>
                     {d.getDate()}
                   </button>
