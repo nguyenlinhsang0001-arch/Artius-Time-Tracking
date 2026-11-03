@@ -1,6 +1,10 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.17
+   ARTIUS — Quản lý giờ công theo dự án · v13.18
+   Mới ở v13.18 — Bảng công, thanh trạng thái: bỏ ô Chưa nộp / còn nháp, Thiếu giờ chuẩn, Trong đó tăng ca; thêm thanh "Tỷ lệ giờ
+     đã gửi": Giờ làm việc (dự án + việc chung, trừ vắng mặt, trống việc, cố gắng) · Giờ công khác (vắng mặt + trống việc) ·
+     Giờ cố gắng · Giờ OT, mỗi phần % và giờ.
+
    Mới ở v13.17 — Bảng công tách hai khung: thanh trạng thái chung (Đã nộp đủ, Chưa nộp, Tổng giờ, Tăng ca, Thiếu giờ) ở trên;
      bảng chấm công ở dưới, dòng đầu là thanh Tuần / Tháng, lịch, phễu lọc, tìm, (?), Khoá quá hạn, Xuất Excel.
 
