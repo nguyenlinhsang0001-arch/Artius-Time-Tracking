@@ -1,13 +1,14 @@
 /* ARTIUS TIME v11 — tách từ App.jsx, nội dung giữ nguyên. */
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
-  Plus, Trash2, Save, AlertTriangle, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, CheckCircle2, Loader2, Lock, Pencil, Check, X, Copy, Unlock, Zap, Eraser, Minus,
+  Plus, Trash2, Save, AlertTriangle, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, CheckCircle2, Loader2, Lock, Pencil, Check, X, Copy, Unlock, Zap, Eraser, Minus, Download,
 } from "lucide-react";
 import { DEFAULT_HOURS, DOW, HOLIDAY_RING_SVG, OT_ALERT, addDays, dLabel, effortHoursFor, fmt, makeHolidayIndex, minHoursFor, mondayOf, parseD, prevYm, stdHoursFor, weekDays, ymOf } from "../core/date.jsx";
 import { LAST_STORAGE_ERROR, RATE_LIMITED, ck, commitTs, dbTs, ensureMonths, refreshTs, slot, useDataTick, useNet } from "../core/db.jsx";
 import { DEFAULT_PHASE, LEAVE_TASKS, NO_PHASE, NO_PROJECT, OT_TASKS, activePhases, empHasProj, fmtH, groupKey, guessPhase, isIdleTask, isLeaveTask, isOtId, isOtTask, leaveInfo, leaveTypeOfTask, norm, otBandKey, otBandTasks, otMaxHours, otText, pastLocked, pastOpenUntil, pastWeeks, phaseInfo, phaseLabel, projPhaseIsOpen, roleLabel, rowKey, sortByGroup, supportInRange, supportOn, taskRoles, taskText, tasksForDept, tone } from "../core/domain.jsx";
 import { CTRL, ConfirmDialog, GUT, NoteDialog, WeekPicker, btnBase, btnGhost, btnPrimary, iconBtn, selectCls } from "../core/ui.jsx";
 import { DeadlineBanner } from "../shared/deadline.jsx";
+import { otSpan } from "../core/domain.jsx";   // v13.29: khung giờ tăng ca, để xếp vào đúng dòng của mẫu giấy
 
 /* v12.36 — nút bút chì "Sửa giờ của khối này" phát sáng nhịp nhẹ để dễ thấy.
    CSS gắn một lần lúc nạp module; màu đặt riêng cho mode sáng / tối (không trông vào LIGHT_CSS).
@@ -61,6 +62,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   const [reloadKey, setReloadKey] = useState(0);          // v1.9: tăng khi dữ liệu của người này vừa đổi trên server
   const dataTick = useDataTick();
   const [copying, setCopying] = useState(false);
+  const [otBusy, setOtBusy] = useState(false);   // v13.29: đang dựng file Excel tăng ca
   const [savedTick, setSavedTick] = useState(0); // tăng sau mỗi lần lưu thành công, dùng làm tín hiệu làm mới lịch
   const [saveFailed, setSaveFailed] = useState(false);
   const mobileInputs = useRef([]);              // ô nhập giờ của từng dòng trên mobile
@@ -741,6 +743,46 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     window.addEventListener("artius:tuan", h);
     return () => window.removeEventListener("artius:tuan", h);
   }, []);
+  /* v13.29 — Xuất "BẢNG CHẤM CÔNG_NGOÀI GIỜ" của tháng đang xem, điền thẳng vào mẫu giấy công ty.
+     Chỉ lấy giờ ĐÃ GỬI: bảng này để ký và tính lương, giờ nháp chưa gửi không được tính.
+     Tháng lấy theo tuần đang mở; tuần vắt qua hai tháng thì lấy tháng của ngày thứ Hai. */
+  const exportOt = async () => {
+    if (otBusy) return;
+    setOtBusy(true);
+    try {
+      const ym = ymOf(monday), [y, mo] = ym.split("-").map(Number);
+      await ensureMonths([ym]);
+      const b = dbTs(empId, ym) || { rows: [], sent: {} };
+      const sent = b.sent || {};
+      const projName = (id) => {
+        if (!id || id === NO_PROJECT) return "Việc chung";
+        const p = (cfg.projects || []).find((x) => x.id === id);
+        return p ? p.name : "(dự án đã xoá)";   // tên đầy đủ, không rút về mã
+      };
+      const entries = [];
+      for (const r of b.rows || []) {
+        if (!isOtId(r.taskId)) continue;
+        const sp = otSpan(OT_TASKS.find((t) => t.id === r.taskId));
+        if (!sp) continue;                       // khung giờ không đọc được thì bỏ, không đoán
+        for (const [d, hv] of Object.entries(r.days || {})) {
+          const h = Number(hv) || 0;
+          if (h <= 0 || !sent[d] || d.slice(0, 7) !== ym) continue;
+          entries.push({ day: +d.slice(8), projectId: r.projectId || NO_PROJECT, projName: projName(r.projectId), bandStart: sp.start, hours: h });
+        }
+      }
+      if (!entries.length) { flash(`Tháng ${mo}/${y} chưa có giờ tăng ca nào đã gửi.`, "err"); return; }
+      const { buildOtXlsx, otOverflow, downloadBytes } = await import("./otExcel.js");
+      const over = otOverflow(entries);
+      const bytes = await buildOtXlsx({ empName: emp?.name || "", year: y, month: mo, entries });
+      downloadBytes(bytes, `Tang ca ngoai gio ${String(mo).padStart(2, "0")}-${y} - ${emp?.name || empId}.xlsx`);
+      // mẫu giấy chỉ có 2 ô công trình cho mỗi nửa tháng — nói thẳng khi có công trình không lọt vào
+      if (over > 0) flash(`Đã xuất, nhưng mẫu chỉ chứa 2 công trình mỗi nửa tháng — ${over} công trình chưa được điền, cần ghi tay thêm.`, "err");
+      else flash("Đã xuất bảng chấm công ngoài giờ.");
+    } catch (e) {
+      flash(`Chưa xuất được — ${e.message}`, "err");
+    } finally { setOtBusy(false); }
+  };
+
   const askSubmitWeek = () => {
     if (toSend.length === 0) return flash("Chưa có giờ mới để gửi. Nhập giờ vào các ngày chưa gửi (tới hôm nay) trước đã.", "err");
     const msg = otProblem();   // v4.9: báo lỗi dòng tăng ca trước khi hỏi xác nhận gửi
@@ -1678,6 +1720,11 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       {/* v8.4: điện thoại — nhân sự dùng thanh Lưu nháp / Gửi cố định ở đáy màn (bên dưới); quản lý giữ nút như cũ */}
       <div className={`${admin ? "grid grid-cols-2" : "hidden"} gap-2 md:flex md:flex-wrap md:items-center`}>
         <button onClick={focusQuick} disabled={locked} className={`${btnGhost} hidden disabled:opacity-40 md:inline-flex`}><Plus size={15} /> Thêm tác vụ</button>
+        {/* v13.29 — xuất bảng chấm công ngoài giờ của THÁNG đang xem, theo đúng mẫu giấy của công ty */}
+        <button onClick={exportOt} disabled={otBusy} title="Xuất bảng chấm công ngoài giờ của tháng đang xem, theo mẫu giấy công ty"
+          className={`${btnGhost} hidden disabled:opacity-40 md:inline-flex`}>
+          {otBusy ? <Loader2 className="animate-spin" size={15} /> : <Download size={15} />} Excel tăng ca tháng
+        </button>
         {/* v1.9: quản lý lưu được khi sửa bảng công của người khác · v8.1: nhân sự có lại nút Lưu nháp (ghi lên server, chưa gửi) */}
         {!admin && (
           <button onClick={() => save("draft")} disabled={saving || locked} title="Lưu tạm giờ đang nhập lên hệ thống, chưa gửi — quản lý thấy là Nháp, chưa tính vào báo cáo"

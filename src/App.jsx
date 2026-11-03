@@ -1,6 +1,13 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.28
+   ARTIUS — Quản lý giờ công theo dự án · v13.29
+   Mới ở v13.29 — Chấm công (màn nhân viên): nút "Excel tăng ca tháng" xuất BẢNG CHẤM CÔNG_NGOÀI GIỜ của tháng đang
+     xem, điền thẳng vào mẫu giấy của công ty (public/mau-tang-ca.xlsx) nên in ra giống hệt bản đang dùng: giữ khung,
+     đường kẻ, ô ký tên, khổ giấy và công thức cột Số giờ. Chỉ lấy giờ ĐÃ GỬI. App không lưu giờ vào/ra nên
+     V = giờ bắt đầu khung, R = V + số giờ đã chấm; cột Số tiền để trống cho kế toán. Mỗi nửa tháng chứa 2 công
+     trình, dư ra thì báo cho người xuất biết chứ không nuốt dữ liệu. Sửa 13 công thức sai sẵn có trong mẫu
+     (ngày 16 của CRM 3 bị trừ ngược dấu, CRM 4 bỏ quên hẳn ngày 16, CRM 3 để hệ số 1.5 cho hai khung đêm).
+
    Mới ở v13.28 — Chấm công (màn nhân viên): lăn bánh xe chuột khi con trỏ đang ở ô giờ không còn tăng / giảm
      số giờ nữa (hành vi mặc định của ô số trên trình duyệt). Ô tự bỏ tiêu điểm khi lăn, nên trang cuộn bình
      thường. Áp cho cả lưới tuần trên máy tính và ô nhập trên điện thoại. Gõ số và nút +/- 0.5 giữ nguyên.
