@@ -30,10 +30,19 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
   /* v13.11 — lọc theo vai trò: chỉ vai trò đang có người (chưa nghỉ việc), thu theo bộ phận đang chọn */
   const [fRole, setFRole] = useState("all");
   useEffect(() => { setFRole("all"); }, [fDept]);
+  /* v13.13 — lọc theo TEAM: dùng bảng Gộp vai trò của Kế hoạch (vd TL-2D → 2D) để teamleader đi cùng team của mình */
+  const teamMerge = useMemo(() => {
+    const m = cfg.planning?.merge || {}, ids = new Set((cfg.roles || []).map((r) => r.id)), out = {};
+    for (const [k, v] of Object.entries(m)) if (ids.has(k) && ids.has(v) && k !== v && !m[v]) out[k] = v;   // một tầng, như lưới Kế hoạch
+    return out;
+  }, [cfg.planning?.merge, cfg.roles]);
+  const teamOf = (rid) => teamMerge[rid] || rid;
   const roleOpts = useMemo(() => {
-    const have = new Set((cfg.employees || []).filter((e) => !isResigned(e) && e.role && (fDept === "all" || (e.dept || "") === fDept)).map((e) => e.role));
-    return (cfg.roles || []).filter((r) => have.has(r.id));
-  }, [cfg.employees, cfg.roles, fDept]);   // eslint-disable-line react-hooks/exhaustive-deps
+    const present = new Set((cfg.employees || []).filter((e) => !isResigned(e) && e.role && (fDept === "all" || (e.dept || "") === fDept)).map((e) => e.role));
+    const teams = new Set([...present].map((rid) => teamMerge[rid] || rid));
+    return (cfg.roles || []).filter((r) => teams.has(r.id) && !teamMerge[r.id])
+      .map((r) => ({ ...r, extra: Object.keys(teamMerge).filter((k) => teamMerge[k] === r.id && present.has(k)) }));
+  }, [cfg.employees, cfg.roles, fDept, teamMerge]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   /* v5.6 — Dashboard tách hai tab: "Dự án" (tiến độ từ trước tới nay, không theo kỳ) và "Nhân sự" (theo kỳ).
      Bỏ ô lọc Dự án / Giai đoạn chung ở đầu trang — mỗi tab có bộ lọc riêng, chỉ tác động lên chính tab đó. */
@@ -179,11 +188,11 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
   const matchEmp = useCallback((eid) => {
     const e = empMap.get(eid);
     if (fDept !== "all" && (e?.dept || "") !== fDept) return false;
-    if (fRole !== "all" && (e?.role || "") !== fRole) return false;   // v13.11
+    if (fRole !== "all" && teamOf(e?.role || "") !== fRole) return false;   // v13.11 · v13.13 theo team
     const kw = norm(q.trim());   // v6.6: gõ không dấu vẫn tìm ra ("nguyen linh sang" → Nguyễn Linh Sang)
     if (kw && !norm(`${e?.name || ""} ${e?.code || ""}`).includes(kw)) return false;
     return true;
-  }, [empMap, fDept, fRole, q]);
+  }, [empMap, fDept, fRole, q, teamMerge]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const agg = useMemo(() => {
     if (!data) return null;
@@ -408,7 +417,7 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
               </select>
               <select value={fRole} onChange={(e) => setFRole(e.target.value)} className={selectCls} aria-label="Vai trò">
                 <option value="all">Mọi vai trò</option>
-                {roleOpts.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
+                {roleOpts.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}{r.extra.length ? ` + ${r.extra.join(", ")}` : ""}</option>)}
               </select>
             </FilterButton>
             <div className="relative w-full sm:w-56">
