@@ -9,7 +9,7 @@ import { DEFAULT_HOURS, DOW, addDays, dLabel, effortHoursFor, fmt, lastOfMonth, 
 import { LAST_STORAGE_ERROR, bumpData, commitTs, daySent, dbTs, dbTsSent, ensureMonths, loadXlsx, refreshTs, slot, useDataTick, weekDone } from "../core/db.jsx";
 import { DEFAULT_PHASE, DEPTS, LEAVE_TASKS, NO_PROJECT, NUDGE_GAP_MIN, OT_TASKS, ResignedBadge, empNameTag, fmtH, goneOnDay, isIdleTask, isLeaveTask, isOtId, isResigned, norm, pastCut, pastOpenUntil, pastWeeks, phaseLabel, roleTitle, supportKind, taskText } from "../core/domain.jsx";
 import { isLight } from "../core/theme.jsx";
-import { CTRL, FilterButton, Kpi, Panel, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
+import { CTRL, FilterButton, PeriodField, Kpi, Panel, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
 import { allocLimits } from "../shared/alloc.jsx";
 import { dayStyle, dayStyleSm } from "../shared/dayStyle.jsx";
 import { SupportPanel } from "../shared/support.jsx";
@@ -858,7 +858,11 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
         </div>
         <div className="flex items-center gap-1">
           <button onClick={() => shift(-1)} className={`${CTRL} w-11 rounded-md border border-slate-700 text-slate-400 hover:text-slate-100`}><ChevronLeft size={16} className="mx-auto" /></button>
-          <span className="min-w-[150px] text-center text-sm text-slate-100">{perLabel}</span>
+          {/* v13.15: ô lịch như Nhân sự / Giờ ngoài dự án; chọn ngày → tuần / tháng chứa ngày đó */}
+          <PeriodField className="w-40" mode={mode}
+            from={mode === "week" ? monday : `${ym}-01`}
+            to={mode === "week" ? fmt(addDays(parseD(monday), 6)) : fmt(lastOfMonth(parseD(`${ym}-01`)))}
+            onPick={(s) => { if (mode === "week") setMonday(fmt(mondayOf(parseD(s)))); else setYm(ymOf(s)); }} />
           <button onClick={() => shift(1)} className={`${CTRL} w-11 rounded-md border border-slate-700 text-slate-400 hover:text-slate-100`}><ChevronRight size={16} className="mx-auto" /></button>
           {!isNow && <button onClick={() => { setMonday(fmt(mondayOf(new Date()))); setYm(ymOf(today)); }} className="ml-1 text-xs text-teal-400 hover:text-teal-300">{mode === "week" ? "Tuần này" : "Tháng này"}</button>}
         </div>

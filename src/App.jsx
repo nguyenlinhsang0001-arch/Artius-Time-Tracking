@@ -1,6 +1,10 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.14
+   ARTIUS — Quản lý giờ công theo dự án · v13.15
+   Mới ở v13.15 — Ô lịch chỉ ghi ngày/tháng (bỏ năm, số ngày, biểu tượng). Phễu lọc: đang lọc thì hiện (x) ở góc, bấm là tắt hết
+     bộ lọc (FilterButton, áp cho mọi phễu). Bảng công: chữ "Tuần …" thay bằng ô lịch PeriodField như Nhân sự — chọn ngày là
+     nhảy tới tuần / tháng chứa ngày đó.
+
    Mới ở v13.14 — Gộp vai trò vào team (planning.merge) chuyển sang Nhân sự › Tác vụ › Phòng ban & vai trò: mỗi chip vai trò có ô
      "team" (→ 2D…), team chính ghi các vai trò gộp vào. Bỏ nút / bảng Gộp vai trò ở tab Kế hoạch.
 

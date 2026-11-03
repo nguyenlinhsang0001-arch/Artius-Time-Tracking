@@ -29,7 +29,7 @@ export function ThemeToggle() {
   );
 }
 
-export const APP_VERSION = "v13.14";
+export const APP_VERSION = "v13.15";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -181,8 +181,12 @@ export function FilterButton({ count = 0, onClear, children }) {
       <button onClick={() => setOpen((o) => !o)} aria-expanded={open} title="Lọc theo bộ phận, vai trò"
         className={`${CTRL} relative flex w-11 items-center justify-center rounded-md border ${open || count ? "border-teal-600 text-teal-300" : "border-slate-700 text-slate-400 hover:text-slate-100"}`}>
         <Filter size={15} />
-        {count > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-teal-600 px-1 font-mono text-[10px] text-white">{count}</span>}
       </button>
+      {/* v13.15: đang lọc thì hiện (x) ở góc — bấm là tắt hết bộ lọc */}
+      {count > 0 && onClear && (
+        <button onClick={() => { onClear(); setOpen(false); }} title="Tắt bộ lọc" aria-label="Tắt bộ lọc"
+          className="absolute -right-1.5 -top-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-teal-600 text-[11px] leading-none text-white hover:bg-rose-600">×</button>
+      )}
       {open && (
         <div className="absolute left-0 top-full z-40 mt-1 flex w-64 flex-col gap-2 rounded-lg border border-slate-700 bg-slate-900 p-3 shadow-2xl">
           {children}
@@ -302,7 +306,6 @@ export function DateRangeField({ label, from, to, onChange, align = "left", clas
     setPending(null); setOpen(false);
   };
 
-  const nDays = Math.round((parseD(to) - parseD(from)) / 86400000) + 1;
 
   return (
     <div ref={ref} className={`relative ${className}`}>
@@ -312,11 +315,8 @@ export function DateRangeField({ label, from, to, onChange, align = "left", clas
           setOpen((o) => { if (!o) { const d = parseD(from); setView({ y: d.getFullYear(), m: d.getMonth() }); } return !o; });
         }}
         className={`${CTRL} flex w-full items-center justify-between gap-2 rounded-md border bg-slate-900 px-3 text-sm hover:border-slate-500 ${open ? "border-teal-500" : "border-slate-700"}`}>
-        <span className="truncate font-mono text-slate-100">{dFull(from)} – {dFull(to)}</span>
-        <span className="flex shrink-0 items-center gap-2">
-          <span className="font-mono text-xs text-slate-500">{nDays} ngày</span>
-          <CalendarDays size={15} className="text-slate-500" />
-        </span>
+        {/* v13.15: ô hiển thị nhanh chỉ ghi ngày/tháng */}
+        <span className="w-full truncate text-center font-mono text-slate-100">{dLabel(from)} – {dLabel(to)}</span>
       </button>
 
       {open && (
@@ -333,6 +333,33 @@ export function DateRangeField({ label, from, to, onChange, align = "left", clas
               ? <>Bắt đầu <span className="font-mono text-teal-300">{dFull(pending)}</span> — giờ bấm ngày kết thúc</>
               : "Bấm ngày bắt đầu, rồi bấm ngày kết thúc"}
           />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* v13.15 — ô lịch cho màn chỉ xem theo Tuần / Tháng (Bảng công): hiển thị ngày/tháng như DateRangeField,
+   bấm mở lịch, chọn một ngày là nhảy tới tuần / tháng chứa ngày đó. */
+export function PeriodField({ from, to, mode = "week", onPick, className = "" }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+  return (
+    <div ref={ref} className={`relative ${className}`}>
+      <button onClick={() => setOpen((o) => !o)}
+        className={`${CTRL} flex w-full items-center justify-center rounded-md border bg-slate-900 px-3 text-sm hover:border-slate-500 ${open ? "border-teal-500" : "border-slate-700"}`}>
+        <span className="truncate font-mono text-slate-100">{dLabel(from)} – {dLabel(to)}</span>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1">
+          <CalendarPanel value={from} onSelect={(s) => { onPick(s); setOpen(false); }}
+            markSelected={false} markWeek={mode === "week"} rangeStart={mode === "month" ? from : null} rangeEnd={mode === "month" ? to : null} />
         </div>
       )}
     </div>
