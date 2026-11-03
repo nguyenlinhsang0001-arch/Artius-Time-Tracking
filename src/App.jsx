@@ -1,6 +1,10 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.4
+   ARTIUS — Quản lý giờ công theo dự án · v13.5
+   Mới ở v13.5 — Chấm công: tác vụ quản lý đứng thành nhóm "Quản lý" riêng (nhãn tím).
+     Khối Khác: Công việc chung → Quản lý → Vắng mặt. Khối dự án: Công việc dự án → Quản lý → Tăng ca.
+     Ô chọn hạng mục và bảng thêm tác vụ trên điện thoại cũng tách nhóm Quản lý.
+
    Mới ở v13.4 — Tác vụ quản lý:
      · Nhân sự › Tác vụ có thêm ô "Quản lý · trưởng phòng trở lên" (task.mgr = true, không gắn vai trò).
      · Chấm công: chỉ tài khoản cấp Trưởng phòng / BOD / Admin thấy tác vụ quản lý; Nhân viên và Teamleader không thấy.
