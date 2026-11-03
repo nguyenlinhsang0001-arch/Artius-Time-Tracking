@@ -703,7 +703,7 @@ export function SettingsTab({ cfg, saveCfg, flash }) {
 
       <Panel title={`Ngày lễ, ngày nghỉ chung (${holidays.length})`}>
         <div className="ro-hide grid gap-2 md:flex md:items-end md:gap-3">
-          <DateField label="Ngày" value={holDate} onChange={setHolDate} className="md:w-44" />
+          <DateField label="Ngày" value={holDate} onChange={setHolDate} className="md:w-40" />
           <div className="md:flex-1">
             <label className="mb-1 block text-xs text-slate-500">Tên ngày lễ</label>
             <input value={holName} onChange={(e) => setHolName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addHoliday()}

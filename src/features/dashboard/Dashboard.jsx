@@ -402,7 +402,7 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
             <div className="flex w-full items-center gap-1.5 sm:w-auto">
               <button onClick={() => stepPeriod(-1)} title={pMode === "month" ? "Tháng trước" : pMode === "week" ? "Tuần trước" : "Lùi một khoảng"}
                 className={`${CTRL} w-11 shrink-0 rounded-md border border-slate-700 text-slate-400 hover:text-slate-100`}><ChevronLeft size={16} className="mx-auto" /></button>
-              <div className="min-w-0 flex-1 sm:w-72 sm:flex-none"><DateRangeField from={from} to={to} onChange={pickRange} /></div>
+              <div className="w-40 shrink-0"><DateRangeField from={from} to={to} onChange={pickRange} /></div>
               <button onClick={() => stepPeriod(1)} disabled={atNow} title={pMode === "month" ? "Tháng sau" : pMode === "week" ? "Tuần sau" : "Tiến một khoảng"}
                 className={`${CTRL} w-11 shrink-0 rounded-md border border-slate-700 text-slate-400 hover:text-slate-100 disabled:opacity-30`}><ChevronRight size={16} className="mx-auto" /></button>
               {/* v13.10: về kỳ hiện tại — giống tab Bảng công */}

@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.15
+   ARTIUS — Quản lý giờ công theo dự án · v13.16
+   Mới ở v13.16 — Lịch: bỏ dòng "Hôm nay" ở cuối (CalendarPanel). Ô lịch theo chuẩn ô của Bảng công (rộng 160px, chữ giữa,
+     không biểu tượng): Nhân sự, Giờ ngoài dự án, Ma trận, ô tuần ở Chấm công, ô ngày ở Thiết lập › Ngày lễ.
+
    Mới ở v13.15 — Ô lịch chỉ ghi ngày/tháng (bỏ năm, số ngày, biểu tượng). Phễu lọc: đang lọc thì hiện (x) ở góc, bấm là tắt hết
      bộ lọc (FilterButton, áp cho mọi phễu). Bảng công: chữ "Tuần …" thay bằng ô lịch PeriodField như Nhân sự — chọn ngày là
      nhảy tới tuần / tháng chứa ngày đó.

@@ -29,7 +29,7 @@ export function ThemeToggle() {
   );
 }
 
-export const APP_VERSION = "v13.15";
+export const APP_VERSION = "v13.16";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".
@@ -274,11 +274,7 @@ export function CalendarPanel({ value, onSelect, dayStatus, view: viewProp, onVi
         })}
       </div>
 
-      <div className="mt-2 flex justify-between border-t border-slate-800 pt-2">
-        <button onClick={() => { const t = new Date(); setView({ y: t.getFullYear(), m: t.getMonth() }); onSelect(fmt(t)); }}
-          className="text-xs text-teal-400 hover:text-teal-300">Hôm nay</button>
-        <span className="font-mono text-xs text-slate-600">{value ? dFull(value) : "—"}</span>
-      </div>
+      {/* v13.15 → v13.16: bỏ dòng Hôm nay ở cuối lịch */}
     </div>
   );
 }
@@ -381,8 +377,7 @@ export function DateField({ label, value, onChange, align = "left", className = 
       {label && <label className="mb-1 block text-xs text-slate-500">{label}</label>}
       <button onClick={() => setOpen((o) => !o)}
         className={`${CTRL} flex w-full items-center justify-between gap-2 rounded-md border bg-slate-900 px-3 text-sm hover:border-slate-500 ${open ? "border-teal-500" : "border-slate-700"}`}>
-        <span className="font-mono text-slate-100">{dFull(value)}</span>
-        <CalendarDays size={15} className="shrink-0 text-slate-500" />
+        <span className="w-full text-center font-mono text-slate-100">{dFull(value)}</span>
       </button>
       {open && (
         <div className={`absolute top-full z-50 mt-1 ${align === "right" ? "right-0" : "left-0"}`}>
@@ -495,9 +490,8 @@ export function WeekPicker({ monday, onChange, empId, hoursCfg = DEFAULT_HOURS, 
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen((o) => !o)}
-        className={`${CTRL} flex items-center justify-center gap-1.5 rounded-md border bg-slate-900 px-2 text-sm hover:border-slate-500 md:gap-2 md:px-3 ${open ? "border-teal-500" : "border-slate-700"}`}>
+        className={`${CTRL} flex w-40 items-center justify-center rounded-md border bg-slate-900 px-2 text-sm hover:border-slate-500 md:px-3 ${open ? "border-teal-500" : "border-slate-700"}`}>
         <span className="whitespace-nowrap font-mono text-slate-50">{dLabel(days[0])} – {dLabel(days[6])}</span>
-        <CalendarDays size={15} className="shrink-0 text-slate-500" />
       </button>
       {open && (
         <div className="absolute left-1/2 top-full z-50 mt-1 -translate-x-1/2">
