@@ -4,7 +4,7 @@
 import React, { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { CTRL } from "../../core/ui.jsx";
-import { fmtH, isIdleTask, isLeaveTask, taskRoles } from "../../core/domain.jsx";
+import { NO_PROJECT, fmtH, isIdleTask, isLeaveTask, taskRoles } from "../../core/domain.jsx";
 
 /* ba nhóm giờ ngoài dự án; màu không trùng với bảng màu tải (xanh dương chuẩn / xanh ngọc OT / tím cố gắng) */
 const KIND = {
@@ -24,9 +24,12 @@ export function OffProject({ cfg, detail, staff, stdOf, empName, taskLabel }) {
   const commonIds = useMemo(
     () => new Set((cfg.tasks || []).filter((t) => taskRoles(t).length === 0).map((t) => t.id)),
     [cfg.tasks]);
-  const kindOf = (taskId) => {
+  /* v13.4 — tác vụ quản lý chấm dưới một dự án là giờ của dự án đó, chấm ở "Khác" mới là việc chung */
+  const mgrIds = useMemo(() => new Set((cfg.tasks || []).filter((t) => t.mgr).map((t) => t.id)), [cfg.tasks]);
+  const kindOf = (taskId, projectId) => {
     if (isLeaveTask(taskId)) return "leave";
     if (isIdleTask(taskId)) return "idle";
+    if (mgrIds.has(taskId) && projectId && projectId !== NO_PROJECT) return null;
     if (commonIds.has(taskId)) return "common";
     return null;                                      // giờ của dự án
   };
@@ -36,7 +39,7 @@ export function OffProject({ cfg, detail, staff, stdOf, empName, taskLabel }) {
     const byEmp = new Map();                          // empId  -> { common, idle, leave, tasks: Map }
     let off = 0, proj = 0;
     for (const d of detail) {
-      const k = kindOf(d.taskId);
+      const k = kindOf(d.taskId, d.projectId);
       if (!k) { proj += d.hours; continue; }   // giờ của dự án, kể cả tăng ca (tăng ca luôn gắn một tác vụ dự án)
       off += d.hours;
       const t = byTask.get(d.taskId) || { h: 0, kind: k, emps: new Map() };
@@ -49,7 +52,7 @@ export function OffProject({ cfg, detail, staff, stdOf, empName, taskLabel }) {
     const sum = { common: 0, idle: 0, leave: 0 };
     for (const [, t] of byTask) sum[t.kind] += t.h;
     return { byTask, byEmp, off, proj, sum };
-  }, [detail, commonIds]);                            // eslint-disable-line react-hooks/exhaustive-deps
+  }, [detail, commonIds, mgrIds]);                            // eslint-disable-line react-hooks/exhaustive-deps
 
   /* năng lực của kỳ: giờ chuẩn của từng người đang lọt bộ lọc */
   const capStd = useMemo(() => staff.reduce((a, e) => a + (stdOf ? stdOf(e.id) : 0), 0), [staff, stdOf]);

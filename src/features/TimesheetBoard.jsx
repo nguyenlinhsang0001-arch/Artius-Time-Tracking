@@ -14,6 +14,7 @@ import { allocLimits } from "../shared/alloc.jsx";
 import { dayStyle, dayStyleSm } from "../shared/dayStyle.jsx";
 import { SupportPanel } from "../shared/support.jsx";
 import { EmployeeArea } from "./Timesheet.jsx";
+import { accountsApi } from "../auth.js";
 
 /* ============================ BẢNG CÔNG NHÂN SỰ (QUẢN LÝ) ============================ */
 /* --------- v1.6: ma trận giờ công — hàng = nhân sự, cột = dự án, theo tháng ---------
@@ -271,6 +272,19 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
   const [mNudged, setMNudged] = useState(() => new Map());      // v6.4: empId -> Map(thứ Hai tuần -> giờ đã nhắc), các tuần của tháng đang xem
   const [unlockFor, setUnlockFor] = useState(null);             // empId đang chờ xác nhận mở khoá tuần
   const [drawer, setDrawer] = useState(null);                   // v6.0 (A): empId đang mở ngăn kéo sửa cả tuần
+  /* v13.4 — cấp tài khoản của từng nhân sự để biết có hiện tác vụ quản lý trong ngăn kéo không.
+     Chỉ Admin / BOD đọc được danh sách tài khoản; trưởng phòng mở bảng công nhân viên thì không hiện tác vụ quản lý. */
+  const [mgrEmp, setMgrEmp] = useState(() => new Set());
+  useEffect(() => {
+    if (oneDept) return undefined;
+    let alive = true;
+    accountsApi("list").then((r) => {
+      if (!alive) return;
+      const lv = (a) => a?.access || (a?.isAdmin ? "admin" : "emp");
+      setMgrEmp(new Set((r?.accounts || []).filter((a) => a.empId && ["head", "bod", "admin"].includes(lv(a))).map((a) => a.empId)));
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [oneDept]);
   const [drawerDirty, setDrawerDirty] = useState(false);
   /* v7.9 — giao diện Sáng, bảng Tháng: một dải xám bo góc chạy liền từ số ngày hôm nay xuống hết bảng (nằm dưới các ô) */
   const mWrapRef = useRef(null);
@@ -932,7 +946,7 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
                 </div>
               )}
               <div className="flex-1 overflow-y-auto p-3 md:p-4">
-                <EmployeeArea key={`${drawer}|${monday}`} cfg={cfg} empId={drawer} flash={flash} admin initialMonday={monday} onDirtyChange={drawerDirtyCb} />
+                <EmployeeArea key={`${drawer}|${monday}`} cfg={cfg} empId={drawer} flash={flash} admin initialMonday={monday} onDirtyChange={drawerDirtyCb} mgrOk={mgrEmp.has(drawer)} />
               </div>
             </div>
           </>

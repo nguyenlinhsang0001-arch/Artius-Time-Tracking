@@ -1,6 +1,13 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.3
+   ARTIUS — Quản lý giờ công theo dự án · v13.4
+   Mới ở v13.4 — Tác vụ quản lý:
+     · Nhân sự › Tác vụ có thêm ô "Quản lý · trưởng phòng trở lên" (task.mgr = true, không gắn vai trò).
+     · Chấm công: chỉ tài khoản cấp Trưởng phòng / BOD / Admin thấy tác vụ quản lý; Nhân viên và Teamleader không thấy.
+       Admin mở bảng công của một người: hiện khi người đó là cấp Trưởng phòng trở lên (đọc cấp từ danh sách tài khoản);
+       Trưởng phòng mở bảng công nhân viên trong phòng: không hiện. Dòng cũ đã có giờ vẫn hiện.
+     · Tác vụ quản lý chọn được dưới dự án (tính giờ dự án) và ở "Khác" (tính việc chung); Giờ ngoài dự án tính theo đúng chỗ chấm.
+
    Mới ở v13.3 — Kế hoạch:
      · So với thực tế: dự án đã đóng hoặc tạm ẩn không tính phần kế hoạch (đồng bộ với Nhập liệu và Tổng quan nguồn lực);
        có giờ chấm trong khoảng thì vẫn hiện phần thực tế kèm nhãn "đã đóng". Dòng "chưa ai làm" ghi thêm "chưa giao ai"
@@ -1039,7 +1046,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
                   task={<ReadOnlyView><Tasks cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>} />}
                 {tab === "set" && <ReadOnlyView><SettingsTab cfg={cfg} saveCfg={bodSave} flash={flash} /></ReadOnlyView>}
                 {tab === "plan" && <PlanPane cfg={cfg} saveCfg={bodPlanSave} flash={flash} />}
-                {tab === "ts" && me.empId && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} />}
+                {tab === "ts" && me.empId && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} mgrOk />}
                 {tab === "eset" && me.empId && <EmployeeSettings cfg={cfg} empId={me.empId} onSignOut={signOut} />}
               </>
             )
@@ -1055,7 +1062,7 @@ desc={me?.type === "admin" || (me?.type === "head" && tab === "sheet") ? "Giờ 
               </>
             ) : (
               <>
-                {tab === "ts" && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} />}
+                {tab === "ts" && <EmployeeArea key={tsMonday || "now"} cfg={cfg} empId={me.empId} flash={flash} onDirtyChange={setSheetDirty} initialMonday={tsMonday} mgrOk={me.type === "head"} />}
                 {/* v12.25 — trưởng phòng: tab Dashboard có thanh tab con Của tôi | Dự án | Ma trận.
                     Nhân viên thường vẫn chỉ có Dashboard cá nhân như cũ. */}
                 {tab === "edash" && (me.type === "head" && headDashCfg

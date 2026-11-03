@@ -70,24 +70,30 @@ export function Tasks({ cfg, saveCfg, flash }) {
   /* Một "ô" là một chủ sở hữu tác vụ: một vai trò, hoặc dùng chung.
      Khoá dạng "r:ARC" / "shared" để một select duy nhất chuyển tác vụ đi đâu cũng được. */
   const SHARED = "shared";
+  /* v13.4 — ô "Quản lý": tác vụ mgr = true, không gắn vai trò; ở màn Chấm công chỉ tài khoản cấp Trưởng phòng / BOD / Admin thấy */
+  const MGR = "mgr";
+  const MGR_TITLE = "Quản lý · trưởng phòng trở lên";
   const boxes = [
     ...roles.map((r) => ({ key: `r:${r.id}`, kind: "role", id: r.id, title: `${r.id} · ${r.name}` })),
     { key: SHARED, kind: "shared", id: "", title: "Dùng chung" },
+    { key: MGR, kind: "mgr", id: "", title: MGR_TITLE },
   ];
   const ownerOf = (t) => {
+    if (t.mgr) return MGR;
     const rs = taskRoles(t);
     return rs.length ? `r:${rs[0]}` : SHARED;
   };
   const patchFor = (key) => {
-    if (key === SHARED) return { roles: [], depts: [], group: "Chung" };
+    if (key === MGR) return { roles: [], depts: [], group: "Quản lý", mgr: true };
+    if (key === SHARED) return { roles: [], depts: [], group: "Chung", mgr: undefined };
     const id = key.slice(2);
-    return { roles: [id], depts: [], group: roleInfo(id)?.dept || "Thiết kế" };
+    return { roles: [id], depts: [], group: roleInfo(id)?.dept || "Thiết kế", mgr: undefined };
   };
   const listOf = (key) => cfg.tasks.filter((t) => ownerOf(t) === key);
   // phòng ban theo thứ tự khai báo; vai trò mang tên phòng ban lạ (dữ liệu cũ) xếp cuối để không bị mất dấu
   const deptOrder = [...depts, ...roles.map((r) => r.dept).filter((d, i, a) => !depts.includes(d) && a.indexOf(d) === i)];
   const cur = boxes.some((b) => b.key === sel) ? sel : boxes[0].key;   // vai trò đang chọn bị xoá thì về ô đầu
-  const curRole = cur === SHARED ? null : roles.find((r) => `r:${r.id}` === cur);
+  const curRole = cur === SHARED || cur === MGR ? null : roles.find((r) => `r:${r.id}` === cur);
 
   const setDraft = (k, v) => setDrafts((x) => ({ ...x, [k]: v }));
 
@@ -329,6 +335,7 @@ export function Tasks({ cfg, saveCfg, flash }) {
   const roleHit = (r) => !kw || norm(`${r.id} ${r.name} ${r.dept}`).includes(kw);
   const roleGroups = deptOrder.map((d) => ({ dept: d, list: roles.filter((r) => r.dept === d && roleHit(r)) })).filter((g) => g.list.length);
   const showShared = !kw || norm("dùng chung").includes(kw);
+  const showMgr = !kw || norm("quản lý trưởng phòng").includes(kw);
   const roleBtn = (key, code, name) => {
     const n = listOf(key).length;
     const on = cur === key;
@@ -361,16 +368,17 @@ export function Tasks({ cfg, saveCfg, flash }) {
             </React.Fragment>
           ))}
           {showShared && <>{groupHead("Mọi vai trò", null)}{roleBtn(SHARED, "", "Dùng chung")}</>}
-          {!roleGroups.length && !showShared && <div className="px-2 py-4 text-sm text-slate-500">Không có vai trò khớp.</div>}
+          {showMgr && <>{groupHead("Cấp quản lý", null)}{roleBtn(MGR, "", MGR_TITLE)}</>}
+          {!roleGroups.length && !showShared && !showMgr && <div className="px-2 py-4 text-sm text-slate-500">Không có vai trò khớp.</div>}
         </div>
       </div>
 
       <div className={`min-w-0 ${panelCls}`}>
         <div className="flex items-center gap-2.5 border-b border-slate-800 px-3 py-3 md:px-4">
           <h3 className="min-w-0 truncate text-sm font-medium text-slate-100">
-            {curRole ? <><span className="font-mono text-xs text-teal-400">{curRole.id}</span> · {curRole.name}</> : "Dùng chung"}
+            {curRole ? <><span className="font-mono text-xs text-teal-400">{curRole.id}</span> · {curRole.name}</> : cur === MGR ? MGR_TITLE : "Dùng chung"}
           </h3>
-          <span className="shrink-0 text-xs text-slate-500">{curRole ? curRole.dept : "Mọi vai trò"}</span>
+          <span className="shrink-0 text-xs text-slate-500">{curRole ? curRole.dept : cur === MGR ? "Trưởng phòng · BOD · Admin" : "Mọi vai trò"}</span>
           <span className="ml-auto shrink-0 font-mono text-xs text-slate-500">{curList.length}</span>
         </div>
         <div className="p-3 md:p-4">
@@ -385,6 +393,7 @@ export function Tasks({ cfg, saveCfg, flash }) {
               ) : null;
             })}
             <option value={SHARED}>Dùng chung ({listOf(SHARED).length})</option>
+            <option value={MGR}>{MGR_TITLE} ({listOf(MGR).length})</option>
           </select>
           <div className="flex gap-2">
             <input value={drafts[cur] || ""} onChange={(e) => setDraft(cur, e.target.value)}

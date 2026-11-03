@@ -36,7 +36,9 @@ if (typeof document !== "undefined" && !document.getElementById("artius-pen-glow
 }
 
 /* ============================ EMPLOYEE ============================ */
-export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initialMonday = null }) {
+/* v13.4 — mgrOk: người có bảng công đang mở là cấp Trưởng phòng / BOD / Admin → thấy tác vụ quản lý (task.mgr).
+   Tác vụ quản lý chọn được ở cả dự án lẫn "Khác"; dòng cũ đã có giờ vẫn hiện dù người đó không còn ở cấp quản lý. */
+export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, initialMonday = null, mgrOk = false }) {
   const emp = cfg.employees.find((e) => e.id === empId);
   // v2.6: bấm thông báo nhắc thì mở thẳng tuần cần gửi (?tuan=YYYY-MM-DD), đọc xong xoá khỏi thanh địa chỉ
   const [monday, setMonday] = useState(() => {
@@ -134,14 +136,17 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   const assignedP = new Set(emp?.allProjects ? cfg.projects.map((p) => p.id) : Array.isArray(emp?.projects) ? emp.projects : []);   // v8.8: Tất cả dự án
   const activeProjects = cfg.projects.filter((p) => p.active && (admin || (openPhasesOf(p.id).length > 0 && (assignedP.has(p.id) || isSupProj(p.id)))));
   // Chỉ hiện hạng mục thuộc bộ phận của nhân sự — bớt danh sách dài và tránh chấm nhầm việc của bộ phận khác
-  const myTasks = useMemo(() => tasksForDept(cfg.tasks, emp?.dept, emp?.role), [cfg.tasks, emp?.dept, emp?.role]);
+  const myTasks = useMemo(() => tasksForDept(cfg.tasks, emp?.dept, emp?.role).filter((t) => !t.mgr || mgrOk), [cfg.tasks, emp?.dept, emp?.role, mgrOk]);
+  const mgrIds = useMemo(() => new Set(cfg.tasks.filter((t) => t.mgr).map((t) => t.id)), [cfg.tasks]);
   /* v2.9 — "Khác" (projectId = NO_PROJECT, không có giai đoạn) gồm tác vụ chung của công ty (không gắn vai trò) và vắng mặt.
      Dự án thật chỉ chọn được tác vụ gắn vai trò. Giờ cũ đã chấm tác vụ chung dưới một dự án vẫn giữ nguyên. */
   const commonIds = useMemo(() => new Set(cfg.tasks.filter((t) => taskRoles(t).length === 0).map((t) => t.id)), [cfg.tasks]);
   const isKhacTask = (id) => isLeaveTask(id) || commonIds.has(id);
+  /* dòng thuộc "Khác": vắng mặt, tác vụ chung; tác vụ quản lý thì theo đúng dự án đã chấm */
+  const khacRow = (r) => isLeaveTask(r.taskId) || (commonIds.has(r.taskId) && !(mgrIds.has(r.taskId) && r.projectId && r.projectId !== NO_PROJECT));
   const commonTasks = myTasks.filter((t) => commonIds.has(t.id));
   const taskOrder = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t, k) => [t.id, k])), [cfg.tasks]);
-  const projTasks = myTasks.filter((t) => !commonIds.has(t.id));
+  const projTasks = myTasks.filter((t) => !commonIds.has(t.id) || mgrIds.has(t.id));
   // v4.9: khung giờ tăng ca (hạng mục [OT]) và các tác vụ dự án chọn được làm "Tăng ca cho tác vụ"
   const otBands = otBandTasks();   // v6.3: khung giờ chung từ Thiết lập → Tăng ca, mọi vai trò như nhau
   const otTargets = projTasks.filter((t) => !isOtTask(t));
@@ -456,7 +461,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       for (const r of b.rows) {
         if (!prevDays.some((d) => r.days?.[d] > 0)) continue; // chỉ lấy dòng thực sự có giờ tuần trước
         if (projClosed(r)) continue;                          // dự án đã đóng: nhân sự không chấm tiếp được
-        const khac = isKhacTask(r.taskId);   // v2.9: tác vụ chung / vắng mặt chép sang "Khác"
+        const khac = khacRow(r);   // v2.9: tác vụ chung / vắng mặt chép sang "Khác" · v13.4: tác vụ quản lý giữ dự án
         const projectId = khac ? NO_PROJECT : r.projectId;
         const phaseId = khac ? DEFAULT_PHASE : r.phaseId || guessPhase(r.taskId, cfg.tasks);
         const otFor = !khac && isOtId(r.taskId) && r.otFor ? { otFor: r.otFor } : {};
@@ -854,7 +859,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       for (const r of b?.rows || []) {
         if (isLeaveTask(r.taskId)) continue;
         // v2.9: giờ cũ chấm tác vụ chung dưới một dự án thì gợi ý lại dưới "Khác"
-        const khac = commonIds.has(r.taskId);
+        const khac = khacRow(r);
         const projectId = khac ? NO_PROJECT : r.projectId;
         const phaseId = khac ? DEFAULT_PHASE : r.phaseId || guessPhase(r.taskId, cfg.tasks);
         const k = rowKey({ projectId, phaseId, taskId: r.taskId });
