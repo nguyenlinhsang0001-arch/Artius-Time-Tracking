@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.16
+   ARTIUS — Quản lý giờ công theo dự án · v13.17
+   Mới ở v13.17 — Bảng công tách hai khung: thanh trạng thái chung (Đã nộp đủ, Chưa nộp, Tổng giờ, Tăng ca, Thiếu giờ) ở trên;
+     bảng chấm công ở dưới, dòng đầu là thanh Tuần / Tháng, lịch, phễu lọc, tìm, (?), Khoá quá hạn, Xuất Excel.
+
    Mới ở v13.16 — Lịch: bỏ dòng "Hôm nay" ở cuối (CalendarPanel). Ô lịch theo chuẩn ô của Bảng công (rộng 160px, chữ giữa,
      không biểu tượng): Nhân sự, Giờ ngoài dự án, Ma trận, ô tuần ở Chấm công, ô ngày ở Thiết lập › Ngày lễ.
 

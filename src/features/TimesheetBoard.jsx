@@ -849,6 +849,17 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
     </div>
   );
   return (
+    /* v13.17 — hai khung: thanh trạng thái chung ở trên; bảng chấm công kèm thanh Tuần / Tháng, lịch, lọc, Excel ở dưới */
+    <div className="space-y-3 md:space-y-4">
+      <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+        <div className="grid grid-cols-2 gap-px bg-slate-800 md:grid-cols-5">
+          <Kpi l="Đã nộp đủ" v={okN} sub={`/ ${empsAct.length} người`} cls={okN < empsAct.length ? "text-amber-400" : "text-teal-300"} />
+          <Kpi l="Chưa nộp / còn nháp" v={empsAct.length - okN} sub="người" cls="text-slate-50" />
+          <Kpi l="Tổng giờ đã gửi" v={fmtH(totT)} sub={`/ ${fmtH(totStd)} h chuẩn`} />
+          <Kpi l="Trong đó tăng ca" v={fmtH(totOt)} sub="h" cls="text-teal-400" />
+          <Kpi l={`Thiếu giờ chuẩn (<${lim.under}%)`} v={lowN} sub="người" cls={lowN ? "text-amber-400" : "text-slate-50"} />
+        </div>
+      </div>
     <div className="rounded-xl border border-slate-800 bg-slate-900">
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
         <div className="flex rounded-md border border-slate-700">
@@ -904,13 +915,6 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-px border-b border-slate-800 bg-slate-800 md:grid-cols-5">
-        <Kpi l="Đã nộp đủ" v={okN} sub={`/ ${empsAct.length} người`} cls={okN < empsAct.length ? "text-amber-400" : "text-teal-300"} />
-        <Kpi l="Chưa nộp / còn nháp" v={empsAct.length - okN} sub="người" cls="text-slate-50" />
-        <Kpi l="Tổng giờ đã gửi" v={fmtH(totT)} sub={`/ ${fmtH(totStd)} h chuẩn`} />
-        <Kpi l="Trong đó tăng ca" v={fmtH(totOt)} sub="h" cls="text-teal-400" />
-        <Kpi l={`Thiếu giờ chuẩn (<${lim.under}%)`} v={lowN} sub="người" cls={lowN ? "text-amber-400" : "text-slate-50"} />
-      </div>
 
       {emps.length === 0 ? <p className="px-4 py-6 text-sm text-slate-500">Không có nhân sự nào khớp bộ lọc.</p> : (
         <div ref={mWrapRef} className="relative overflow-x-auto pb-1" data-band={bandTick}>
@@ -1018,6 +1022,7 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
             }} />
         );
       })()}
+    </div>
     </div>
   );
 }
