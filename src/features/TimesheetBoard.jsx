@@ -451,14 +451,15 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
   const totT = [...sums.values()].reduce((a, s) => a + s.t, 0), totStd = [...sums.values()].reduce((a, s) => a + s.std, 0), totOt = [...sums.values()].reduce((a, s) => a + s.ot, 0);
   /* v13.18 — tỷ lệ giờ đã gửi: làm việc (dự án + việc chung, không gồm vắng mặt, trống việc, cố gắng) · khác (vắng mặt + trống việc) · cố gắng · OT */
   const mix = (() => {
-    let work = 0, other = 0, eff = 0, ot = 0;
+    /* v13.19 — giờ làm việc gồm cả cố gắng và OT; giờ khác = vắng mặt + trống việc */
+    let work = 0, leave = 0, idleH = 0, eff = 0, ot = 0;
     for (const e of emps) for (const d of days) {
       const x = dayInfo(e.id, d);
       const idle = x.idle || 0;
-      work += Math.max(0, x.reg - idle - x.eff); other += (x.leave || 0) + idle; eff += x.eff; ot += x.ot;
+      work += Math.max(0, x.reg - idle) + x.ot; leave += x.leave || 0; idleH += idle; eff += x.eff; ot += x.ot;
     }
-    const tot = work + other + eff + ot;
-    return { tot, segs: [["Giờ làm việc", work, "#60a5fa"], ["Giờ công khác", other, "#94a3b8"], ["Giờ cố gắng", eff, "#a78bfa"], ["Giờ OT", ot, "#2dd4bf"]] };
+    const other = leave + idleH;
+    return { tot: work + other, work, other, leave, idle: idleH, eff, ot };
   })();
   const pctOf = (v) => (mix.tot ? Math.round((v / mix.tot) * 100) : 0);
 
@@ -866,20 +867,10 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
         <div className="grid grid-cols-2 gap-px bg-slate-800 md:grid-cols-5">
           <Kpi l="Đã nộp đủ" v={okN} sub={`/ ${empsAct.length} người`} cls={okN < empsAct.length ? "text-amber-400" : "text-teal-300"} />
           <Kpi l="Tổng giờ đã gửi" v={fmtH(totT)} sub={`/ ${fmtH(totStd)} h chuẩn`} />
-          <div className="col-span-2 bg-slate-900 px-3 py-2.5 md:col-span-3">
-            <div className="text-[10.5px] uppercase tracking-wider text-slate-500">Tỷ lệ giờ đã gửi</div>
-            <div className="mt-1.5 flex h-[18px] overflow-hidden rounded-full bg-slate-800 font-mono text-[10.5px] font-semibold text-slate-950">
-              {mix.segs.filter(([, v]) => v > 0.05).map(([l, v, c], i) => (
-                <i key={l} title={`${l}: ${fmtH(v)} h · ${pctOf(v)}%`}
-                  className={`flex h-full items-center justify-center overflow-hidden whitespace-nowrap not-italic ${i ? "border-l-2 border-slate-900" : ""}`}
-                  style={{ width: `${(v / mix.tot) * 100}%`, background: c }}>{pctOf(v) >= 14 ? `${pctOf(v)}% · ${fmtH(v)} h` : pctOf(v) >= 5 ? `${pctOf(v)}%` : ""}</i>
-              ))}
-            </div>
-            <div className="mt-1.5 flex flex-wrap gap-x-3.5 gap-y-0.5 text-[11.5px] text-slate-400">
-              {mix.segs.map(([l, v, c]) => (
-                <span key={l} className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: c }} />{l} <span className="font-mono text-slate-300">{pctOf(v)}% · {fmtH(v)} h</span></span>
-              ))}
-            </div>
+          <Kpi l="Giờ làm việc" v={`${fmtH(mix.work)} h`} sub={`${pctOf(mix.work)}% · gồm cố gắng và OT`} cls="text-blue-300" />
+          <Kpi l="Trong đó cố gắng · OT" v={<><span className="text-violet-300">{fmtH(mix.eff)} h</span><span className="ml-1 text-xs font-normal text-slate-500">{pctOf(mix.eff)}%</span><span className="mx-2 text-slate-600">·</span><span className="text-teal-300">{fmtH(mix.ot)} h</span><span className="ml-1 text-xs font-normal text-slate-500">{pctOf(mix.ot)}%</span></>} />
+          <div title={`Vắng mặt ${fmtH(mix.leave)} h · Trống việc ${fmtH(mix.idle)} h`} className="cursor-help bg-slate-900">
+            <Kpi l="Giờ khác" v={`${fmtH(mix.other)} h`} sub={`${pctOf(mix.other)}%`} cls="text-slate-300" />
           </div>
         </div>
       </div>

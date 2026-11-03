@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.18
+   ARTIUS — Quản lý giờ công theo dự án · v13.19
+   Mới ở v13.19 — Bảng công, thanh trạng thái thành 5 ô số liệu (bỏ thanh màu): Đã nộp đủ · Tổng giờ đã gửi · Giờ làm việc (gồm
+     cố gắng và OT, h và %) · Trong đó cố gắng · OT (h và % trên tổng) · Giờ khác (vắng mặt + trống việc, rê chuột hiện chi tiết).
+
    Mới ở v13.18 — Bảng công, thanh trạng thái: bỏ ô Chưa nộp / còn nháp, Thiếu giờ chuẩn, Trong đó tăng ca; thêm thanh "Tỷ lệ giờ
      đã gửi": Giờ làm việc (dự án + việc chung, trừ vắng mặt, trống việc, cố gắng) · Giờ công khác (vắng mặt + trống việc) ·
      Giờ cố gắng · Giờ OT, mỗi phần % và giờ.
