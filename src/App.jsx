@@ -1,6 +1,11 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.26
+   ARTIUS — Quản lý giờ công theo dự án · v13.27
+   Mới ở v13.27 — Bỏ tab con "Nhân sự" trong tab Bảng công, thanh tab con còn Bảng công | Giờ ngoài dự án
+     (bảng chi tiết bấm vào tên nhân sự ở v13.24-v13.26 đã thay được phần đó). Ai đang để localStorage ở tab
+     Nhân sự thì tự quay về Bảng công. Thanh số liệu Bảng công thêm ô "Đang quá tải" (số người quá tải / tổng
+     người đang làm, đỏ khi có người quá tải), dùng cùng allocState với chip ở cột TỔNG / CHUẨN; thanh trở lại 5 ô.
+
    Mới ở v13.26 — Bảng công: bấm thẳng vào TÊN nhân sự để bung bảng chi tiết giờ theo dự án / tác vụ (trước là mở
      ngăn kéo sửa giờ công); mũi tên ‹ › trước tên cho biết đang đóng hay mở. Bỏ hẳn nút "..." khỏi giao diện.
      Sửa giờ công giờ đi qua nút bút chì ở cột MỞ KHOÁ / SỬA (chế độ Tuần) hoặc bấm vào ô ngày rồi chọn sửa.
@@ -1251,7 +1256,8 @@ export function StorageBanner() {
    "Nhân sự" và "Giờ ngoài dự án" chuyển từ Dashboard sang (Dashboard còn Dự án | Ma trận).
    Bảng công luôn giữ nguyên trong bộ nhớ khi xem tab khác, để không mất phần đang sửa dở. */
 const DASH_TABS = ["res", "proj", "mtx"];   // v12.22: Tổng quan nguồn lực đứng đầu
-const SHEET_TABS = [["sheet", "Bảng công"], ["ppl", "Nhân sự"], ["off", "Giờ ngoài dự án"]];
+/* v13.27 — bỏ tab con "Nhân sự" (ppl): bảng chi tiết bấm vào tên trong Bảng công đã thay được phần đó */
+const SHEET_TABS = [["sheet", "Bảng công"], ["off", "Giờ ngoài dự án"]];
 function SheetArea({ cfg, saveCfg, flash, children }) {
   const [sub, setSub0] = useState(() => { try { const v = localStorage.getItem("artius.sheetTab"); return SHEET_TABS.some(([k]) => k === v) ? v : "sheet"; } catch { return "sheet"; } });
   const setSub = (t) => { setSub0(t); try { localStorage.setItem("artius.sheetTab", t); } catch { /* bỏ qua */ } };

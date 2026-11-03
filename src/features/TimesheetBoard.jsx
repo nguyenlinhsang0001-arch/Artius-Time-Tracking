@@ -472,6 +472,8 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
   const due = mode === "week" ? weeks.filter((m) => m <= today) : weeks.filter((m) => fmt(addDays(parseD(m), 6)) < today);
   const empsAct = emps.filter((e) => !isResigned(e));   // v8.5: KPI nộp bảng công chỉ tính người đang làm
   const okN = empsAct.filter((e) => due.every((m) => weekDone(e.id, m))).length;
+  /* v13.27 — số người đang quá tải trong kỳ: cùng allocState với chip ở cột TỔNG / CHUẨN và tab Nhân sự */
+  const overN = empsAct.filter((e) => { const s = sums.get(e.id); return s && allocState(s.t, s.ot, s.eff, s.idle || 0, s.std, lim) === "hi"; }).length;
   const totT = [...sums.values()].reduce((a, s) => a + s.t, 0), totStd = [...sums.values()].reduce((a, s) => a + s.std, 0), totOt = [...sums.values()].reduce((a, s) => a + s.ot, 0);
   /* v13.18 — tỷ lệ giờ đã gửi: làm việc (dự án + việc chung, không gồm vắng mặt, trống việc, cố gắng) · khác (vắng mặt + trống việc) · cố gắng · OT */
   const mix = (() => {
@@ -1020,8 +1022,10 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
     <div className="space-y-3 md:space-y-4">
       <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
         {/* v13.21 — 4 ô (gộp Giờ làm việc với Cố gắng · OT); một cột trên điện thoại để không ô nào phải xuống dòng */}
-        <div className="grid grid-cols-1 gap-px bg-slate-800 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-px bg-slate-800 md:grid-cols-5">
           <Kpi l="Đã nộp đủ" v={okN} sub={`/ ${empsAct.length} người`} cls={okN < empsAct.length ? "text-amber-400" : "text-teal-300"} />
+          {/* v13.27 — số người đang quá tải */}
+          <Kpi l="Đang quá tải" v={overN} sub={`/ ${empsAct.length} người`} cls={overN > 0 ? "text-rose-400" : "text-slate-500"} />
           {/* v13.21 — tổng giờ đã gửi / giờ chuẩn, kèm mức chịu tải */}
           <Kpi l="Tổng giờ đã gửi" v={fmtH(totT)}
             sub={<>/ {fmtH(totStd)} h chuẩn{loadTxt && <><Dot /><span className={loadCls}>{loadTxt}</span></>}</>} />
