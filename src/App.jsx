@@ -1,6 +1,11 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.22
+   ARTIUS — Quản lý giờ công theo dự án · v13.23
+   Mới ở v13.23 — Bảng công, nút phễu lọc thêm hai mục: lọc theo mức tải (Quá tải / Bình thường / Trống việc /
+     Thiếu giờ) và sắp xếp theo tải (Tải nhiều → ít, Tải ít → nhiều). Mức tải lấy từ cùng allocState và công thức %
+     của chip ở cột TỔNG / CHUẨN nên khớp tab Nhân sự. Khi đang sắp theo tải thì bỏ gom bộ phận để thứ tự đúng trên
+     toàn danh sách; người chưa có giờ chuẩn luôn xếp cuối. Xoá lọc trả cả hai mục về mặc định.
+
    Mới ở v13.22 — Bảng công, cột TỔNG / CHUẨN của từng nhân sự: bỏ ghi chú "trống x h", thay bằng chip trạng thái tải
      (Quá tải / Thiếu giờ / Trống việc / Bình thường · %) dùng chung allocState và công thức % của tab Nhân sự
      (tải = tổng giờ − trống việc, % = tải / giờ chuẩn kỳ) nên hai tab luôn khớp nhau. Giờ trống việc vẫn còn ở

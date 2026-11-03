@@ -260,6 +260,8 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
   const [fDept, setFDept] = useState("all");
   /* v13.11 — lọc theo vai trò: chỉ vai trò đang có người (chưa nghỉ việc), thu theo bộ phận đang chọn */
   const [fRole, setFRole] = useState("all");
+  const [fLoad, setFLoad] = useState("all");       // v13.23: lọc theo mức tải — all | hi | ok | idle | lo
+  const [sortLoad, setSortLoad] = useState("none");   // v13.23: none | desc (tải nhiều → ít) | asc (ít → nhiều)
   useEffect(() => { setFRole("all"); }, [fDept]);
   /* v13.13 — lọc theo TEAM: dùng bảng Gộp vai trò của Kế hoạch (vd TL-2D → 2D) để teamleader đi cùng team của mình */
   const teamMerge = useMemo(() => {
@@ -432,7 +434,7 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
     return out;
   };
 
-  const emps = cfg.employees.filter((e) => {
+  const empsBase = cfg.employees.filter((e) => {
     // v8.5: người đã nghỉ chỉ hiện khi các tuần đang xem còn giờ của họ
     if (isResigned(e) && ![...cellOf.keys()].some((k) => k.startsWith(`${e.id}|`))) return false;
     if (fDept !== "all" && (e.dept || "") !== fDept) return false;
@@ -440,10 +442,26 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
     const kw = norm(q.trim());   // v6.6: gõ không dấu vẫn tìm ra
     return !kw || norm(`${e.name} ${e.code || ""} ${e.dept || ""} ${e.role || ""} ${roleTitle(e.role)}`).includes(kw);
   });
-  const groups = [...DEPTS, ""].map((d) => ({ dept: d || "Khác", items: emps.filter((e) => (DEPTS.includes(e.dept) ? e.dept : "") === d) })).filter((g) => g.items.length);
+  /* v13.23 — mức tải từng người, dùng đúng allocState và công thức % của tab Nhân sự (giống chip ở cột TỔNG / CHUẨN) */
+  const sumsAll = new Map(empsBase.map((e) => [e.id, sumOf(e.id, days)]));
+  const loadOf = (e) => {
+    const s = sumsAll.get(e.id);
+    return { st: allocState(s.t, s.ot, s.eff, s.idle || 0, s.std, lim), p: s.std ? ((s.t - (s.idle || 0)) / s.std) * 100 : -1 };
+  };
+  const emps = empsBase.filter((e) => fLoad === "all" || loadOf(e).st === fLoad);
+  // người chưa có giờ chuẩn (p = −1) luôn xếp cuối ở cả hai chiều, để không chiếm đầu bảng khi sắp tăng dần
+  if (sortLoad !== "none") emps.sort((a, b) => {
+    const pa = loadOf(a).p, pb = loadOf(b).p;
+    if (pa < 0 || pb < 0) return pa === pb ? 0 : pa < 0 ? 1 : -1;
+    return sortLoad === "desc" ? pb - pa : pa - pb;
+  });
+  /* v13.23 — khi đang sắp theo tải thì bỏ gom bộ phận, để thứ tự đúng trên toàn danh sách */
+  const groups = sortLoad !== "none"
+    ? [{ dept: sortLoad === "desc" ? "Tải nhiều → ít" : "Tải ít → nhiều", items: emps }]
+    : [...DEPTS, ""].map((d) => ({ dept: d || "Khác", items: emps.filter((e) => (DEPTS.includes(e.dept) ? e.dept : "") === d) })).filter((g) => g.items.length);
 
   /* KPI của kỳ đang xem */
-  const sums = new Map(emps.map((e) => [e.id, sumOf(e.id, days)]));
+  const sums = new Map(emps.map((e) => [e.id, sumsAll.get(e.id)]));
   // v6.5: "Đã nộp đủ" xét các tuần đã qua (hết Chủ nhật) — tuần đang chạy chưa tới hạn nộp (cùng quy tắc chuông Nhắc tháng)
   const due = mode === "week" ? weeks.filter((m) => m <= today) : weeks.filter((m) => fmt(addDays(parseD(m), 6)) < today);
   const empsAct = emps.filter((e) => !isResigned(e));   // v8.5: KPI nộp bảng công chỉ tính người đang làm
@@ -914,7 +932,9 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
           {!isNow && <button onClick={() => { setMonday(fmt(mondayOf(new Date()))); setYm(ymOf(today)); }} className="ml-1 text-xs text-teal-400 hover:text-teal-300">{mode === "week" ? "Tuần này" : "Tháng này"}</button>}
         </div>
         {/* v13.12 — bộ phận + vai trò gom vào nút phễu */}
-        <FilterButton count={(fDept !== "all" ? 1 : 0) + (fRole !== "all" ? 1 : 0)} onClear={() => { setFDept("all"); setFRole("all"); }}>
+        {/* v13.23 — thêm lọc theo mức tải và sắp xếp theo tải vào cùng nút phễu */}
+        <FilterButton count={(fDept !== "all" ? 1 : 0) + (fRole !== "all" ? 1 : 0) + (fLoad !== "all" ? 1 : 0) + (sortLoad !== "none" ? 1 : 0)}
+          onClear={() => { setFDept("all"); setFRole("all"); setFLoad("all"); setSortLoad("none"); }}>
           {!oneDept && <select value={fDept} onChange={(e) => setFDept(e.target.value)} className={selectCls} aria-label="Bộ phận">
             <option value="all">Mọi bộ phận</option>
             {DEPTS.map((d) => <option key={d}>{d}</option>)}
@@ -922,6 +942,15 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
           <select value={fRole} onChange={(e) => setFRole(e.target.value)} className={selectCls} aria-label="Vai trò">
             <option value="all">Mọi vai trò</option>
             {roleOpts.map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}{r.extra.length ? ` + ${r.extra.join(", ")}` : ""}</option>)}
+          </select>
+          <select value={fLoad} onChange={(e) => setFLoad(e.target.value)} className={selectCls} aria-label="Mức tải">
+            <option value="all">Mọi mức tải</option>
+            {["hi", "ok", "idle", "lo"].map((k) => <option key={k} value={k}>{ALLOC_ST[k][0]}</option>)}
+          </select>
+          <select value={sortLoad} onChange={(e) => setSortLoad(e.target.value)} className={selectCls} aria-label="Sắp xếp theo tải">
+            <option value="none">Sắp theo bộ phận</option>
+            <option value="desc">Tải nhiều → ít</option>
+            <option value="asc">Tải ít → nhiều</option>
           </select>
         </FilterButton>
         <div className="relative w-full sm:w-56">
