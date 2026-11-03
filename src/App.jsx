@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.8
+   ARTIUS — Quản lý giờ công theo dự án · v13.9
+   Mới ở v13.9 — Giờ ngoài dự án: thanh năng lực ghi "% · giờ" trong từng đoạn, chú thích chỉ còn tên; bỏ thanh "So với giờ chuẩn
+     của kỳ" và đoạn giải thích. Xem theo Tác vụ: ba cột Việc chung | Trống việc | Vắng mặt, mỗi tác vụ mở sẵn danh sách người.
+
    Mới ở v13.8 — Thanh thời gian của Nhân sự, Giờ ngoài dự án (Bảng công) và Ma trận (Dashboard):
      · Bỏ tiêu đề + dòng kỳ / giờ chuẩn, bỏ nút Tuần này / Tuần trước / 7 ngày qua; bỏ chú thích "giờ chuẩn của kỳ",
        "thiếu giờ chuẩn", "Bấm một người…" ở tab Nhân sự.

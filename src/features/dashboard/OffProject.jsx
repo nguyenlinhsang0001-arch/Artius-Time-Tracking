@@ -71,7 +71,6 @@ export function OffProject({ cfg, detail, staff, stdOf, empName, taskLabel }) {
     [agg.sum.idle, KIND.idle[1], KIND.idle[0]],
     [agg.sum.leave, KIND.leave[1], KIND.leave[0]],
   ].filter(([v]) => v > 0.05);
-  const fill = pct(logged, capStd);   // đã chấm bao nhiêu % giờ chuẩn của kỳ
 
   const Kpi = ({ l, v, sub, cls = "text-slate-50" }) => (
     <div className="bg-slate-900 px-3 py-2.5">
@@ -118,37 +117,17 @@ export function OffProject({ cfg, detail, staff, stdOf, empName, taskLabel }) {
             <i key={label} title={`${label}: ${fmtH(v)} h · ${pct(v, base)}%`}
               className={`flex h-full items-center justify-center overflow-hidden whitespace-nowrap not-italic ${i ? "border-l-2 border-slate-900" : ""} ${label === "Chưa chấm" ? "text-slate-400" : ""}`}
               style={{ width: `${(v / base) * 100}%`, background: color }}>
-              {(v / base) * 100 >= 6 ? `${pct(v, base)}%` : ""}
+              {(v / base) * 100 >= 12 ? `${pct(v, base)}% · ${fmtH(v)} h` : (v / base) * 100 >= 6 ? `${pct(v, base)}%` : ""}
             </i>
           ))}
         </div>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
           {segs.map(([v, color, label]) => (
             <span key={label} className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-sm" style={{ background: color }} />{label} <span className="font-mono text-slate-500">{fmtH(v)} h</span>
+              <span className="h-2.5 w-2.5 rounded-sm" style={{ background: color }} />{label}
             </span>
           ))}
         </div>
-        {/* v11.2 — thanh thứ hai: đã chấm được bao nhiêu phần giờ chuẩn của kỳ */}
-        <div className="mt-3">
-          <div className="mb-1 flex flex-wrap items-baseline gap-x-2 text-[11px] text-slate-500">
-            <span>So với giờ chuẩn của kỳ</span>
-            <span className="font-mono text-amber-400">{fmtH(capStd)} h</span>
-            <span>của {staff.length} người</span>
-            <span className={`ml-auto font-mono ${fill < 60 ? "text-amber-400" : "text-slate-400"}`}>đã chấm {fill}%</span>
-          </div>
-          <div className="flex h-[8px] overflow-hidden rounded-full bg-slate-800">
-            <i className="h-full bg-slate-500" style={{ width: `${Math.min(100, fill)}%` }} />
-          </div>
-          {fill < 60 && (
-            <p className="mt-1 text-[11px] text-amber-500/80">
-              Mới chấm {fill}% giờ chuẩn của kỳ — các tỉ lệ ở trên tính trên phần đã chấm, chưa phản ánh cả kỳ.
-            </p>
-          )}
-        </div>
-        <p className="mt-2 text-[11px] text-slate-600">
-          Phần không phải “Vào dự án” là năng lực không đổ được vào dự án nào. Khi so kế hoạch với giờ thực tế, phải trừ phần này ra trước, nếu không mọi dự án đều trông như dùng ít người hơn dự trù.
-        </p>
       </div>
 
       {/* chuyển cách xem */}
@@ -160,60 +139,55 @@ export function OffProject({ cfg, detail, staff, stdOf, empName, taskLabel }) {
               className={`${CTRL} whitespace-nowrap px-3.5 text-[13px] ${view === k ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>{l}</button>
           ))}
         </div>
-        <span className="ml-auto text-xs text-slate-600">Bấm một dòng để xem chi tiết</span>
       </div>
 
       {view === "task" && (
-        <div>
-          <div className="grid grid-cols-[minmax(0,1fr)_90px_60px_70px] gap-3 border-b border-slate-800 px-3 py-1.5 text-[10.5px] uppercase tracking-wider text-slate-600 md:px-4">
-            <span>Tác vụ</span><span className="text-right">Giờ</span><span className="text-right">%</span><span className="text-right">Người</span>
-          </div>
-          {groups.map((g) => (
-            <div key={g.k}>
-              <div className="flex justify-between border-b border-slate-800 bg-slate-950/60 px-3 py-1.5 text-[11px] uppercase tracking-wider text-slate-500 md:px-4">
-                <span>{g.label} · {g.rows.length} tác vụ</span><span className="font-mono">{fmtH(g.total)} h</span>
-              </div>
-              {g.rows.map(([tid, t]) => {
-                const key = `t${tid}`, op = open.has(key);
-                const who = [...t.emps.entries()].sort((a, b) => b[1] - a[1]);
-                return (
-                  <div key={tid} className="border-b border-slate-800/70">
-                    <button type="button" onClick={() => toggle(key)} aria-expanded={op}
-                      className={`grid w-full grid-cols-[minmax(0,1fr)_90px_60px_70px] items-center gap-3 px-3 py-2.5 text-left md:px-4 ${op ? "bg-slate-800/50" : "hover:bg-slate-800/30"}`}>
-                      <div className="min-w-0">
-                        <div className={`flex items-center gap-1.5 truncate text-sm ${KIND[g.k][2]}`}>
-                          {op ? <ChevronDown size={14} className="shrink-0 text-slate-500" /> : <ChevronRight size={14} className="shrink-0 text-slate-500" />}
-                          {taskLabel(tid)}
+        /* v13.9 — ba cột cạnh nhau: Việc chung | Trống việc | Vắng mặt; mỗi tác vụ mở sẵn danh sách người, bấm để thu lại */
+        <div className="grid gap-px bg-slate-800 lg:grid-cols-3">
+          {ORDER.map((k) => {
+            const g = groups.find((x) => x.k === k) || { k, label: KIND[k][0], total: 0, rows: [] };
+            return (
+              <div key={k} className="min-w-0 bg-slate-900">
+                <div className="flex justify-between border-b border-slate-800 bg-slate-950/60 px-3 py-2 text-[11px] uppercase tracking-wider text-slate-500">
+                  <span className={KIND[k][2]}>{g.label} · {g.rows.length} tác vụ</span><span className="font-mono">{fmtH(g.total)} h</span>
+                </div>
+                {g.rows.length === 0 && <div className="px-3 py-3 text-[12px] text-slate-600">Không có giờ.</div>}
+                {g.rows.map(([tid, t]) => {
+                  const key = `t${tid}`, op = !open.has(key);   // mặc định mở; open giữ các tác vụ đã thu lại
+                  const who = [...t.emps.entries()].sort((a, b) => b[1] - a[1]);
+                  return (
+                    <div key={tid} className="border-b border-slate-800/70">
+                      <button type="button" onClick={() => toggle(key)} aria-expanded={op}
+                        className="grid w-full grid-cols-[minmax(0,1fr)_64px_44px] items-center gap-2 px-3 py-2 text-left hover:bg-slate-800/30">
+                        <div className="min-w-0">
+                          <div className={`flex items-center gap-1.5 text-sm ${KIND[k][2]}`}>
+                            {op ? <ChevronDown size={14} className="shrink-0 text-slate-500" /> : <ChevronRight size={14} className="shrink-0 text-slate-500" />}
+                            <span className="truncate">{taskLabel(tid)}</span>
+                          </div>
+                          <div className="ml-5 mt-1.5 h-[8px] overflow-hidden rounded-full bg-slate-800">
+                            <i className="block h-full" style={{ width: `${(t.h / maxTask) * 100}%`, background: KIND[k][1] }} />
+                          </div>
                         </div>
-                        <div className="ml-5 mt-1.5 h-[10px] overflow-hidden rounded-full bg-slate-800">
-                          <i className="block h-full" style={{ width: `${(t.h / maxTask) * 100}%`, background: KIND[g.k][1] }} />
-                        </div>
-                      </div>
-                      <span className="text-right font-mono text-sm text-slate-100">{fmtH(t.h)} h</span>
-                      <span className="text-right font-mono text-sm text-slate-400">{pct(t.h, agg.off)}%</span>
-                      <span className="text-right font-mono text-sm text-slate-400">{t.emps.size}</span>
-                    </button>
-                    {op && (
-                      <div className="bg-slate-950/40 px-3 pb-3 pt-1.5 md:pl-9 md:pr-4">
-                        <div className="grid max-w-3xl grid-cols-[minmax(0,1fr)_72px_52px] gap-3 py-0.5 text-[10.5px] uppercase tracking-wider text-slate-600">
-                          <span>Nhân sự</span><span className="text-right">Giờ</span><span className="text-right">%</span>
-                        </div>
-                        <div className="max-w-3xl text-[13px]">
+                        <span className="text-right font-mono text-sm text-slate-100">{fmtH(t.h)} h</span>
+                        <span className="text-right font-mono text-[12px] text-slate-400">{pct(t.h, agg.off)}%</span>
+                      </button>
+                      {op && (
+                        <div className="pb-2 pl-8 pr-3 text-[12.5px]">
                           {who.map(([eid, h]) => (
-                            <div key={eid} className="grid grid-cols-[minmax(0,1fr)_72px_52px] items-baseline gap-3 py-0.5">
+                            <div key={eid} className="grid grid-cols-[minmax(0,1fr)_64px_44px] items-baseline gap-2 py-0.5">
                               <span className="truncate text-slate-300">{empName(eid)}</span>
                               <span className="text-right font-mono text-slate-100">{fmtH(h)} h</span>
                               <span className="text-right font-mono text-slate-500">{pct(h, t.h)}%</span>
                             </div>
                           ))}
                         </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       )}
 
