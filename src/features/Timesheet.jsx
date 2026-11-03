@@ -1081,6 +1081,8 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
         <input ref={(el) => { mobileInputs.current[i] = el; }} type="number" inputMode="decimal" min="0" max="24" step="0.5" placeholder="0"
           disabled={dis} value={v ?? ""} aria-label="Số giờ"
           onChange={(e) => setHourM(i, activeDay, e.target.value)} onFocus={(e) => e.target.select()}
+          /* v13.28: lăn chuột giữa không được tăng / giảm giờ nữa — bỏ tiêu điểm để trang cuộn bình thường */
+          onWheel={(e) => e.currentTarget.blur()}
           onKeyDown={(e) => {
             if (e.key !== "Enter") return;
             e.preventDefault();
@@ -1426,6 +1428,8 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                                       onChange={(e) => setHour(i, d, e.target.value)}
                                       onFocus={(e) => { e.target.select(); markDay(k); }}
                                       onBlur={() => markDay(-1)}
+                                      /* v13.28: lăn chuột giữa không được tăng / giảm giờ nữa */
+                                      onWheel={(e) => e.currentTarget.blur()}
                                       onKeyDown={(e) => gridKey(e, i, k)}
                                       title={ot ? `Tối đa ${fmtH(otMaxHours(taskById.get(r.taskId)))} giờ` : undefined}
                                       className={`${CTRL} w-full rounded-md border bg-slate-950 px-1 text-center font-mono text-base font-medium focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[d] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "border-teal-900 text-slate-100" : isIncomplete(d) ? "border-amber-700/60 text-slate-100" : k === 6 ? "border-slate-800 text-slate-100" : "border-slate-700 text-slate-100"}`} />

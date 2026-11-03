@@ -1,6 +1,10 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.27
+   ARTIUS — Quản lý giờ công theo dự án · v13.28
+   Mới ở v13.28 — Chấm công (màn nhân viên): lăn bánh xe chuột khi con trỏ đang ở ô giờ không còn tăng / giảm
+     số giờ nữa (hành vi mặc định của ô số trên trình duyệt). Ô tự bỏ tiêu điểm khi lăn, nên trang cuộn bình
+     thường. Áp cho cả lưới tuần trên máy tính và ô nhập trên điện thoại. Gõ số và nút +/- 0.5 giữ nguyên.
+
    Mới ở v13.27 — Bỏ tab con "Nhân sự" trong tab Bảng công, thanh tab con còn Bảng công | Giờ ngoài dự án
      (bảng chi tiết bấm vào tên nhân sự ở v13.24-v13.26 đã thay được phần đó). Ai đang để localStorage ở tab
      Nhân sự thì tự quay về Bảng công. Thanh số liệu Bảng công thêm ô "Đang quá tải" (số người quá tải / tổng
