@@ -461,7 +461,21 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
     const other = leave + idleH;
     return { tot: work + other, work, other, leave, idle: idleH, eff, ot };
   })();
-  const pctOf = (v) => (mix.tot ? Math.round((v / mix.tot) * 100) : 0);
+  const pctOf = (v) => (mix.tot ? Math.round((v / mix.tot) * 100) : 0);            // % trên TỔNG giờ đã gửi (657)
+  /* v13.20 — cố gắng và OT nằm TRONG giờ làm việc, nên % của chúng lấy mẫu số là giờ làm việc, không phải tổng */
+  const pctWork = (v) => (mix.work ? Math.round((v / mix.work) * 100) : 0);
+  /* v13.20 — mức chịu tải: tổng giờ đã gửi so với giờ chuẩn của kỳ (>100% là vượt) */
+  const loadPct = totStd ? (totT / totStd) * 100 : 0;
+  const overH = totT - totStd;                                                     // >0: vượt · <0: hụt
+  const loadTxt = !totStd ? "" : overH >= 0 ? `vượt ${fmtH(overH)} h (+${(loadPct - 100).toFixed(1)}%)` : `hụt ${fmtH(-overH)} h (${(loadPct - 100).toFixed(1)}%)`;
+  // ngưỡng màu: vượt >5% đỏ, vượt 0–5% hổ phách, còn lại xám như cũ
+  const loadCls = !totStd ? "text-slate-500" : loadPct > 105 ? "text-rose-400" : loadPct > 100 ? "text-amber-400" : "text-slate-500";
+  /* v13.20 — thanh chia khúc trong ô Giờ làm việc: chuẩn (xanh dương) · cố gắng (tím) · OT (xanh ngọc) */
+  const barSeg = [
+    { h: Math.max(0, mix.work - mix.eff - mix.ot), c: "#60a5fa" },   // giờ chuẩn
+    { h: mix.eff, c: "#a78bfa" },                                    // cố gắng
+    { h: mix.ot, c: "#2dd4bf" },                                     // OT
+  ];
 
   /* nhắc đã gửi trong tuần đang xem (đọc nhật ký nhắc — quản lý đọc được) */
   useEffect(() => {
@@ -854,24 +868,43 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
     );
   })();
 
-  const Kpi = ({ l, v, sub, cls = "text-slate-50" }) => (
+  /* v13.20 — subCls: màu riêng cho dòng phụ (mức vượt tải) · bar: thanh chia khúc dưới số */
+  const Kpi = ({ l, v, sub, cls = "text-slate-50", subCls = "text-slate-500", bar }) => (
     <div className="bg-slate-900 px-3 py-2.5">
       <div className="text-[10.5px] uppercase tracking-wider text-slate-500">{l}</div>
-      <div className={`mt-0.5 font-mono text-lg font-semibold ${cls}`}>{v}{sub && <span className="ml-1.5 font-sans text-xs font-normal text-slate-500">{sub}</span>}</div>
+      <div className={`mt-0.5 font-mono text-lg font-semibold ${cls}`}>{v}{sub && <span className={`ml-1.5 font-sans text-xs font-normal ${subCls}`}>{sub}</span>}</div>
+      {bar}
     </div>
   );
+  /* v13.20 — thanh chia khúc giờ làm việc; đoạn nhỏ vẫn có sàn hiển thị để không biến mất */
+  const MixBar = ({ segs, tot }) => {
+    if (!tot) return null;
+    const vis = segs.filter((s) => s.h > 0);
+    return (
+      <div className="mt-1.5 flex h-1.5 gap-px overflow-hidden rounded-full bg-slate-800">
+        {vis.map((s, i) => (
+          <div key={i} title={`${fmtH(s.h)} h`} style={{ width: `${Math.max(2, (s.h / tot) * 100)}%`, background: s.c }} />
+        ))}
+      </div>
+    );
+  };
   return (
     /* v13.17 — hai khung: thanh trạng thái chung ở trên; bảng chấm công kèm thanh Tuần / Tháng, lịch, lọc, Excel ở dưới */
     <div className="space-y-3 md:space-y-4">
       <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
         <div className="grid grid-cols-2 gap-px bg-slate-800 md:grid-cols-5">
           <Kpi l="Đã nộp đủ" v={okN} sub={`/ ${empsAct.length} người`} cls={okN < empsAct.length ? "text-amber-400" : "text-teal-300"} />
-          <Kpi l="Tổng giờ đã gửi" v={fmtH(totT)} sub={`/ ${fmtH(totStd)} h chuẩn`} />
-          <Kpi l="Giờ làm việc" v={`${fmtH(mix.work)} h`} sub={`${pctOf(mix.work)}% · gồm cố gắng và OT`} cls="text-blue-300" />
-          <Kpi l="Trong đó cố gắng · OT" v={<><span className="text-violet-300">{fmtH(mix.eff)} h</span><span className="ml-1 text-xs font-normal text-slate-500">{pctOf(mix.eff)}%</span><span className="mx-2 text-slate-600">·</span><span className="text-teal-300">{fmtH(mix.ot)} h</span><span className="ml-1 text-xs font-normal text-slate-500">{pctOf(mix.ot)}%</span></>} />
-          <div title={`Vắng mặt ${fmtH(mix.leave)} h · Trống việc ${fmtH(mix.idle)} h`} className="cursor-help bg-slate-900">
-            <Kpi l="Giờ khác" v={`${fmtH(mix.other)} h`} sub={`${pctOf(mix.other)}%`} cls="text-slate-300" />
-          </div>
+          {/* v13.20 — mức chịu tải: giờ vượt tuyệt đối + % so với giờ chuẩn */}
+          <Kpi l="Tổng giờ đã gửi" v={`${fmtH(totT)} h`} sub={loadTxt || `/ ${fmtH(totStd)} h chuẩn`} subCls={loadCls} />
+          {/* v13.20 — thanh chia khúc chuẩn · cố gắng · OT ngay dưới số giờ làm việc */}
+          <Kpi l="Giờ làm việc" v={`${fmtH(mix.work)} h`} sub={`${pctOf(mix.work)}% tổng · gồm cố gắng và OT`} cls="text-blue-300"
+            bar={<MixBar segs={barSeg} tot={mix.work} />} />
+          {/* v13.20 — % lấy mẫu số là GIỜ LÀM VIỆC, đúng nghĩa chữ "trong đó" (trước đây chia cho tổng giờ đã gửi) */}
+          <Kpi l="Trong đó cố gắng · OT" sub="% giờ làm việc"
+            v={<><span className="text-violet-300">{fmtH(mix.eff)} h</span><span className="ml-1 text-xs font-normal text-slate-500">{pctWork(mix.eff)}%</span><span className="mx-2 text-slate-600">·</span><span className="text-teal-300">{fmtH(mix.ot)} h</span><span className="ml-1 text-xs font-normal text-slate-500">{pctWork(mix.ot)}%</span></>} />
+          {/* v13.20 — bỏ tooltip, tách khoản hiện thẳng trên thẻ */}
+          <Kpi l="Giờ khác" cls="text-slate-300" v={`${fmtH(mix.other)} h`}
+            sub={`${pctOf(mix.other)}% tổng · vắng mặt ${fmtH(mix.leave)} h · trống việc ${fmtH(mix.idle)} h`} />
         </div>
       </div>
     <div className="rounded-xl border border-slate-800 bg-slate-900">
