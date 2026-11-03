@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from "react";
 import { Legend } from "recharts";
 import {
-  Download, ChevronLeft, ChevronRight, CheckCircle2, Loader2, Lock, Pencil, Check, X, Unlock, Search, Bell,
+  Download, ChevronLeft, ChevronRight, CheckCircle2, Loader2, Lock, Pencil, Check, X, Unlock, Search, Bell, MoreHorizontal,
 } from "lucide-react";
 import { sendNudge, fetchNudgeLog, fetchNudgeLogRange } from "../push.js";
 import { DEFAULT_HOURS, DOW, addDays, dLabel, effortHoursFor, fmt, lastOfMonth, makeHolidayIndex, minHoursFor, mondayOf, mondaysDue, mondaysOfMonth, pad, parseD, prevYm, weekDays, ymLabel, ymOf, ymsBetween } from "../core/date.jsx";
@@ -11,6 +11,7 @@ import { DEFAULT_PHASE, DEPTS, LEAVE_TASKS, NO_PROJECT, NUDGE_GAP_MIN, OT_TASKS,
 import { isLight } from "../core/theme.jsx";
 import { CTRL, FilterButton, PeriodField, Kpi, Panel, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
 import { ALLOC_ST, allocLimits, allocState } from "../shared/alloc.jsx";
+import { pct100 } from "./dashboard/calc.jsx";   // v13.24: % làm tròn đủ 100, dùng chung với tab Nhân sự
 import { dayStyle, dayStyleSm } from "../shared/dayStyle.jsx";
 import { SupportPanel } from "../shared/support.jsx";
 import { EmployeeArea } from "./Timesheet.jsx";
@@ -260,6 +261,7 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
   const [fDept, setFDept] = useState("all");
   /* v13.11 — lọc theo vai trò: chỉ vai trò đang có người (chưa nghỉ việc), thu theo bộ phận đang chọn */
   const [fRole, setFRole] = useState("all");
+  const [openDet, setOpenDet] = useState(() => new Set());   // v13.24: empId đang mở bảng chi tiết "..."
   const [fLoad, setFLoad] = useState("all");       // v13.23: lọc theo mức tải — all | hi | ok | idle | lo
   const [sortLoad, setSortLoad] = useState("none");   // v13.23: none | desc (tải nhiều → ít) | asc (ít → nhiều)
   useEffect(() => { setFRole("all"); }, [fDept]);
@@ -376,6 +378,9 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
         const ok = !!sent[d];
         if (!ok) c.draft += h; else if (isOtId(r.taskId)) c.ot += h; else if (isLeaveTask(r.taskId)) c.leave += h; else { c.reg += h; if (isIdleTask(r.taskId)) c.idle += h; }
         c.items.push({ ot: isOtId(r.taskId), sent: ok, h,
+          // v13.24: giữ thêm dự án / tác vụ rời để dựng bảng chi tiết "..." giống tab Nhân sự
+          pid: r.projectId, idleTask: isIdleTask(r.taskId), leaveTask: isLeaveTask(r.taskId),
+          task: isOtId(r.taskId) ? `Tăng ca · ${r.otFor ? tName(r.otFor) : "chưa rõ tác vụ"}` : tName(r.taskId),
           label: isOtId(r.taskId) ? `Tăng ca · ${r.otFor ? tName(r.otFor) : "chưa rõ tác vụ"}` : isLeaveTask(r.taskId) ? tName(r.taskId) : `${pName(r.projectId)} · ${tName(r.taskId)}` });
         m.set(k, c);
       }
@@ -681,12 +686,76 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
         <i className="ml-1 inline-block h-2 w-3 rounded-sm" style={isLight() ? { background: "#fed7aa" } : { boxShadow: "inset 0 0 0 1px #fbbf24aa", background: "repeating-linear-gradient(135deg,#fbbf2455 0 2px,transparent 2px 4px)" }} />thiếu</span>
     </div>
   );
+  /* v13.24 — chi tiết giờ của một người trong kỳ đang xem: giờ theo dự án và theo tác vụ.
+     Chỉ tính giờ ĐÃ GỬI (bỏ nháp), giống dữ liệu tab Nhân sự dùng. */
+  const detailOf = (eid) => {
+    const proj = new Map(), task = new Map();
+    for (const d of days) for (const it of (cellOf.get(`${eid}|${d}`)?.items || [])) {
+      if (!it.sent) continue;
+      const pk = it.leaveTask ? NO_PROJECT : (it.pid || NO_PROJECT);
+      proj.set(pk, (proj.get(pk) || 0) + it.h);
+      const t = task.get(it.task) || { h: 0, ot: it.ot, idle: it.idleTask };
+      t.h += it.h; task.set(it.task, t);
+    }
+    return {
+      proj: [...proj.entries()].sort((a, b) => b[1] - a[1]),
+      // tăng ca xếp cuối, giống thứ tự bên tab Nhân sự
+      task: [...task.entries()].map(([name, t]) => ({ name, ...t })).sort((a, b) => (a.ot - b.ot) || b.h - a.h),
+    };
+  };
+  const toggleDet = (eid) => setOpenDet((s) => { const n = new Set(s); n.has(eid) ? n.delete(eid) : n.add(eid); return n; });
+  /* v13.24 — hàng chi tiết bung dưới dòng nhân sự: hai bảng Dự án / Tác vụ, chỉ chữ và số như tab Nhân sự */
+  const DetailRow = ({ e, span }) => {
+    const d = detailOf(e.id);
+    const pp = pct100(d.proj.map(([, h]) => h)), pt = pct100(d.task.map((t) => t.h));
+    return (
+      <tr key={`det-${e.id}`}>
+        <td colSpan={span} className="border-b border-slate-800 bg-slate-950/40 px-3 pb-3 pt-2 md:px-4">
+          {d.proj.length === 0 ? <div className="py-1 text-[13px] text-slate-500">Chưa có giờ đã gửi trong kỳ này.</div> : (
+            <div className="grid max-w-5xl grid-cols-1 gap-x-10 gap-y-3 text-[13px] lg:grid-cols-2">
+              <div>
+                <div className="grid grid-cols-[minmax(0,1fr)_72px_52px] gap-3 py-0.5 text-[10.5px] uppercase tracking-wider text-slate-600">
+                  <span>Dự án</span><span className="text-right">Giờ</span><span className="text-right">%</span>
+                </div>
+                {d.proj.map(([k, h], i) => (
+                  <div key={k} className="grid grid-cols-[minmax(0,1fr)_72px_52px] items-baseline gap-3 py-0.5">
+                    <span className="truncate text-slate-200">{k === NO_PROJECT ? "Việc chung, vắng mặt" : pName(k)}</span>
+                    <span className="text-right font-mono text-slate-100">{fmtH(h)} h</span>
+                    <span className="text-right font-mono text-slate-400">{pp[i]}%</span>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div className="grid grid-cols-[minmax(0,1fr)_72px_52px] gap-3 py-0.5 text-[10.5px] uppercase tracking-wider text-slate-600">
+                  <span>Tác vụ</span><span className="text-right">Giờ</span><span className="text-right">%</span>
+                </div>
+                {d.task.map((t, i) => (
+                  <div key={t.name} className="grid grid-cols-[minmax(0,1fr)_72px_52px] items-baseline gap-3 py-0.5">
+                    <span className={`truncate ${t.ot ? "text-teal-400" : t.idle ? "text-slate-400" : "text-slate-200"}`}>{t.name}</span>
+                    <span className="text-right font-mono text-slate-100">{fmtH(t.h)} h</span>
+                    <span className="text-right font-mono text-slate-400">{pt[i]}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </td>
+      </tr>
+    );
+  };
   const NameCell = ({ e }) => (
     <td className="sticky left-0 z-10 border-b border-slate-800/70 bg-slate-900 px-3 py-1.5 md:px-4">
-      <button onClick={() => { if (mode === "month") setMonday(fmt(mondayOf(ym === ymOf(today) ? new Date() : parseD(`${ym}-01`)))); openDrawer(e.id); }} title={readOnly ? undefined : "Sửa giờ công tuần này"} className={`block w-full min-w-[150px] text-left ${readOnly ? "cursor-default" : ""}`}>
-        <span className={`block truncate text-sm text-slate-100 ${readOnly ? "" : "hover:text-teal-300"}`}>{e.name}{isResigned(e) && <ResignedBadge />}</span>
-        <span className="block truncate text-[11px] text-slate-500">{roleTitle(e.role) || e.dept}</span>
-      </button>
+      {/* v13.24 — nút "..." mở bảng chi tiết giờ theo dự án / tác vụ, tách khỏi nút tên (vẫn mở ngăn kéo sửa giờ) */}
+      <div className="flex min-w-[150px] items-center gap-1">
+        <button onClick={() => { if (mode === "month") setMonday(fmt(mondayOf(ym === ymOf(today) ? new Date() : parseD(`${ym}-01`)))); openDrawer(e.id); }} title={readOnly ? undefined : "Sửa giờ công tuần này"} className={`block min-w-0 flex-1 text-left ${readOnly ? "cursor-default" : ""}`}>
+          <span className={`block truncate text-sm text-slate-100 ${readOnly ? "" : "hover:text-teal-300"}`}>{e.name}{isResigned(e) && <ResignedBadge />}</span>
+          <span className="block truncate text-[11px] text-slate-500">{roleTitle(e.role) || e.dept}</span>
+        </button>
+        <button onClick={() => toggleDet(e.id)} aria-expanded={openDet.has(e.id)} title="Chi tiết giờ theo dự án và tác vụ"
+          className={`shrink-0 rounded-md p-1 ${openDet.has(e.id) ? "bg-slate-800 text-teal-300" : "text-slate-500 hover:bg-slate-800 hover:text-slate-200"}`}>
+          <MoreHorizontal size={16} />
+        </button>
+      </div>
     </td>
   );
   const DeptRow = ({ g, span }) => (
@@ -724,7 +793,8 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
       <tbody>
         {groups.map((g) => [DeptRow({ g, span: days.length + (readOnly ? 3 : 5) }), ...g.items.map((e) => {
           const ws = weekState(e.id, monday), rs = reasons(e.id), at = nudged.get(e.id);
-          return (
+          const wSpan = days.length + (readOnly ? 3 : 5);   // v13.24: số cột để hàng chi tiết trải hết bảng
+          return [
             <tr key={e.id}>
               {NameCell({ e })}
               {days.map((d) => {
@@ -776,8 +846,9 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
                   </button>)}
               </td>
               </>}
-            </tr>
-          );
+            </tr>,
+            openDet.has(e.id) ? DetailRow({ e, span: wSpan }) : null,
+          ];
         })])}
       </tbody>
     </table>
@@ -810,7 +881,7 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
         </tr>
       </thead>
       <tbody>
-        {groups.map((g) => [DeptRow({ g, span: readOnly ? 4 : 5 }), ...g.items.map((e) => (
+        {groups.map((g) => [DeptRow({ g, span: readOnly ? 4 : 5 }), ...g.items.map((e) => [
           <tr key={e.id}>
             {NameCell({ e })}
             <td className="border-b border-slate-800/70 px-2 py-1.5">
@@ -852,8 +923,9 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
                   </button>);
               })()}
             </td>}
-          </tr>
-        ))])}
+          </tr>,
+          openDet.has(e.id) ? DetailRow({ e, span: readOnly ? 4 : 5 }) : null,
+        ])])}
       </tbody>
     </table>
   );

@@ -1,6 +1,12 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.23
+   ARTIUS — Quản lý giờ công theo dự án · v13.24
+   Mới ở v13.24 — Bảng công: thêm nút "..." cạnh tên từng nhân sự (cả chế độ Tuần và Tháng). Bấm vào bung một hàng
+     chi tiết ngay dưới dòng đó, gồm hai bảng Dự án và Tác vụ (giờ và %), đúng như phần chi tiết của tab Nhân sự:
+     chỉ tính giờ đã gửi, vắng mặt và việc chung gom vào "Việc chung, vắng mặt", tăng ca ghi "Tăng ca · tác vụ"
+     màu xanh ngọc và xếp cuối, trống việc màu xám. % dùng chung hàm pct100 nên cộng lại đúng 100. Nút tên vẫn mở
+     ngăn kéo sửa giờ như cũ, mở được nhiều người cùng lúc.
+
    Mới ở v13.23 — Bảng công, nút phễu lọc thêm hai mục: lọc theo mức tải (Quá tải / Bình thường / Trống việc /
      Thiếu giờ) và sắp xếp theo tải (Tải nhiều → ít, Tải ít → nhiều). Mức tải lấy từ cùng allocState và công thức %
      của chip ở cột TỔNG / CHUẨN nên khớp tab Nhân sự. Khi đang sắp theo tải thì bỏ gom bộ phận để thứ tự đúng trên
