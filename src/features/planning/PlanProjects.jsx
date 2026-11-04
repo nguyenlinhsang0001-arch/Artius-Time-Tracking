@@ -124,8 +124,6 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
     return { p, s: info.get(p.id), v, label, why, miss };
   }), [projects, info, nowIndex, employees, support, plan, roles, weeks]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  const nBad = rows.filter((r) => r.v !== "ok" && r.v !== "na").length;
-  const nStaff = rows.filter((r) => r.v === "staff").length;
   const shown = rows.filter(({ p, v }) => {
     if (flt === "bad" && (v === "ok" || v === "na")) return false;
     if (flt === "on" && !p.active) return false;
@@ -173,9 +171,7 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
           nên trục tháng nằm khít trên dải. Mốc mỗi quý, có năm ở tháng 1, vạch đỏ là tuần hiện tại. */}
       <div className="hidden grid-cols-[132px_minmax(220px,1fr)_minmax(0,1fr)_150px_88px_20px] items-end gap-3 border-b border-slate-800 px-4 pb-1.5 pt-2 md:grid">
         <span />
-        <span className="truncate text-[11.5px] text-slate-500">
-          {nowIndex < 0 ? "Tuần hiện tại ngoài khoảng đang xem" : <>Tuần hiện tại {wLbl(nowW)}{nBad > 0 && <span className="text-rose-400"> · {nBad} dự án cần xem</span>}</>}
-        </span>
+        <span />   {/* v13.40: bỏ ghi chú "Tuần hiện tại…" — vạch đỏ trên trục đã nói đủ */}
         <span className="relative block h-[22px]">
           {ticks.map((t) => (
             <span key={t.i} className="absolute bottom-0 flex h-full flex-col justify-end" style={{ left: `${pc(t.i)}%` }}>

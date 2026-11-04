@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.39
+   ARTIUS — Quản lý giờ công theo dự án · v13.40
+   Mới ở v13.40 — Kế hoạch › Theo dự án: bỏ nốt ghi chú "Tuần hiện tại …" ở hàng tiêu đề; hàng này giờ chỉ
+     còn trục tháng. Vạch đỏ trên trục và trong từng dải đã cho biết tuần hiện tại.
+
    Mới ở v13.39 — Kế hoạch › Theo dự án: dải thời gian nới rộng gấp khoảng ba lần (cột tên và dải chia đôi
      phần còn lại, dải bắt đầu khoảng giữa màn hình); thêm trục tháng ngay trên dải, mốc mỗi quý và ghi năm
      ở tháng 1, kèm vạch đỏ tuần hiện tại — nhìn là biết dải của dự án bắt đầu và kết thúc tháng nào.
