@@ -2,12 +2,12 @@
    v12.34 — bỏ chế độ Tổng quan: thiếu / dư người chỉ xem ở Dashboard › Tổng quan nguồn lực (PlanOverview.jsx giữ lại, không dùng).
    Admin nhập và lưu; BOD và trưởng phòng chỉ xem. Dữ liệu nằm ở bảng riêng (xem planStore.js). */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Download, Loader2, Merge, RotateCcw, Save } from "lucide-react";
+import { Camera, Download, Loader2, Merge, Redo2, RotateCcw, Save, Search, Undo2, X } from "lucide-react";
 import { fmt, mondayOf } from "../../core/date.jsx";
 import { dbTsSent, ensureMonths, useDataTick, weekDone } from "../../core/db.jsx";
 import { ROLES, isResigned } from "../../core/domain.jsx";
 import { CTRL, Panel, btnGhost, btnPrimary } from "../../core/ui.jsx";
-import { PER_YEAR, actualByCell, foldMerged, joinYears, normalizeYear, prunePlan, realWeeksOfPair, slotIndexOf, splitYears, weeksOfPair } from "./planCalc.js";
+import { PER_YEAR, actualByCell, diffCells, foldMerged, joinYears, normalizeYear, prunePlan, realWeeksOfPair, slotIndexOf, splitYears, weeksOfPair } from "./planCalc.js";
 import { PlanActual } from "./PlanActual.jsx";
 import { PlanFocus } from "./PlanFocus.jsx";
 import { PlanGrid } from "./PlanGrid.jsx";
@@ -28,6 +28,45 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
   const pickInView = (v) => { setInView(v); try { localStorage.setItem("artius:planInView", v); } catch { /* chỉ nhớ trong phiên */ } };
   const [plan, setPlan] = useState({});
   const [dirty, setDirty] = useState(false);
+  /* ---------- v13.32: lùi / tiến (Ctrl + Z, Ctrl + Y) ----------
+     Giữ trong bộ nhớ, không lưu lên server. Mỗi phần tử là một bản lưới đầy đủ — lưới chỉ vài nghìn số
+     nên nhẹ hơn nhiều so với việc tính diff, và khi lùi thì chắc chắn về đúng trạng thái cũ.
+     mergeKey: hai lần sửa liên tiếp CÙNG một ô trong vòng 800ms gộp làm một bước, để gõ "0,5"
+     (qua các trạng thái 0 → 0 → 0,5) không ăn mất ba lần Ctrl + Z. */
+  const planNow = useRef(plan); planNow.current = plan;   // lưới mới nhất, dùng cho lưu và cho lùi/tiến
+  const HIST_MAX = 50, HIST_GAP = 800;
+  const hist = useRef({ past: [], future: [], key: "", at: 0 });
+  const [histN, setHistN] = useState([0, 0]);   // chỉ để nút / trạng thái vẽ lại
+  const syncHist = () => setHistN([hist.current.past.length, hist.current.future.length]);
+  const resetHist = useCallback(() => { hist.current = { past: [], future: [], key: "", at: 0 }; setHistN([0, 0]); }, []);
+  /* mọi thay đổi lưới từ các lưới nhập đều đi qua đây */
+  const editPlan = useCallback((next, mergeKey = "") => {
+    const h = hist.current, now = Date.now();
+    const sameRun = mergeKey && mergeKey === h.key && now - h.at < HIST_GAP;
+    if (!sameRun) {
+      h.past.push(planNow.current);
+      if (h.past.length > HIST_MAX) h.past.shift();
+    }
+    h.future = []; h.key = mergeKey; h.at = now;
+    setPlan(next); setDirty(true); syncHist();
+  }, []);
+  const undo = useCallback(() => {
+    const h = hist.current;
+    if (!h.past.length) return;
+    h.future.push(planNow.current);
+    setPlan(h.past.pop());
+    h.key = ""; setDirty(true); syncHist();
+  }, []);
+  const redo = useCallback(() => {
+    const h = hist.current;
+    if (!h.future.length) return;
+    h.past.push(planNow.current);
+    setPlan(h.future.pop());
+    h.key = ""; setDirty(true); syncHist();
+  }, []);
+  /* ---------- v13.32: ô đã sửa kể từ lần lưu cuối ---------- */
+  const [baseline, setBaseline] = useState({});
+  const [q, setQ] = useState("");   // v13.32: lọc nhanh dự án trên lưới nhập
   const [busy, setBusy] = useState(true);
   const [err, setErr] = useState("");
   const [snaps, setSnaps] = useState([]);
@@ -42,6 +81,8 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
   const view = weeks;
   const realWeeks = useMemo(() => realWeeksOfPair(start), [start]);   // các thứ Hai thật, để so giờ thực tế
   const nowIdx = slotIndexOf(start, new Date());
+  /* v13.32 — ô đã sửa kể từ lần lưu cuối; tính lại khi lưới hoặc mốc đổi (vài nghìn ô, không đáng kể) */
+  const changedCells = useMemo(() => diffCells(plan, baseline, weeks.length), [plan, baseline, weeks.length]);
 
   const projects = useMemo(() => (cfg.projects || []).filter((p) => p.active), [cfg.projects]);
   /* v12.24 — chế độ "Theo dự án" phải thấy cả dự án ĐÃ ĐÓNG, nếu không thì không bao giờ gợi ý được "nên mở" */
@@ -117,7 +158,12 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
     let alive = true;
     setBusy(true); setErr("");
     Promise.all([loadPlan(start), loadPlan(start + 1)])
-      .then(([a, b]) => { if (alive) { setPlan(fillRef.current(joinYears(normalizeYear(a, start), normalizeYear(b, start + 1), n1, n2))); setDirty(!readOnly && foldedRef.current); } })
+      .then(([a, b]) => {
+        if (!alive) return;
+        const loaded = fillRef.current(joinYears(normalizeYear(a, start), normalizeYear(b, start + 1), n1, n2));
+        setPlan(loaded); setBaseline(loaded); resetHist();   // v13.32: mốc so sánh ô đã sửa + xoá lịch sử của cặp năm cũ
+        setDirty(!readOnly && foldedRef.current);
+      })
       .catch((e) => { if (alive) setErr(isMissingTable(e) ? SQL_HINT : `Chưa tải được kế hoạch — ${errMsg(e)}`); })
       .finally(() => alive && setBusy(false));
     Promise.all([listSnapshots(start), listSnapshots(start + 1)]).then(([a, b]) => alive && setSnaps([...a, ...b])).catch(() => {});
@@ -161,7 +207,6 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
   /* ---------- lưu (tự lưu sau khi ngừng gõ 2 giây, nút Lưu để ghi ngay) ----------
      Không thay lưới đang hiện bằng bản đã dọn sau khi lưu: đang gõ dở mà dòng toàn 0 biến mất thì rất khó chịu.
      Chỉ tắt cờ "chưa lưu" nếu từ lúc bắt đầu lưu tới giờ không gõ thêm gì. */
-  const planNow = useRef(plan); planNow.current = plan;
   const savingRef = useRef(false), againRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
@@ -176,6 +221,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
       await savePlan(start, prunePlan(a));
       await savePlan(start + 1, prunePlan(b));
       if (planNow.current === snap) setDirty(false);
+      setBaseline(snap);   // v13.32: ô đã sửa tính từ bản vừa lưu
       savedAt.current = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
       setSaveErr("");
       if (manual) flash("Đã lưu kế hoạch.");
@@ -288,6 +334,24 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
           {mode === "in" && (
             <button onClick={() => window.dispatchEvent(new Event("artius:planNow"))} className={btnGhost}>Về tuần này</button>
           )}
+          {/* v13.32 — lọc nhanh dự án (chỉ ở cách xem Toàn bộ) */}
+          {mode === "in" && inView === "all" && (
+            <div className="relative w-full sm:w-52">
+              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm dự án" aria-label="Tìm dự án"
+                className="h-11 w-full rounded-md border border-slate-700 bg-slate-900 pl-8 pr-8 text-sm text-slate-100 placeholder:text-slate-600" />
+              {q && <button onClick={() => setQ("")} aria-label="Xoá tìm" className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-200"><X size={14} /></button>}
+            </div>
+          )}
+          {/* v13.32 — lùi / tiến; phím tắt Ctrl + Z, Ctrl + Y làm việc ngay trong lưới */}
+          {mode === "in" && !readOnly && (
+            <div className="flex gap-1">
+              <button onClick={undo} disabled={!histN[0]} title="Lùi một bước (Ctrl + Z)" aria-label="Lùi một bước"
+                className={`${CTRL} w-11 rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-slate-100 disabled:opacity-30`}><Undo2 size={15} className="mx-auto" /></button>
+              <button onClick={redo} disabled={!histN[1]} title="Tiến một bước (Ctrl + Y)" aria-label="Tiến một bước"
+                className={`${CTRL} w-11 rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-slate-100 disabled:opacity-30`}><Redo2 size={15} className="mx-auto" /></button>
+            </div>
+          )}
           <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
             <button onClick={onExport} title="Xuất lưới, tổng theo vai trò, so với thực tế và các bản chốt"
               className={`flex-1 sm:flex-none ${btnGhost}`}><Download size={15} /> Xuất Excel</button>
@@ -295,9 +359,9 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
             <>
               <button onClick={onSnapshot} title="Chụp lại lưới hiện tại để về sau so với thực tế trên bản đã chốt"
                 className={`flex-1 sm:flex-none ${btnGhost}`}><Camera size={15} /> Chốt bản {snaps.length ? `(${snaps.length})` : ""}</button>
-              <button onClick={() => { setDirty(false); setBusy(true); Promise.all([loadPlan(start), loadPlan(start + 1)]).then(([a, b]) => { setPlan(fillRef.current(joinYears(normalizeYear(a, start), normalizeYear(b, start + 1), n1, n2))); setBusy(false); }).catch(() => setBusy(false)); }}
+              <button onClick={() => { setDirty(false); setBusy(true); Promise.all([loadPlan(start), loadPlan(start + 1)]).then(([a, b]) => { const l = fillRef.current(joinYears(normalizeYear(a, start), normalizeYear(b, start + 1), n1, n2)); setPlan(l); setBaseline(l); resetHist(); setBusy(false); }).catch(() => setBusy(false)); }}
                 className={`flex-1 sm:flex-none ${btnGhost}`}><RotateCcw size={15} /> Tải lại</button>
-              <button onClick={onSave} disabled={(!dirty && !saveErr) || busy || saving} className={`flex-1 sm:flex-none ${btnPrimary} disabled:opacity-40`}><Save size={15} /> Lưu</button>
+              <button onClick={onSave} disabled={(!dirty && !saveErr) || busy || saving} className={`flex-1 sm:flex-none ${btnPrimary} disabled:opacity-40`}><Save size={15} /> Lưu{changedCells.size > 0 ? ` (${changedCells.size})` : ""}</button>
             </>
           )}
           </div>
@@ -312,11 +376,11 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
             hidden={hidden} detail={ts?.detail || []} employees={cfg.employees || []} support={Array.isArray(cfg.support) ? cfg.support : []}
             canToggle={!readOnly && canSaveProjects} onToggle={toggleActive} prole={prole} />
         ) : mode === "in" && inView === "one" ? (
-          <PlanFocus plan={plan} onChange={(p) => { setPlan(p); setDirty(true); }}
+          <PlanFocus plan={plan} onChange={editPlan} onUndo={undo} onRedo={redo} canUndo={histN[0] > 0} canRedo={histN[1] > 0} changed={changedCells}
             projects={projects} hidden={hidden} mergedOf={mergedOf} roles={roles} weeks={view} nWeeks={weeks.length}
             cap={cap} head={head} readOnly={readOnly} nowIndex={nowIdx} scrollKey={start} />
         ) : (
-          <PlanGrid plan={plan} onChange={(p) => { setPlan(p); setDirty(true); }}
+          <PlanGrid plan={plan} onChange={editPlan} onUndo={undo} onRedo={redo} canUndo={histN[0] > 0} canRedo={histN[1] > 0} changed={changedCells} query={q}
             projects={projects} hidden={hidden} onToggleHide={readOnly ? undefined : toggleHide} totals={totals} onTotals={readOnly ? undefined : onTotals} mergedOf={mergedOf} roles={roles} weeks={view} nWeeks={weeks.length}
             cap={cap} head={head} readOnly={readOnly} nowIndex={nowIdx} scrollKey={start} />
         )}

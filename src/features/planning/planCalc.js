@@ -235,3 +235,27 @@ export const shortages = ({ plan, projectIds, roles, weeks, cap, from = 0, count
   }
   return out.sort((a, b) => a.w.i - b.w.i || b.short - a.short).slice(0, limit);
 };
+
+/* ---------- v13.32: phục vụ các tiện ích nhập liệu ---------- */
+
+/* Các ô khác nhau giữa hai lưới, trả về Set khoá "pid|rid|wi".
+   Dùng để chấm dấu ô đã sửa kể từ lần lưu cuối. Ô 0 ↔ không có dòng được coi là GIỐNG nhau,
+   vì lúc lưu prunePlan bỏ dòng toàn 0 — không thì vừa lưu xong đã thấy cả loạt ô báo "đã sửa". */
+export const diffCells = (a, b, nWeeks) => {
+  const out = new Set();
+  const pids = new Set([...Object.keys(a || {}), ...Object.keys(b || {})]);
+  for (const pid of pids) {
+    const ra = a?.[pid] || {}, rb = b?.[pid] || {};
+    for (const rid of new Set([...Object.keys(ra), ...Object.keys(rb)])) {
+      const x = ra[rid] || [], y = rb[rid] || [];
+      for (let i = 0; i < nWeeks; i++) if ((Number(x[i]) || 0) !== (Number(y[i]) || 0)) out.add(`${pid}|${rid}|${i}`);
+    }
+  }
+  return out;
+};
+
+/* Các dự án đang ăn vào một vai trò ở một tuần, nhiều trước ít sau — để truy nguyên ô CÒN đỏ. */
+export const contribOf = (plan, projectIds, rid, wi) => projectIds
+  .map((pid) => ({ pid, v: cellOf(plan, pid, rid, wi) }))
+  .filter((x) => x.v > 0)
+  .sort((x, y) => y.v - x.v);

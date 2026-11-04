@@ -16,11 +16,12 @@
    v12.32 — vàng mode tối: nền vàng trong #3f3a17 (vàng ~22% trên nền tối), chữ #fde047.
    Phím tắt giữ nguyên: + / − tăng giảm 0,25, Ctrl + D, Ctrl + C / V, Shift + mũi tên, Delete. */
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Eye, EyeOff, GripVertical, Plus, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, EyeOff, GripVertical, Plus, X } from "lucide-react";
 import { moveInList, sortByProjOrder } from "../../shared/rowDrag.jsx";
-import { cellOf, leftOf, needOf, setCell, setMany } from "./planCalc.js";
+import { cellOf, contribOf, leftOf, needOf, setCell, setMany } from "./planCalc.js";
 
-const FRZ = 250;   // bề ngang mặc định của cột khoá cứng; kéo ở mép tiêu đề để đổi (150–520), nhớ riêng từng máy
+const FRZ = 266;   // bề ngang mặc định của cột khoá cứng; kéo ở mép tiêu đề để đổi (150–520), nhớ riêng từng máy
+                   // v13.32: 250 → 266, bù chỗ cho mũi tên gập để tên dự án không bị cắt ngắn hơn trước
 const FRZ_MIN = 150, FRZ_MAX = 520, FRZ_KEY = "artius:planFrz";
 const readFrz = () => { try { const v = Number(localStorage.getItem(FRZ_KEY)); return v >= FRZ_MIN && v <= FRZ_MAX ? v : FRZ; } catch { return FRZ; } };
 const CW = 40;     // bề ngang mỗi cột tuần
@@ -36,6 +37,7 @@ const parse = (s) => {
 const PALETTE = ["#14b8a6", "#f59e0b", "#6366f1", "#ec4899", "#0ea5e9", "#84cc16", "#f43f5e",
   "#a855f7", "#eab308", "#3b82f6", "#fb923c", "#22c55e", "#d946ef", "#2dd4bf", "#94a3b8"];
 const wShort = (w) => (w ? `T${w.m}·${w.w}` : "");
+const wLabel = (w) => (w ? `T${w.m}/${w.y} · tuần ${w.w}` : "");
 
 const CSS = `
 .pgx{--card:#0f172a;--line:#1e293b;--line2:#111a2e;--ink:#e2e8f0;--ink2:#cbd5e1;--ink3:#94a3b8;--ink4:#64748b;
@@ -110,6 +112,22 @@ html[data-theme="light"] .pgx .wh.now{background:var(--teal);color:#fff}
 .pgx .rsz{position:absolute;right:0;top:0;height:100%;width:6px;cursor:col-resize;touch-action:none;border-right:2px solid var(--line)}
 .pgx .rsz:hover{border-right-color:var(--teal)}
 .pgx .pg-foot{padding:9px 16px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink4)}
+/* v13.32 — chấm góc ô đã sửa kể từ lần lưu cuối */
+.pgx td.c.ch::after{content:"";position:absolute;top:2px;right:2px;width:5px;height:5px;border-radius:50%;background:var(--teal);pointer-events:none}
+.pgx td.c{position:relative}
+/* v13.32 — dòng dự án bấm được để gập / mở */
+.pgx .ptg{display:inline-flex;flex:none;width:12px;margin-left:-2px;justify-content:center;color:var(--ink4)}
+.pgx tr.ph .fzi{cursor:pointer}
+.pgx tr.ph.cl td{background:var(--line2)}
+.pgx .ptot{text-align:center;font-size:11px;color:var(--ink3);font-variant-numeric:tabular-nums}
+/* v13.32 — ô CÒN bấm được để xem dự án nào đang ăn vào */
+.pgx .lc{cursor:pointer}
+.pgx .pg-pop{position:fixed;z-index:70;width:300px;max-height:60vh;overflow:auto;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 12px;box-shadow:0 12px 32px rgba(15,23,42,.35);font-size:12.5px}
+.pgx .pg-poph{display:flex;align-items:baseline;gap:6px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.pgx .pg-popr{display:grid;grid-template-columns:minmax(0,1fr) 46px;gap:8px;padding:2px 0}
+.pgx .pg-popr span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pgx .pg-popr span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.pgx .pg-popf{margin-top:6px;padding-top:6px;border-top:1px solid var(--line);color:var(--ink3);display:flex;justify-content:space-between}
 .pgx tr[data-drop=before]>td{box-shadow:inset 0 2px 0 #2dd4bf}.pgx tr[data-drop=after]>td{box-shadow:inset 0 -2px 0 #2dd4bf}.pgx tr[data-dragging]{opacity:.4}
 `;
 
@@ -117,6 +135,10 @@ html[data-theme="light"] .pgx .wh.now{background:var(--teal);color:#fff}
 const ORD_KEY = "artius:planRoleOrder";
 const PORD_KEY = "artius:planProjOrder";   // thứ tự dự án trên lưới Kế hoạch (riêng từng máy, không đụng thứ tự ở tab Dự án)
 const readPOrd = () => { try { const a = JSON.parse(localStorage.getItem(PORD_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } };
+const COL_KEY = "artius:planCollapsed";   // v13.32: dự án đang gập, riêng từng máy
+const readCol = () => { try { const a = JSON.parse(localStorage.getItem(COL_KEY) || "[]"); return new Set(Array.isArray(a) ? a : []); } catch { return new Set(); } };
+/* bỏ dấu để tìm dự án gõ không dấu vẫn ra */
+const nrm = (x) => String(x || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").trim();
 const readOrd = () => { try { const o = JSON.parse(localStorage.getItem(ORD_KEY) || "{}"); return o && typeof o === "object" ? o : {}; } catch { return {}; } };
 const sortRoles = (rws, ord) => {
   if (!ord?.length) return rws;
@@ -159,7 +181,7 @@ const longPress = (cb) => {
   };
 };
 
-const Row = React.memo(function Row({ r, pid, rid, name, color, values, weeks, nowIndex, readOnly, onCell, onFocus, onAskDrop, dnd, flash, span }) {
+const Row = React.memo(function Row({ r, pid, rid, name, color, values, weeks, nowIndex, readOnly, onCell, onFocus, onAskDrop, dnd, flash, span, chg }) {
   const dropProps = readOnly ? {} : {
     onDragOver: (e) => dnd.over(e, pid, rid),
     onDragLeave: (e) => e.currentTarget.removeAttribute("data-drop"),
@@ -189,6 +211,7 @@ const Row = React.memo(function Row({ r, pid, rid, name, color, values, weeks, n
         if (w.ms && k > 0) cls.push("ms");
         if (span && (w.i < span.a || w.i > span.b)) cls.push("out");
         if (flash && w.i >= flash.a && w.i <= flash.b) cls.push("fl");
+        if (chg?.has(w.i)) cls.push("ch");   // v13.32: ô đã sửa kể từ lần lưu cuối
         return (
           <td key={w.i} className={cls.join(" ")} data-c={k}>
             <Cell r={r} k={k} v={v} readOnly={readOnly} onFocus={() => onFocus(rid, w.i, r, k)} onType={(x) => onCell(pid, rid, w.i, x, r, k)} />
@@ -200,7 +223,8 @@ const Row = React.memo(function Row({ r, pid, rid, name, color, values, weeks, n
 });
 
 export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new Set(), onToggleHide, totals, onTotals, mergedOf = new Map(), roles, weeks, nWeeks, cap, readOnly = false, nowIndex = -1, scrollKey,
-  focus = false, scopePids }) {
+  focus = false, scopePids,
+  /* v13.32 */ onUndo, onRedo, changed, query = "" }) {
   /* focus: lưới của MỘT dự án (chế độ Từng dự án) — scopePids là các dự án tính vào dòng CÒN toàn công ty */
   const wrap = useRef(null);
   const [order, setOrder] = useState(readOrd);
@@ -227,7 +251,20 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
 
   /* thứ tự dự án do kéo thả; dự án tạm ẩn vẫn nằm trên lưới (thu gọn) nhưng KHÔNG tính vào các dòng CÒN */
   const [pOrder, setPOrder] = useState(readPOrd);
-  const projects = useMemo(() => sortByProjOrder(allProjects, pOrder, (p) => p.id), [allProjects, pOrder]);
+  const sorted = useMemo(() => sortByProjOrder(allProjects, pOrder, (p) => p.id), [allProjects, pOrder]);
+  /* v13.32 — lọc nhanh dự án: gõ không dấu vẫn tìm ra, khớp cả tên lẫn mã */
+  const projects = useMemo(() => {
+    const kw = nrm(query);
+    return kw ? sorted.filter((p) => nrm(`${p.name} ${p.code || ""}`).includes(kw)) : sorted;
+  }, [sorted, query]);
+  /* v13.32 — dự án đang gập: giấu các dòng vai trò, dòng dự án hiện tổng số người theo tuần. Nhớ riêng từng máy. */
+  const [collapsed, setCollapsed] = useState(readCol);
+  const toggleCollapse = (pid) => setCollapsed((cur) => {
+    const n = new Set(cur);
+    n.has(pid) ? n.delete(pid) : n.add(pid);
+    try { localStorage.setItem(COL_KEY, JSON.stringify([...n])); } catch { /* chỉ đổi cho phiên này */ }
+    return n;
+  });
   const projectsRef = useRef(projects); projectsRef.current = projects;
   const ownPids = useMemo(() => projects.filter((p) => !hidden.has(p.id)).map((p) => p.id), [projects, hidden]);
   const pids = scopePids || ownPids;
@@ -276,7 +313,8 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
       const b = box(s);
       if (r >= b.r0 && r <= b.r1 && c >= b.c0 && c <= b.c1) { applyMany(itemsOf(b, () => v)); return; }
     }
-    changeRef.current(setCell(planRef.current, pid, rid, wi, v, nWeeks));
+    /* v13.32: mergeKey — gõ liên tiếp vào CÙNG một ô chỉ tính là một bước lùi */
+    changeRef.current(setCell(planRef.current, pid, rid, wi, v, nWeeks), `c:${pid}|${rid}|${wi}`);
   }, [nWeeks]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Ctrl + D giống Excel: chọn một dòng → lấy số của dòng ngay trên; chọn nhiều dòng → dòng đầu vùng chép xuống các dòng dưới */
@@ -479,6 +517,23 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
   }, []);
   /* v12.35 — xoá vai trò: dòng có số (hoặc ấn giữ trên điện thoại) thì hỏi lại trước khi xoá */
   const [ask, setAsk] = useState(null);   // { title, sub, ok, run }
+  /* v13.32 — bấm một ô CÒN để xem dự án nào đang ăn vào vai trò đó trong tuần đó */
+  const [pop, setPop] = useState(null);   // { rid, wi, label, x, y }
+  const openPop = (e, rid, wi, label) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setPop((cur) => (cur && cur.rid === rid && cur.wi === wi ? null : { rid, wi, label, x: r.left, y: r.bottom }));
+  };
+  useEffect(() => {
+    if (!pop) return undefined;
+    const close = (e) => { if (!e.target.closest?.(".pg-pop,.lc")) setPop(null); };
+    const esc = (e) => { if (e.key === "Escape") setPop(null); };
+    const W = wrap.current;
+    const off = () => setPop(null);   // cuộn lưới thì thẻ đóng lại, vì thẻ đứng yên theo cửa sổ
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", esc);
+    W?.addEventListener("scroll", off, { passive: true });
+    return () => { window.removeEventListener("pointerdown", close); window.removeEventListener("keydown", esc); W?.removeEventListener("scroll", off); };
+  }, [pop]);
   const onAskDrop = useCallback((pid, rid, touch) => {
     const has = (planRef.current[pid]?.[rid] || []).some((v) => Number(v) > 0);
     if (!has && !touch) { onDrop(pid, rid); return; }
@@ -525,6 +580,14 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
   const onKey = (e) => {
     const el = e.target.closest("input[data-cell]"); if (!el) return;
     if (e.key === "Escape") { setSel(null); el.blur(); return; }
+    /* v13.32 — lùi / tiến. Ctrl + Y và Ctrl + Shift + Z đều là tiến, cho quen tay cả hai kiểu. */
+    if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z" || e.key === "y" || e.key === "Y")) {
+      e.preventDefault();
+      if (readOnly) return;
+      const fwd = e.key === "y" || e.key === "Y" || e.shiftKey;
+      (fwd ? onRedo : onUndo)?.();
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {   // chặn luôn phím tắt đánh dấu trang của trình duyệt
       e.preventDefault();
       if (!readOnly) fillDown();
@@ -560,11 +623,27 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
     if (t) { e.preventDefault(); t.focus(); t.select(); }
   };
 
+  /* v13.32 — ô đã sửa: đổi Set khoá "pid|rid|wi" của cả lưới thành Set chỉ số tuần của từng dòng,
+     để Row (React.memo) nhận một tham chiếu ổn định và không vẽ lại khi dòng khác đổi */
+  const chgByRow = useMemo(() => {
+    const m = new Map();
+    for (const k of changed || []) {
+      const i = k.lastIndexOf("|");
+      const rk = k.slice(0, i), wi = +k.slice(i + 1);
+      let set = m.get(rk); if (!set) { set = new Set(); m.set(rk, set); }
+      set.add(wi);
+    }
+    return m;
+  }, [changed]);
+  const EMPTY_SET = useMemo(() => new Set(), []);
+  const chgOf = (pid, rid) => chgByRow.get(`${pid}|${rid}`) || EMPTY_SET;
+
   /* thứ tự dòng đang hiện — dùng chung cho chọn vùng, dán, Ctrl + D */
   const rowList = [];
   const rowsOfProject = new Map();
   for (const p of projects) {
     if (hidden.has(p.id)) { rowsOfProject.set(p.id, []); continue; }   // dự án tạm ẩn: thu gọn, không có ô nhập
+    if (!focus && collapsed.has(p.id)) { rowsOfProject.set(p.id, []); continue; }   // v13.32: dự án đang gập — chỉ còn dòng tổng; chế độ Từng dự án không gập (gập ở đó là màn hình trắng)
     const used = new Set(Object.keys(plan[p.id] || {}));
     const rws = sortRoles(roles.filter((r) => used.has(r.id)), order[p.id]);
     rowsOfProject.set(p.id, rws.map((r) => ({ r, idx: rowList.push({ pid: p.id, rid: r.id }) - 1 })));
@@ -665,19 +744,22 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
               const rws = rowsOfProject.get(p.id) || [];
               const free = roles.filter((r) => !used.has(r.id));
               const off = hidden.has(p.id);
+              const cl = !focus && collapsed.has(p.id) && !off;   // v13.32: dự án tạm ẩn vốn đã thu gọn, không gập thêm
               const sp = spanOf(plan[p.id]);
               const spTxt = sp ? `${wShort(weeks.find((w) => w.i === sp.a) || { m: "?", w: "?" })} → ${wShort(weeks.find((w) => w.i === sp.b) || { m: "?", w: "?" })}` : "";
               return (
                 <React.Fragment key={p.id}>
                   {!focus && (
-                    <tr className={`ph${off ? " off" : ""}`}
+                    <tr className={`ph${off ? " off" : ""}${cl ? " cl" : ""}`}
                       {...(readOnly ? {} : { onDragOver: (e) => pdnd.over(e, p.id), onDragLeave: (e) => e.currentTarget.removeAttribute("data-drop"), onDrop: (e) => pdnd.drop(e, p.id) })}>
                       <td className="fz">
-                        <div className="fzi" title={off ? `${p.name} — đang tạm ẩn, không tính vào CÒN` : `${p.name}${p.code ? ` · ${p.code}` : ""}`}>
+                        <div className="fzi" title={off ? `${p.name} — đang tạm ẩn, không tính vào CÒN` : `${p.name}${p.code ? ` · ${p.code}` : ""} — bấm để ${cl ? "mở" : "gập"}`}
+                          onClick={(e) => { if (!e.target.closest(".ib,.grip,select,button")) toggleCollapse(p.id); }}>
                           {!readOnly && (
                             <span draggable onDragStart={(e) => pdnd.start(e, p.id)} onDragEnd={dnd.end}
                               title="Giữ và kéo để đổi vị trí dự án" className="grip"><GripVertical size={13} /></span>
                           )}
+                          <span className="ptg">{cl ? <ChevronRight size={13} /> : <ChevronDown size={13} />}</span>
                           <span className="pn">{p.name}</span>{p.code && <span className="code">{p.code}</span>}
                           <span style={{ marginLeft: "auto", display: "inline-flex", gap: 4 }}>
                             {!readOnly && !off && free.length > 0 && (
@@ -700,7 +782,15 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
                           </span>
                         </div>
                       </td>
-                      <td colSpan={nCol} className="phr">{spTxt}</td>
+                      {cl
+                        ? weeks.map((w, k) => {   /* v13.32 — gập: mỗi tuần hiện tổng số người của cả dự án */
+                          const t = Object.keys(plan[p.id] || {}).reduce((a, rid) => a + cellOf(plan, p.id, rid, w.i), 0);
+                          const cls = ["ptot"];
+                          if (w.i === nowIndex) cls.push("nowc"); else if (nowIndex >= 0 && w.i < nowIndex) cls.push("past");
+                          if (w.ms && k > 0) cls.push("ms");
+                          return <td key={w.i} className={cls.join(" ")} data-c={k}>{f(t)}</td>;
+                        })
+                        : <td colSpan={nCol} className="phr">{spTxt}</td>}
                     </tr>
                   )}
                   {rws.map(({ r, idx }) => (
@@ -709,13 +799,15 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
                         weeks={weeks} nowIndex={nowIndex} readOnly={readOnly}
                         onCell={onCell} onFocus={onFocusCell} onAskDrop={onAskDrop} dnd={dnd}
                         flash={flash && flash.pid === p.id && flash.rid === r.id ? flash : null}
+                        chg={chgOf(p.id, r.id)}
                         span={focusSpan} />
                       {focus && (
                         <tr className="crow" data-rk={`${p.id}|${r.id}`}>
                           <td className="fz"><div className="fzi cl">CÒN toàn công ty · có {f0(cap.get(r.id) || 0)}</div></td>
                           {weeks.map((w, k) => {
                             const lf = leftOf(plan, pids, r.id, w.i, cap), [lc, t] = lcCls(lf);
-                            return <td key={w.i} className={`${lc}${msCls(w, k)}`} data-c={k} style={{ "--t": t.toFixed(2) }}>{f0(lf)}</td>;
+                            return <td key={w.i} onClick={(e) => openPop(e, r.id, w.i, wLabel(w))} title="Bấm để xem dự án nào đang dùng"
+                              className={`${lc}${msCls(w, k)}`} data-c={k} style={{ "--t": t.toFixed(2) }}>{f0(lf)}</td>;
                           })}
                         </tr>
                       )}
@@ -769,7 +861,8 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
                     </td>
                     {weeks.map((w, kk) => {
                       const lf = leftOf(plan, pids, r.id, w.i, cap), [lc, t] = lcCls(lf);
-                      return <td key={w.i} className={`${lc}${msCls(w, kk)}`} data-c={kk} style={{ ...bt, "--t": t.toFixed(2) }}>{f0(lf)}</td>;
+                      return <td key={w.i} onClick={(e) => openPop(e, r.id, w.i, wLabel(w))} title="Bấm để xem dự án nào đang dùng"
+                        className={`${lc}${msCls(w, kk)}`} data-c={kk} style={{ ...bt, "--t": t.toFixed(2) }}>{f0(lf)}</td>;
                     })}
                   </tr>
                 );
@@ -784,6 +877,38 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
             className="pg-knob" style={{ left: knob.left, top: knob.top }} />
         )}
       </div>
+
+      {/* v13.32 — thẻ truy nguyên ô CÒN: dự án nào đang ăn vào vai trò đó, nhiều trước ít sau */}
+      {pop && (() => {
+        const rows = contribOf(plan, pids, pop.rid, pop.wi);
+        const nameOf = (pid) => allProjects.find((x) => x.id === pid)?.name || "(dự án đã xoá)";
+        const c = cap.get(pop.rid) || 0, used = rows.reduce((a, x) => a + x.v, 0);
+        const role = roles.find((r) => r.id === pop.rid);
+        const W = 300, left = Math.min(window.innerWidth - W - 12, Math.max(8, pop.x));
+        const top = Math.min(window.innerHeight - 220, pop.y + 6);
+        return (
+          <div className="pg-pop" style={{ left, top, width: W }} role="dialog" aria-label="Dự án đang dùng vai trò này">
+            <div className="pg-poph">
+              <span className="rdot" style={{ background: colorOf.get(pop.rid) }} />
+              <span style={{ fontWeight: 600 }}>{pop.rid}</span>
+              <span style={{ color: "var(--ink3)" }}>{role?.name}</span>
+              <span style={{ marginLeft: "auto", color: "var(--ink3)" }}>{pop.label}</span>
+            </div>
+            {rows.length === 0
+              ? <div style={{ color: "var(--ink3)" }}>Chưa dự án nào dùng vai trò này trong tuần đó.</div>
+              : rows.map((x) => (
+                <div key={x.pid} className="pg-popr">
+                  <span title={nameOf(x.pid)}>{nameOf(x.pid)}</span>
+                  <span>{f0(x.v)}</span>
+                </div>
+              ))}
+            <div className="pg-popf">
+              <span>có {f0(c)} · đang dùng {f0(used)}</span>
+              <span style={{ color: c - used < -0.001 ? "var(--red)" : "var(--teal)", fontWeight: 600 }}>còn {f0(c - used)}</span>
+            </div>
+          </div>
+        );
+      })()}
 
       {ask && (
         <div className="pg-ask" onPointerDown={(e) => { if (e.target === e.currentTarget) setAsk(null); }}>
@@ -801,7 +926,8 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
       {!readOnly && (
         <div className="pg-foot">
           Mũi tên di chuyển · Enter xuống dòng · Esc nhả ô · kéo chuột hoặc Shift + mũi tên chọn nhiều ô, gõ số là điền cả vùng · Ctrl + C / Ctrl + V ·
-          Ctrl + D lấy theo dòng trên · + / − tăng giảm 0,25 · Delete xoá vùng · kéo núm ở góc ô để chép sang ngang
+          Ctrl + D lấy theo dòng trên · Ctrl + Z lùi, Ctrl + Y tiến · + / − tăng giảm 0,25 · Delete xoá vùng · kéo núm ở góc ô để chép sang ngang ·
+          bấm tên dự án để gập · bấm ô CÒN để xem dự án nào đang dùng
         </div>
       )}
     </div>

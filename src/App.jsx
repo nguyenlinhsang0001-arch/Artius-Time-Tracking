@@ -1,6 +1,14 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.31
+   ARTIUS — Quản lý giờ công theo dự án · v13.32
+   Mới ở v13.32 — Kế hoạch › Nhập liệu, năm việc cho dễ nhìn và đỡ rủi ro:
+     · Ctrl + Z lùi / Ctrl + Y tiến (50 bước, có nút trên hàng công cụ); gõ liên tiếp vào cùng một ô chỉ tính một bước.
+     · Ô đã sửa kể từ lần lưu cuối có chấm xanh ở góc; nút Lưu ghi số ô đang chờ lưu.
+     · Bấm một ô CÒN để xem dự án nào đang ăn vào vai trò đó trong tuần đó, kèm có / đang dùng / còn.
+     · Bấm tên dự án để gập; gập rồi thì dòng dự án hiện tổng số người từng tuần. Nhớ riêng từng máy.
+     · Ô lọc nhanh dự án trên hàng công cụ, gõ không dấu vẫn tìm ra.
+     Cột tên nới 250 → 266px để mũi tên gập không làm cắt ngắn tên dự án.
+
    Mới ở v13.31 — Chấm công: gửi xong cả tuần thì ẩn hẳn banner "đang mở chấm bù / đã quá hạn" (lời nhắc bấm Gửi
      không còn việc gì để làm). Nút "Excel tăng ca" hiện cả ở tab Dashboard cá nhân, lấy đúng tháng đang mở trên
      Lịch tháng ở đó (phần gom giờ và dựng file tách sang shared/otReport.js để hai màn dùng chung một hàm).

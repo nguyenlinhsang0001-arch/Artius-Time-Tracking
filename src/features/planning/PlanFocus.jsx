@@ -21,7 +21,8 @@ const TONE = {
   light: { hover: "#f1f5f9",             on: "#f0fdfa", onLine: "#0d9488", warn: "#b45309" },
 };
 
-export function PlanFocus({ plan, onChange, projects: allProjects, hidden = new Set(), roles, weeks, nWeeks, cap, head, readOnly = false, nowIndex = -1, scrollKey, mergedOf }) {
+export function PlanFocus({ plan, onChange, projects: allProjects, hidden = new Set(), roles, weeks, nWeeks, cap, head, readOnly = false, nowIndex = -1, scrollKey, mergedOf,
+  /* v13.32 */ onUndo, onRedo, changed }) {
   const [, bump] = useState(0);
   useEffect(() => {
     const f = () => bump((n) => n + 1);
@@ -132,6 +133,7 @@ export function PlanFocus({ plan, onChange, projects: allProjects, hidden = new 
         {used.size === 0 && <div className="px-4 py-3 text-sm text-slate-500">Dự án chưa có vai trò nào.</div>}
         <PlanGrid key={cur.id} focus plan={plan} onChange={onChange} projects={[cur]} scopePids={scopePids}
           roles={roles} weeks={view} nWeeks={nWeeks} cap={cap} head={head} mergedOf={mergedOf}
+          onUndo={onUndo} onRedo={onRedo} changed={changed}
           readOnly={readOnly} nowIndex={nowIndex} scrollKey={`${scrollKey}|${cur.id}`} />
       </div>
     </div>
