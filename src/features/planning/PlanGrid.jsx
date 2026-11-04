@@ -38,6 +38,7 @@ const PALETTE = ["#14b8a6", "#f59e0b", "#6366f1", "#ec4899", "#0ea5e9", "#84cc16
   "#a855f7", "#eab308", "#3b82f6", "#fb923c", "#22c55e", "#d946ef", "#2dd4bf", "#94a3b8"];
 const wShort = (w) => (w ? `T${w.m}·${w.w}` : "");
 const wLabel = (w) => (w ? `T${w.m}/${w.y} · tuần ${w.w}` : "");
+const qSel = (v) => (window.CSS?.escape ? window.CSS.escape(v) : String(v).replace(/["\\]/g, "\\$&"));
 
 const CSS = `
 .pgx{--card:#0f172a;--line:#1e293b;--line2:#111a2e;--ink:#e2e8f0;--ink2:#cbd5e1;--ink3:#94a3b8;--ink4:#64748b;
@@ -557,7 +558,12 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
   const xhRef = useRef(null);
   const xhKey = useRef("");
   const G = "background-image:linear-gradient(var(--xh),var(--xh))!important";
-  const DIM = 0.85;   // v13.34: số và màu trạng thái của vai trò khác chỉ còn 15% (trước là 30%)
+  /* v13.35 — làm mờ chạy theo Ô ĐANG CHỌN (bấm vào ô nhập), không theo con trỏ chuột nữa:
+     rê chuột ngang qua lưới không còn nhấp nháy mờ / rõ, và rê vào khối CÒN cũng không làm mờ gì.
+     Vai trò của ô đang chọn giữ nguyên, các vai trò khác ở khối CÒN chỉ còn 15%.
+     Viết thẳng vào một thẻ <style> riêng nên không vẽ lại lưới. */
+  const DIM = 0.85;
+  const dimRef = useRef(null);
   const onHover = (e) => {
     if (e.pointerType !== "mouse" || !xhRef.current) return;
     const td = e.target.closest?.("td,th"), tr = td?.parentElement;
@@ -565,17 +571,22 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
     const key = `${c}#${rk}#${rid}`;
     if (key === xhKey.current) return;
     xhKey.current = key;
-    const q = (v) => (window.CSS?.escape ? window.CSS.escape(v) : v.replace(/["\\]/g, "\\$&"));
+    const q = qSel;
     let css = "";
     if (c !== "") css += `.pgx [data-c="${c}"]{${G}}`;
     if (rk) css += `.pgx tr[data-rk="${q(rk)}"]>td{${G}}`;
-    /* v13.33 — vai trò đang rê chuột giữ nguyên, các vai trò khác trong khối CÒN mờ đi 70% */
-    if (rid) css += `.pgx tfoot tr[data-rid="${q(rid)}"]>td{${G}}.pgx tfoot tr[data-rid="${q(rid)}"] .fzi{color:var(--teal)}`
-      + `.pgx tfoot tr[data-rid]:not([data-rid="${q(rid)}"])>td::after{opacity:${DIM}}`
-      + `.pgx tr.crow[data-rk]:not([data-rk="${q(rk)}"])>td::after{opacity:${DIM}}`;
+    if (rid) css += `.pgx tfoot tr[data-rid="${q(rid)}"]>td{${G}}.pgx tfoot tr[data-rid="${q(rid)}"] .fzi{color:var(--teal)}`;
     xhRef.current.textContent = css;
   };
   const offHover = () => { xhKey.current = ""; if (xhRef.current) xhRef.current.textContent = ""; };
+  useEffect(() => {
+    const el = dimRef.current; if (!el) return;
+    const row = sel ? rowsRef.current[sel.a.r] : null;   // ô neo = ô vừa bấm
+    el.textContent = row
+      ? `.pgx tfoot tr[data-rid]:not([data-rid="${qSel(row.rid)}"])>td::after{opacity:${DIM}}`
+        + `.pgx tr.crow[data-rk]:not([data-rk="${qSel(`${row.pid}|${row.rid}`)}"])>td::after{opacity:${DIM}}`
+      : "";
+  }, [sel]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   /* thêm vai trò = tạo một dòng toàn 0 để gõ. v13.33: dòng trống cũng được lưu, nên thêm xong F5 vẫn còn. */
   const addRole = (pid, rid) => {
@@ -716,6 +727,7 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
     <div className="pgx">
       <style>{CSS}</style>
       <style ref={xhRef} />
+      <style ref={dimRef} />
       <div ref={wrap} onPointerMove={onHover} onPointerLeave={offHover} onKeyDown={onKey} onCopy={onCopy} onCut={onCut} onPaste={onPaste}
         onPointerDown={readOnly ? undefined : onPointerDown} onPointerOver={readOnly ? undefined : onPointerOver}
         className="pg-wrap" style={{ "--frz": `${frz}px` }}>

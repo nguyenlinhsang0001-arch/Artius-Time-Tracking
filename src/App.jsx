@@ -1,6 +1,11 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.34
+   ARTIUS — Quản lý giờ công theo dự án · v13.35
+   Mới ở v13.35 — Kế hoạch: việc làm mờ vai trò khác ở khối TOÀN CÔNG TY · CÒN nay chạy theo Ô ĐANG CHỌN
+     (bấm vào ô nhập) thay vì theo con trỏ chuột. Rê chuột ngang qua lưới không còn làm mờ, rê vào chính
+     khối CÒN cũng không. Bấm ô nào thì vai trò của ô đó giữ nguyên, các vai trò khác còn 15%; Esc nhả ô
+     là sáng lại hết. Đường gióng ngang / dọc khi rê chuột giữ nguyên như cũ.
+
    Mới ở v13.34 — Kế hoạch: sửa lại cách làm mờ vai trò khác ở khối TOÀN CÔNG TY · CÒN. v13.33 dùng opacity
      trên cả dòng nên NỀN khối cũng trong suốt, nhìn xuyên xuống lưới nhập phía dưới, chữ chồng lên nhau.
      Nay phủ một lớp màu nền lên chính từng ô: nền khối vẫn đục, chỉ số và màu trạng thái nhạt đi.
