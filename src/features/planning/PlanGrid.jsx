@@ -97,7 +97,11 @@ html[data-theme="light"] .pgx .wh.now{background:var(--teal);color:#fff}
 .pgx .pg-askb button{height:40px;padding:0 18px;border-radius:8px;font:inherit;font-size:13.5px;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink2)}
 .pgx .pg-askb button.dz{background:#dc2626;border-color:#dc2626;color:#fff}
 .pgx tfoot td{position:sticky;z-index:2;height:${RH}px;background:var(--card)}
-.pgx tfoot tr,.pgx tr.crow{transition:opacity .12s ease-out}   /* v13.33: mờ / rõ theo vai trò đang rê chuột */
+/* v13.34 — làm mờ vai trò không liên quan ở khối CÒN: phủ một lớp MÀU NỀN lên chính ô,
+   không dùng opacity trên cả dòng. Nhờ vậy nền khối vẫn đục — không nhìn xuyên xuống lưới
+   nhập bên dưới gây chồng lớp — mà số và màu trạng thái vẫn nhạt đi. */
+.pgx tr.crow td{position:relative}   /* tfoot td vốn đã sticky nên không đặt lại position, kẻo mất tính dính đáy */
+.pgx tfoot td::after,.pgx tr.crow td::after{content:"";position:absolute;inset:0;background:var(--card);opacity:0;pointer-events:none;transition:opacity .12s ease-out}
 .pgx tfoot td.fz{z-index:3}
 .pgx tr.gsep td{background:var(--line2);box-shadow:inset 0 2px 0 var(--line)}
 .pgx .gtl{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
@@ -553,6 +557,7 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
   const xhRef = useRef(null);
   const xhKey = useRef("");
   const G = "background-image:linear-gradient(var(--xh),var(--xh))!important";
+  const DIM = 0.85;   // v13.34: số và màu trạng thái của vai trò khác chỉ còn 15% (trước là 30%)
   const onHover = (e) => {
     if (e.pointerType !== "mouse" || !xhRef.current) return;
     const td = e.target.closest?.("td,th"), tr = td?.parentElement;
@@ -566,8 +571,8 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
     if (rk) css += `.pgx tr[data-rk="${q(rk)}"]>td{${G}}`;
     /* v13.33 — vai trò đang rê chuột giữ nguyên, các vai trò khác trong khối CÒN mờ đi 70% */
     if (rid) css += `.pgx tfoot tr[data-rid="${q(rid)}"]>td{${G}}.pgx tfoot tr[data-rid="${q(rid)}"] .fzi{color:var(--teal)}`
-      + `.pgx tfoot tr[data-rid]:not([data-rid="${q(rid)}"]){opacity:.3}`
-      + `.pgx tr.crow[data-rk]:not([data-rk="${q(rk)}"]){opacity:.3}`;
+      + `.pgx tfoot tr[data-rid]:not([data-rid="${q(rid)}"])>td::after{opacity:${DIM}}`
+      + `.pgx tr.crow[data-rk]:not([data-rk="${q(rk)}"])>td::after{opacity:${DIM}}`;
     xhRef.current.textContent = css;
   };
   const offHover = () => { xhKey.current = ""; if (xhRef.current) xhRef.current.textContent = ""; };
