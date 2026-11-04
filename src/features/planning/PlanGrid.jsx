@@ -516,6 +516,15 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
   const onFocusCell = useCallback((rid, wi, r, c) => {
     if (!keepSel.current && !dragSel.current) setSel({ a: { r, c }, f: { r, c } });
   }, []);
+  /* v13.36 — bấm ra ngoài ô nhập thì nhả ô đang chọn: khung chọn, núm kéo điền và phần làm mờ
+     ở khối CÒN đều tắt. Trước đây ô vẫn bị coi là "đang nhập" dù đã bấm ra chỗ khác.
+     Giữ lại khi bấm đúng vào ô nhập (chọn ô khác, Shift + bấm) hoặc vào núm kéo điền. */
+  useEffect(() => {
+    if (!sel) return undefined;
+    const out = (e) => { if (!e.target?.closest?.("input[data-cell],.pg-knob")) setSel(null); };
+    window.addEventListener("pointerdown", out);
+    return () => window.removeEventListener("pointerdown", out);
+  }, [sel]);
   const onDrop = useCallback((pid, rid) => {
     const next = { ...planRef.current, [pid]: { ...(planRef.current[pid] || {}) } };
     delete next[pid][rid];

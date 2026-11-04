@@ -1,6 +1,10 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.35
+   ARTIUS — Quản lý giờ công theo dự án · v13.36
+   Mới ở v13.36 — Kế hoạch: bấm ra ngoài ô nhập thì NHẢ ô đang chọn — khung chọn, núm kéo điền và phần làm
+     mờ ở khối TOÀN CÔNG TY · CÒN đều tắt. Trước đây bấm ra chỗ khác rồi mà ô vẫn bị coi là đang nhập.
+     Vẫn giữ vùng chọn khi bấm sang ô nhập khác, Shift + bấm, và khi kéo núm điền.
+
    Mới ở v13.35 — Kế hoạch: việc làm mờ vai trò khác ở khối TOÀN CÔNG TY · CÒN nay chạy theo Ô ĐANG CHỌN
      (bấm vào ô nhập) thay vì theo con trỏ chuột. Rê chuột ngang qua lưới không còn làm mờ, rê vào chính
      khối CÒN cũng không. Bấm ô nào thì vai trò của ô đó giữ nguyên, các vai trò khác còn 15%; Esc nhả ô
