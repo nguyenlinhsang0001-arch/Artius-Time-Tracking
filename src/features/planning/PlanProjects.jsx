@@ -143,6 +143,11 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
   const seg = (on) => `${CTRL} whitespace-nowrap px-3 text-[13px] ${on ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`;
   const W0 = weeks[0]?.i ?? 0, WN = weeks.length || 1;
   const pc = (i) => ((i - W0) / WN) * 100;
+  /* v13.39 — mốc trục thời gian: mỗi quý một mốc; tháng 1 ghi kèm năm hai chữ số.
+     Dải trải 4 năm nên ghi đủ 48 tháng là rối; mỗi quý vừa đủ đọc mà vẫn biết hai đầu là tháng nào. */
+  const ticks = useMemo(() => weeks
+    .filter((w) => w.ms && w.w === 1 && (w.m - 1) % 3 === 0)
+    .map((w) => ({ i: w.i, lab: w.m === 1 ? `T1·${String(w.y).slice(2)}` : `T${w.m}` })), [weeks]);
 
   return (
     <div>
@@ -164,12 +169,23 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
         )}
       </div>
 
-      <div className="border-b border-slate-800 px-3 py-2.5 text-[13px] md:px-4">
-        {nowIndex < 0
-          ? <span className="text-slate-500">Tuần hiện tại không thuộc cặp năm đang xem — không so được kế hoạch với trạng thái.</span>
-          : nBad > 0
-            ? <><span className="text-rose-400">{nBad} dự án</span> <span className="text-slate-400">cần xem{nStaff ? ` · ${nBad - nStaff} lệch giữa kế hoạch và trạng thái chấm công · ${nStaff} thiếu người được giao` : " · lệch giữa kế hoạch và trạng thái chấm công"} · tuần hiện tại {wLbl(nowW)}</span></>
-            : <span className="text-slate-400">Mọi dự án khớp với kế hoạch · tuần hiện tại {wLbl(nowW)}</span>}
+      {/* v13.39 — hàng tiêu đề của dải thời gian: dùng ĐÚNG lưới cột của các dòng dự án bên dưới
+          nên trục tháng nằm khít trên dải. Mốc mỗi quý, có năm ở tháng 1, vạch đỏ là tuần hiện tại. */}
+      <div className="hidden grid-cols-[132px_minmax(220px,1fr)_minmax(0,1fr)_150px_88px_20px] items-end gap-3 border-b border-slate-800 px-4 pb-1.5 pt-2 md:grid">
+        <span />
+        <span className="truncate text-[11.5px] text-slate-500">
+          {nowIndex < 0 ? "Tuần hiện tại ngoài khoảng đang xem" : <>Tuần hiện tại {wLbl(nowW)}{nBad > 0 && <span className="text-rose-400"> · {nBad} dự án cần xem</span>}</>}
+        </span>
+        <span className="relative block h-[22px]">
+          {ticks.map((t) => (
+            <span key={t.i} className="absolute bottom-0 flex h-full flex-col justify-end" style={{ left: `${pc(t.i)}%` }}>
+              <span className="whitespace-nowrap pl-1 text-[10px] leading-none text-slate-500">{t.lab}</span>
+              <span className="mt-1 block h-1.5 w-px bg-slate-700" />
+            </span>
+          ))}
+          {nowIndex >= 0 && <span className="absolute bottom-0 block h-1.5 w-0.5 bg-rose-500" style={{ left: `${pc(nowIndex)}%` }} />}
+        </span>
+        <span /><span /><span />
       </div>
 
       {shown.length === 0 && <p className="px-4 py-8 text-sm text-slate-500">Không có dự án nào khớp bộ lọc.</p>}
@@ -210,7 +226,7 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
             <div onClick={(e) => { if (e.target.closest("button")) return; setOpen((sx) => { const t = new Set(sx); t.has(p.id) ? t.delete(p.id) : t.add(p.id); return t; }); }}
               onMouseEnter={() => setHovP(p.id)} onMouseLeave={() => setHovP((h) => (h === p.id ? null : h))}
               style={{ background: hovP === p.id ? C.rowHover : "transparent" }}
-              className="grid cursor-pointer grid-cols-[116px_minmax(0,1fr)_84px_20px] items-center gap-3 px-3 py-2.5 md:grid-cols-[132px_minmax(0,1fr)_280px_150px_88px_20px] md:px-4">
+              className="grid cursor-pointer grid-cols-[116px_minmax(0,1fr)_84px_20px] items-center gap-3 px-3 py-2.5 md:grid-cols-[132px_minmax(220px,1fr)_minmax(0,1fr)_150px_88px_20px] md:px-4">
               {/* trạng thái */}
               <span className={`flex h-[30px] items-center justify-center rounded-md border text-[11.5px] ${p.active ? "border-teal-900 bg-teal-950 text-teal-300" : "border-slate-700 bg-slate-950 text-slate-500"}`}>
                 {p.active ? "Đang chấm công" : "Đã đóng"}

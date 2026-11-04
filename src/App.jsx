@@ -1,6 +1,11 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.38
+   ARTIUS — Quản lý giờ công theo dự án · v13.39
+   Mới ở v13.39 — Kế hoạch › Theo dự án: dải thời gian nới rộng gấp khoảng ba lần (cột tên và dải chia đôi
+     phần còn lại, dải bắt đầu khoảng giữa màn hình); thêm trục tháng ngay trên dải, mốc mỗi quý và ghi năm
+     ở tháng 1, kèm vạch đỏ tuần hiện tại — nhìn là biết dải của dự án bắt đầu và kết thúc tháng nào.
+     Dòng tóm tắt riêng phía trên gộp luôn vào hàng tiêu đề này.
+
    Mới ở v13.38 — Kế hoạch › Nhập liệu: bỏ dòng khoảng thời gian ("T7·1 → T10·3") trên dòng tên dự án;
      ô lịch trên thanh công cụ lấy tháng ở GIỮA vùng đang nhìn thay vì tháng ở mép trái.
 
