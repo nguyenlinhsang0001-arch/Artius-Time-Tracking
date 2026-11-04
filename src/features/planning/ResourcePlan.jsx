@@ -134,7 +134,9 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
   const statRoles = useMemo(() => { const h = new Set(totals?.hidden || []); return roles.filter((r) => !h.has(r.id)); }, [roles, totals]);
 
   /* dự án chưa có dòng nào → điền sẵn các vai trò cơ bản (dòng toàn 0, chưa tính là "đã sửa").
-     Chỉ chạy lúc tải: gỡ bớt vai trò rồi lưu thì giữ nguyên, trừ khi gỡ hết thì lần mở sau điền lại. */
+     Chỉ chạy lúc tải. v13.33: dòng toàn 0 nay cũng được lưu (prunePlan), nên gỡ bớt vai trò là giữ nguyên
+     kể cả khi chưa gõ số nào — chỉ khi gỡ HẾT vai trò của một dự án thì lần mở sau mới điền lại bộ cơ bản,
+     vì bảng không có cách nào ghi "dự án này cố ý không có vai trò nào". */
   const fillRef = useRef(null);
   fillRef.current = (p) => {
     if (readOnly) return p;

@@ -163,15 +163,17 @@ export const foldMerged = (plan, prole) => {
   }
   return { plan: changed ? out : plan, changed };
 };
-/* bỏ mảng rỗng trước khi lưu */
+/* Dọn trước khi lưu.
+   v13.33 — GIỮ cả dòng toàn 0. Trước đây dòng toàn 0 bị bỏ, nên danh sách vai trò của một dự án
+   thực chất là "những vai trò đang có số". Hệ quả: thêm một vai trò rồi chưa kịp gõ số thì F5 là mất,
+   và gỡ một vai trò chưa có số thì không lưu được gì — mở lại vẫn thấy y như chưa gỡ (vì dự án rỗng
+   sẽ được điền lại bộ vai trò cơ bản). Giữ dòng 0 thì danh sách vai trò đúng bằng những gì đang thấy.
+   Dự án không còn dòng nào vẫn bị bỏ: không có cách nào ghi "dự án rỗng" xuống bảng. */
 export const prunePlan = (plan) => {
   const out = {};
   for (const pid of Object.keys(plan || {})) {
     const byRole = {};
-    for (const r of Object.keys(plan[pid] || {})) {
-      const arr = plan[pid][r] || [];
-      if (arr.some((v) => Number(v) > 0)) byRole[r] = arr.map((v) => Number(v) || 0);
-    }
+    for (const r of Object.keys(plan[pid] || {})) byRole[r] = (plan[pid][r] || []).map((v) => Number(v) || 0);
     if (Object.keys(byRole).length) out[pid] = byRole;
   }
   return out;

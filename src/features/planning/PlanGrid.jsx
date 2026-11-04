@@ -97,6 +97,7 @@ html[data-theme="light"] .pgx .wh.now{background:var(--teal);color:#fff}
 .pgx .pg-askb button{height:40px;padding:0 18px;border-radius:8px;font:inherit;font-size:13.5px;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink2)}
 .pgx .pg-askb button.dz{background:#dc2626;border-color:#dc2626;color:#fff}
 .pgx tfoot td{position:sticky;z-index:2;height:${RH}px;background:var(--card)}
+.pgx tfoot tr,.pgx tr.crow{transition:opacity .12s ease-out}   /* v13.33: mờ / rõ theo vai trò đang rê chuột */
 .pgx tfoot td.fz{z-index:3}
 .pgx tr.gsep td{background:var(--line2);box-shadow:inset 0 2px 0 var(--line)}
 .pgx .gtl{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
@@ -563,12 +564,15 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
     let css = "";
     if (c !== "") css += `.pgx [data-c="${c}"]{${G}}`;
     if (rk) css += `.pgx tr[data-rk="${q(rk)}"]>td{${G}}`;
-    if (rid) css += `.pgx tfoot tr[data-rid="${q(rid)}"]>td{${G}}.pgx tfoot tr[data-rid="${q(rid)}"] .fzi{color:var(--teal)}`;
+    /* v13.33 — vai trò đang rê chuột giữ nguyên, các vai trò khác trong khối CÒN mờ đi 70% */
+    if (rid) css += `.pgx tfoot tr[data-rid="${q(rid)}"]>td{${G}}.pgx tfoot tr[data-rid="${q(rid)}"] .fzi{color:var(--teal)}`
+      + `.pgx tfoot tr[data-rid]:not([data-rid="${q(rid)}"]){opacity:.3}`
+      + `.pgx tr.crow[data-rk]:not([data-rk="${q(rk)}"]){opacity:.3}`;
     xhRef.current.textContent = css;
   };
   const offHover = () => { xhKey.current = ""; if (xhRef.current) xhRef.current.textContent = ""; };
 
-  /* thêm vai trò = tạo một dòng toàn 0 để gõ. Lưu mà vẫn trống thì dòng tự biến mất (prunePlan). */
+  /* thêm vai trò = tạo một dòng toàn 0 để gõ. v13.33: dòng trống cũng được lưu, nên thêm xong F5 vẫn còn. */
   const addRole = (pid, rid) => {
     if (!rid) return;
     const cur = planRef.current;

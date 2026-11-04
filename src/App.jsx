@@ -1,6 +1,15 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.32
+   ARTIUS — Quản lý giờ công theo dự án · v13.33
+   Mới ở v13.33 — Kế hoạch › Nhập liệu:
+     · Rê chuột vào một ô nhập: vai trò tương ứng trong khối TOÀN CÔNG TY · CÒN giữ nguyên, các vai trò
+       khác mờ đi 70%. Áp cho cả dòng CÒN của chế độ Từng dự án.
+     · SỬA LỖI gỡ vai trò khỏi dự án không lưu được: trước đây lúc lưu, dòng toàn 0 bị bỏ, nên danh sách
+       vai trò của một dự án thực chất là "những vai trò đang có số"; tỉa bớt vai trò khi chưa gõ số nào
+       thì dự án thành rỗng và lần mở sau được điền lại bộ vai trò cơ bản — trông như chưa từng xoá.
+       Nay dòng toàn 0 cũng được lưu, nên danh sách vai trò đúng bằng những gì đang thấy trên lưới.
+       Đổi lại: dòng trống để lại trên lưới sẽ còn nguyên sau F5, không tự biến mất như trước.
+
    Mới ở v13.32 — Kế hoạch › Nhập liệu, năm việc cho dễ nhìn và đỡ rủi ro:
      · Ctrl + Z lùi / Ctrl + Y tiến (50 bước, có nút trên hàng công cụ); gõ liên tiếp vào cùng một ô chỉ tính một bước.
      · Ô đã sửa kể từ lần lưu cuối có chấm xanh ở góc; nút Lưu ghi số ô đang chờ lưu.
