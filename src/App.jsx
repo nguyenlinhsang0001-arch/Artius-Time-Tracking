@@ -1,6 +1,14 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.36
+   ARTIUS — Quản lý giờ công theo dự án · v13.37
+   Mới ở v13.37 — Kế hoạch:
+     · Bỏ cách xem "Từng dự án" (và file PlanFocus.jsx); Nhập liệu chỉ còn một lưới duy nhất.
+     · Lưới trải 4 NĂM LIỀN NHAU (năm trước → ba năm sau, 192 cột), cuộn ngang qua tháng 12 là sang
+       năm sau luôn, không còn ngắt và không còn ô chọn cặp năm.
+     · Ô "Năm" cũ thành chỗ HIỆN MỐC THỜI GIAN: ghi tháng/năm đang ở mép trái lưới, đổi theo lúc cuộn.
+     · Mỗi lần lưu chỉ ghi lại những năm thật sự có thay đổi, không xoá-ghi cả 4 năm.
+   Dữ liệu dưới Supabase vẫn lưu từng năm một như cũ, không phải chạy thêm SQL.
+
    Mới ở v13.36 — Kế hoạch: bấm ra ngoài ô nhập thì NHẢ ô đang chọn — khung chọn, núm kéo điền và phần làm
      mờ ở khối TOÀN CÔNG TY · CÒN đều tắt. Trước đây bấm ra chỗ khác rồi mà ô vẫn bị coi là đang nhập.
      Vẫn giữ vùng chọn khi bấm sang ô nhập khác, Shift + bấm, và khi kéo núm điền.

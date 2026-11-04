@@ -24,7 +24,7 @@ import { ROLES, isResigned } from "../../core/domain.jsx";
 import { isLight } from "../../core/theme.jsx";
 import { CTRL } from "../../core/ui.jsx";
 import { useDataTick } from "../../core/db.jsx";
-import { PER_YEAR, cellOf, foldMerged, joinYears, needOf, normalizeYear, slotIndexOf, weeksOfPair } from "../planning/planCalc.js";
+import { cellOf, foldMerged, joinYears, needOf, normalizeYear, slotIndexOf, weeksOfYears } from "../planning/planCalc.js";
 import { SQL_HINT, errMsg, isMissingTable, loadPlan } from "../planning/planStore.js";
 
 const DEFAULT_AVAIL = 0.8;
@@ -95,8 +95,9 @@ export default function ResourceOverview({ cfg }) {
   const [leftH, setLeftH] = useState(0);
 
   const start = new Date().getFullYear();
-  const weeks = useMemo(() => weeksOfPair(start), [start]);
-  const nowIdx = Math.max(0, slotIndexOf(start, new Date()));
+  const OV_YEARS = 2;   // màn tổng quan chỉ nhìn tới 36 tuần nên hai năm là đủ
+  const weeks = useMemo(() => weeksOfYears(start, OV_YEARS), [start]);
+  const nowIdx = Math.max(0, slotIndexOf(start, new Date(), OV_YEARS));
 
   /* ---------- vai trò, quân số, dự án: cùng quy tắc với tab Kế hoạch ---------- */
   const avail = Number(cfg.planning?.availability) > 0 ? Number(cfg.planning.availability) : DEFAULT_AVAIL;
@@ -131,7 +132,7 @@ export default function ResourceOverview({ cfg }) {
     let alive = true;
     setBusy(true); setErr("");
     Promise.all([loadPlan(start), loadPlan(start + 1)])
-      .then(([a, b]) => alive && setRawPlan(joinYears(normalizeYear(a, start), normalizeYear(b, start + 1), PER_YEAR, PER_YEAR)))
+      .then(([a, b]) => alive && setRawPlan(joinYears([normalizeYear(a, start), normalizeYear(b, start + 1)])))
       .catch((e) => alive && setErr(isMissingTable(e) ? SQL_HINT : `Chưa tải được kế hoạch — ${errMsg(e)}`))
       .finally(() => alive && setBusy(false));
     return () => { alive = false; };

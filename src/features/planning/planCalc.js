@@ -23,19 +23,25 @@ export const weeksOfYear = (year) => {
   }
   return out;
 };
-/* hai năm liền nhau trên MỘT lưới: chỉ số cột nối tiếp, w.y là năm của cột đó; ms = cột đầu tháng (vẽ nét đứt) */
-export const weeksOfPair = (start) => [...weeksOfYear(start), ...weeksOfYear(start + 1).map((w) => ({ ...w, i: w.i + PER_YEAR }))];
-/* chỉ số cột của một ngày trong lưới cặp năm (start, start+1); -1 nếu ngoài khoảng */
-export const slotIndexOf = (start, date) => {
+/* v13.37 — NHIỀU NĂM liền nhau trên MỘT lưới cuộn ngang, không ngắt ở tháng 12:
+   chỉ số cột chạy liên tục 0 … nYears*48-1, w.y là năm của cột đó; ms = cột đầu tháng (vẽ nét đứt).
+   Trước đây lưới chỉ gồm đúng hai năm (weeksOfPair) nên hết tháng 12 năm sau là phải đổi ô chọn năm. */
+export const weeksOfYears = (start, nYears) => {
+  const out = [];
+  for (let k = 0; k < nYears; k++) for (const w of weeksOfYear(start + k)) out.push({ ...w, i: w.i + k * PER_YEAR });
+  return out;
+};
+/* chỉ số cột của một ngày trong lưới nhiều năm; -1 nếu ngoài khoảng */
+export const slotIndexOf = (start, date, nYears = 2) => {
   const d = mondayOf(date), y = d.getFullYear();
-  if (y < start || y > start + 1) return -1;
+  if (y < start || y > start + nYears - 1) return -1;
   return (y - start) * PER_YEAR + d.getMonth() * SLOTS + slotOfMonday(d) - 1;
 };
-/* mọi thứ Hai THẬT trong cặp năm, kèm cột kế hoạch của nó — để so giờ thực tế theo từng tuần thật (tuần 5 trỏ vào cột 4) */
-export const realWeeksOfPair = (start) => {
+/* mọi thứ Hai THẬT trong khoảng, kèm cột kế hoạch của nó — để so giờ thực tế theo từng tuần thật (tuần 5 trỏ vào cột 4) */
+export const realWeeksOfYears = (start, nYears) => {
   const out = [];
-  for (let d = mondayOf(new Date(start, 0, 1)); d.getFullYear() <= start + 1; d = addDays(d, 7)) {
-    const i = slotIndexOf(start, d);
+  for (let d = mondayOf(new Date(start, 0, 1)); d.getFullYear() <= start + nYears - 1; d = addDays(d, 7)) {
+    const i = slotIndexOf(start, d, nYears);
     if (i >= 0) out.push({ monday: fmt(d), i });
   }
   return out;
@@ -66,28 +72,30 @@ export const normalizeYear = (plan, year) => {
 
 export const weekIndexOf = (weeks, monday) => weeks.findIndex((w) => w.monday === monday);   // giữ cho tương thích
 
-/* ghép / tách lưới theo năm: dữ liệu vẫn lưu từng năm một ở Supabase */
-export const joinYears = (p1, p2, n1, n2) => {
+/* ghép / tách lưới theo năm: dữ liệu vẫn lưu TỪNG NĂM MỘT ở Supabase, chỉ gộp lại khi hiện lên lưới.
+   v13.37 — nhận một MẢNG các năm thay vì đúng hai năm. */
+export const joinYears = (parts) => {
   const out = {};
-  const pad = (arr, n) => Array.from({ length: n }, (_, i) => Number(arr?.[i]) || 0);
-  for (const pid of new Set([...Object.keys(p1 || {}), ...Object.keys(p2 || {})])) {
+  const pad = (arr) => Array.from({ length: PER_YEAR }, (_, i) => Number(arr?.[i]) || 0);
+  const pids = new Set(parts.flatMap((p) => Object.keys(p || {})));
+  for (const pid of pids) {
     out[pid] = {};
-    for (const rid of new Set([...Object.keys(p1?.[pid] || {}), ...Object.keys(p2?.[pid] || {})]))
-      out[pid][rid] = [...pad(p1?.[pid]?.[rid], n1), ...pad(p2?.[pid]?.[rid], n2)];
+    for (const rid of new Set(parts.flatMap((p) => Object.keys(p?.[pid] || {}))))
+      out[pid][rid] = parts.flatMap((p) => pad(p?.[pid]?.[rid]));
   }
   return out;
 };
-export const splitYears = (plan, n1, n2) => {
-  const a = {}, b = {};
+/* v13.37 — tách lưới nhiều năm thành mảng từng năm, đúng thứ tự năm */
+export const splitYears = (plan, nYears) => {
+  const out = Array.from({ length: nYears }, () => ({}));
   for (const pid of Object.keys(plan || {})) {
-    a[pid] = {}; b[pid] = {};
+    for (let k = 0; k < nYears; k++) out[k][pid] = {};
     for (const rid of Object.keys(plan[pid] || {})) {
       const arr = plan[pid][rid] || [];
-      a[pid][rid] = arr.slice(0, n1);
-      b[pid][rid] = arr.slice(n1, n1 + n2);
+      for (let k = 0; k < nYears; k++) out[k][pid][rid] = arr.slice(k * PER_YEAR, (k + 1) * PER_YEAR);
     }
   }
-  return [a, b];
+  return out;
 };
 
 /* ---------- Quân số ----------

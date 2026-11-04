@@ -68,7 +68,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
     const s = snaps.find((x) => x.label === base); if (!s) return undefined;
     let alive = true;
     Promise.all([s.a ? loadSnapshot(s.a) : {}, s.b ? loadSnapshot(s.b) : {}]).then(([a, b]) => {
-      if (alive) setSnapPlan(foldMerged(joinYears(normalizeYear(a, start), normalizeYear(b, start + 1), 48, 48), prole).plan);
+      if (alive) setSnapPlan(foldMerged(joinYears([normalizeYear(a, start), normalizeYear(b, start + 1)]), prole).plan);
     }).catch(() => alive && setSnapPlan({}));
     return () => { alive = false; };
   }, [base, snaps, start, prole]);

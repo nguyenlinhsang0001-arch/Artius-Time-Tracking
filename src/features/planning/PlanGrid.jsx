@@ -230,7 +230,8 @@ const Row = React.memo(function Row({ r, pid, rid, name, color, values, weeks, n
 
 export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new Set(), onToggleHide, totals, onTotals, mergedOf = new Map(), roles, weeks, nWeeks, cap, readOnly = false, nowIndex = -1, scrollKey,
   focus = false, scopePids,
-  /* v13.32 */ onUndo, onRedo, changed, query = "" }) {
+  /* v13.32 */ onUndo, onRedo, changed, query = "",
+  /* v13.37 */ onViewWeek }) {
   /* focus: lưới của MỘT dự án (chế độ Từng dự án) — scopePids là các dự án tính vào dòng CÒN toàn công ty */
   const wrap = useRef(null);
   const [order, setOrder] = useState(readOrd);
@@ -286,6 +287,24 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
     W.scrollLeft += r.left - wr.left - frzRef.current - (W.clientWidth - frzRef.current) / 2 + r.width / 2;
   }, []);
   useEffect(() => { toNow(); }, [scrollKey, toNow]);
+  /* v13.37 — lưới trải nhiều năm nên phải cho biết đang ở đâu: báo lên cột tuần nằm ở MÉP TRÁI
+     vùng cuộn, để thanh công cụ hiện "Tháng 11/2026". Gom bằng rAF cho khỏi gọi liên tục khi cuộn. */
+  const viewRef = useRef(-1);
+  useEffect(() => {
+    const W = wrap.current; if (!W || !onViewWeek) return undefined;
+    let raf = 0;
+    const report = () => {
+      raf = 0;
+      const k = Math.min(weeksRef.current.length - 1, Math.max(0, Math.round(W.scrollLeft / CW)));
+      if (k === viewRef.current) return;
+      viewRef.current = k;
+      onViewWeek(weeksRef.current[k] || null);
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(report); };
+    report();
+    W.addEventListener("scroll", onScroll, { passive: true });
+    return () => { W.removeEventListener("scroll", onScroll); if (raf) cancelAnimationFrame(raf); };
+  }, [onViewWeek, scrollKey]);
   useEffect(() => {
     window.addEventListener("artius:planNow", toNow);
     return () => window.removeEventListener("artius:planNow", toNow);

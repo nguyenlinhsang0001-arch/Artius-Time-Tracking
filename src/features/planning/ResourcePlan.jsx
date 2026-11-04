@@ -2,14 +2,13 @@
    v12.34 — bỏ chế độ Tổng quan: thiếu / dư người chỉ xem ở Dashboard › Tổng quan nguồn lực (PlanOverview.jsx giữ lại, không dùng).
    Admin nhập và lưu; BOD và trưởng phòng chỉ xem. Dữ liệu nằm ở bảng riêng (xem planStore.js). */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Download, Loader2, Merge, Redo2, RotateCcw, Save, Search, Undo2, X } from "lucide-react";
+import { CalendarRange, Camera, Download, Loader2, Merge, Redo2, RotateCcw, Save, Search, Undo2, X } from "lucide-react";
 import { fmt, mondayOf } from "../../core/date.jsx";
 import { dbTsSent, ensureMonths, useDataTick, weekDone } from "../../core/db.jsx";
 import { ROLES, isResigned } from "../../core/domain.jsx";
 import { CTRL, Panel, btnGhost, btnPrimary } from "../../core/ui.jsx";
-import { PER_YEAR, actualByCell, diffCells, foldMerged, joinYears, normalizeYear, prunePlan, realWeeksOfPair, slotIndexOf, splitYears, weeksOfPair } from "./planCalc.js";
+import { PER_YEAR, actualByCell, diffCells, foldMerged, joinYears, normalizeYear, prunePlan, realWeeksOfYears, slotIndexOf, splitYears, weeksOfYears } from "./planCalc.js";
 import { PlanActual } from "./PlanActual.jsx";
-import { PlanFocus } from "./PlanFocus.jsx";
 import { PlanGrid } from "./PlanGrid.jsx";
 import { PlanProjects } from "./PlanProjects.jsx";
 import { SQL_HINT, errMsg, isMissingTable, listSnapshots, loadPlan, savePlan, snapshotPlan } from "./planStore.js";
@@ -21,11 +20,11 @@ const DEFAULT_ROLES = ["TK", "3D", "2D", "BIM", "MEP", "PM", "GS"];
 export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, canSaveProjects = false }) {
   const tick = useDataTick();
   const thisYear = new Date().getFullYear();
-  const [start, setStart] = useState(thisYear);   // cặp năm đang xem: start và start + 1
+  /* v13.37 — lưới trải NHIỀU NĂM liền nhau, cuộn ngang qua tháng 12 là sang năm sau luôn,
+     không còn ô chọn "cặp năm". Cửa sổ cố định: năm trước → ba năm sau. */
+  const start = thisYear - 1;
   const [mode, setMode] = useState("in");
-  /* v12.29 — Nhập liệu có hai cách xem: Toàn bộ (lưới cũ) và Từng dự án (PlanFocus); nhớ riêng từng máy */
-  const [inView, setInView] = useState(() => { try { return localStorage.getItem("artius:planInView") === "one" ? "one" : "all"; } catch { return "all"; } });
-  const pickInView = (v) => { setInView(v); try { localStorage.setItem("artius:planInView", v); } catch { /* chỉ nhớ trong phiên */ } };
+  const [viewW, setViewW] = useState(null);   // cột tuần đang ở mép trái, để hiện mốc thời gian
   const [plan, setPlan] = useState({});
   const [dirty, setDirty] = useState(false);
   /* ---------- v13.32: lùi / tiến (Ctrl + Z, Ctrl + Y) ----------
@@ -66,6 +65,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
   }, []);
   /* ---------- v13.32: ô đã sửa kể từ lần lưu cuối ---------- */
   const [baseline, setBaseline] = useState({});
+  const baseRef = useRef(null); baseRef.current = baseline;   // bản đã lưu gần nhất, để biết năm nào cần ghi lại
   const [q, setQ] = useState("");   // v13.32: lọc nhanh dự án trên lưới nhập
   const [busy, setBusy] = useState(true);
   const [err, setErr] = useState("");
@@ -74,13 +74,14 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
   const savedAt = useRef("");
 
   const avail = Number(cfg.planning?.availability) > 0 ? Number(cfg.planning.availability) : DEFAULT_AVAIL;
-  const n1 = PER_YEAR, n2 = PER_YEAR;   // mỗi năm 48 cột (12 tháng × 4 tuần)
-  /* v12.8 — hai năm liền nhau trên MỘT lưới cuộn ngang. Chỉ số tuần nối tiếp (0 … n1+n2-1);
+  const YEARS = 4;                      // số năm trên lưới
+  const years = useMemo(() => Array.from({ length: YEARS }, (_, k) => start + k), [start]);
+  /* v13.37 — nhiều năm liền nhau trên MỘT lưới cuộn ngang, chỉ số tuần nối tiếp 0 … YEARS*48-1;
      khi lưu thì tách lại, Supabase vẫn lưu từng năm một. */
-  const weeks = useMemo(() => weeksOfPair(start), [start]);
+  const weeks = useMemo(() => weeksOfYears(start, YEARS), [start]);
   const view = weeks;
-  const realWeeks = useMemo(() => realWeeksOfPair(start), [start]);   // các thứ Hai thật, để so giờ thực tế
-  const nowIdx = slotIndexOf(start, new Date());
+  const realWeeks = useMemo(() => realWeeksOfYears(start, YEARS), [start]);   // các thứ Hai thật, để so giờ thực tế
+  const nowIdx = slotIndexOf(start, new Date(), YEARS);
   /* v13.32 — ô đã sửa kể từ lần lưu cuối; tính lại khi lưới hoặc mốc đổi (vài nghìn ô, không đáng kể) */
   const changedCells = useMemo(() => diffCells(plan, baseline, weeks.length), [plan, baseline, weeks.length]);
 
@@ -159,25 +160,25 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
   useEffect(() => {
     let alive = true;
     setBusy(true); setErr("");
-    Promise.all([loadPlan(start), loadPlan(start + 1)])
-      .then(([a, b]) => {
+    Promise.all(years.map(loadPlan))
+      .then((parts) => {
         if (!alive) return;
-        const loaded = fillRef.current(joinYears(normalizeYear(a, start), normalizeYear(b, start + 1), n1, n2));
+        const loaded = fillRef.current(joinYears(parts.map((pp, k) => normalizeYear(pp, years[k]))));
         setPlan(loaded); setBaseline(loaded); resetHist();   // v13.32: mốc so sánh ô đã sửa + xoá lịch sử của cặp năm cũ
         setDirty(!readOnly && foldedRef.current);
       })
       .catch((e) => { if (alive) setErr(isMissingTable(e) ? SQL_HINT : `Chưa tải được kế hoạch — ${errMsg(e)}`); })
       .finally(() => alive && setBusy(false));
-    Promise.all([listSnapshots(start), listSnapshots(start + 1)]).then(([a, b]) => alive && setSnaps([...a, ...b])).catch(() => {});
+    Promise.all(years.map(listSnapshots)).then((xs) => alive && setSnaps(xs.flat())).catch(() => {});
     return () => { alive = false; };
-  }, [start, n1, n2]);
+  }, [start, years]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------- giờ thực tế của năm đang xem ---------- */
   useEffect(() => {
     let alive = true;
     (async () => {
       const nowYm = fmt(new Date()).slice(0, 7);   // tháng chưa tới thì chưa có giờ, khỏi tải
-      const yms = [start, start + 1].flatMap((y) => [...Array(12)].map((_, m) => `${y}-${String(m + 1).padStart(2, "0")}`)).filter((ym) => ym <= nowYm);
+      const yms = years.flatMap((y) => [...Array(12)].map((_, m) => `${y}-${String(m + 1).padStart(2, "0")}`)).filter((ym) => ym <= nowYm);
       await ensureMonths(yms);
       if (!alive) return;
       const detail = [];
@@ -199,7 +200,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
       if (alive) setTs({ detail, okWeeks: ok });
     })();
     return () => { alive = false; };
-  }, [start, staff, realWeeks, tick]);
+  }, [start, years, staff, realWeeks, tick]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const actual = useMemo(
     () => actualByCell(ts?.detail || [], planStaff, cfg.hours),
@@ -219,9 +220,14 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
     const snap = planNow.current;
     let ok = true;
     try {
-      const [a, b] = splitYears(prunePlan(snap), n1, n2);
-      await savePlan(start, prunePlan(a));
-      await savePlan(start + 1, prunePlan(b));
+      /* v13.37 — lưới trải 4 năm nhưng mỗi lần lưu chỉ ghi NHỮNG NĂM THẬT SỰ ĐỔI so với lần lưu trước,
+         thay vì xoá và ghi lại cả 4 năm. Lần đầu (chưa có mốc) thì ghi hết. */
+      const parts = splitYears(prunePlan(snap), YEARS);
+      const old = baseRef.current ? splitYears(prunePlan(baseRef.current), YEARS) : null;
+      for (let k = 0; k < YEARS; k++) {
+        if (old && JSON.stringify(parts[k]) === JSON.stringify(old[k])) continue;
+        await savePlan(years[k], parts[k]);
+      }
       if (planNow.current === snap) setDirty(false);
       setBaseline(snap);   // v13.32: ô đã sửa tính từ bản vừa lưu
       savedAt.current = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
@@ -237,7 +243,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
       if (againRef.current) { againRef.current = false; setTimeout(() => doSaveRef.current(), 0); }
     }
     return ok;
-  }, [readOnly, start, n1, n2, flash, saveErr]);
+  }, [readOnly, start, years, flash, saveErr]);   // eslint-disable-line react-hooks/exhaustive-deps
   const doSaveRef = useRef(doSave); doSaveRef.current = doSave;
   const onSave = () => doSave(true);
 
@@ -252,22 +258,16 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
     window.addEventListener("beforeunload", h);
     return () => window.removeEventListener("beforeunload", h);
   }, [dirty]);
-  /* đổi cặp năm: lưu nốt phần đang dở rồi mới chuyển */
-  const changeStart = async (y) => {
-    if (dirty && !readOnly && !(await doSave())) return;
-    setStart(y);
-  };
 
   const onSnapshot = useCallback(async () => {
     try {
       const label = `Chốt ${new Date().toLocaleDateString("vi-VN")}`;
-      const [a, b] = splitYears(prunePlan(plan), n1, n2);
-      await snapshotPlan(start, label, prunePlan(a));
-      await snapshotPlan(start + 1, label, prunePlan(b));
-      setSnaps((await Promise.all([listSnapshots(start), listSnapshots(start + 1)])).flat());
+      const parts = splitYears(prunePlan(plan), YEARS);
+      for (let k = 0; k < YEARS; k++) await snapshotPlan(years[k], label, parts[k]);
+      setSnaps((await Promise.all(years.map(listSnapshots))).flat());
       flash("Đã chốt bản kế hoạch. Từ giờ phần so với thực tế dùng bản này.");
     } catch (e) { flash(isMissingTable(e) ? SQL_HINT : `Chưa chốt được — ${errMsg(e)}`, "err"); }
-  }, [plan, start, n1, n2, flash]);
+  }, [plan, start, years, flash]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const onExport = async () => {
     try {
@@ -282,7 +282,6 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
     if (ok !== false) flash(`Hệ số sẵn sàng ${Math.round(v * 100)}%.`);
   };
 
-  const years = [thisYear - 1, thisYear];   // 2025–2026 và 2026–2027
 
   return (
     <div className="space-y-3 md:space-y-4">
@@ -311,13 +310,18 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
 
       <Panel flush
         title={mode === "pj" ? "Kế hoạch theo dự án" : mode === "ac" ? "Kế hoạch so với thực tế" : "Lưới kế hoạch nguồn lực"}
-        sub={<>Năm {start}–{start + 1} · {weeks.length} cột (mỗi tháng 4 tuần) · đơn vị là số người (1 / 0,5 / 0,25)</>}
+        sub={<>Năm {start}–{start + YEARS - 1} · {weeks.length} cột (mỗi tháng 4 tuần) · đơn vị là số người (1 / 0,5 / 0,25)</>}
         right={busy ? <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} /> : null}>
 
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
-          <select value={start} onChange={(e) => changeStart(Number(e.target.value))} aria-label="Cặp năm" className="h-11 w-40 rounded-md border border-slate-700 bg-slate-900 px-3 text-sm text-slate-100">
-            {years.map((y) => <option key={y} value={y}>Năm {y}–{y + 1}</option>)}
-          </select>
+          {/* v13.37 — không còn chọn cặp năm: lưới trải thẳng {YEARS} năm, ô này HIỆN mốc thời gian đang xem */}
+          <div aria-live="polite" title="Mốc thời gian đang ở mép trái lưới — cuộn ngang để đổi"
+            className="flex h-11 w-40 shrink-0 items-center justify-center gap-2 rounded-md border border-slate-700 bg-slate-900 px-3 text-sm">
+            <CalendarRange size={15} className="shrink-0 text-slate-500" />
+            {viewW
+              ? <span className="font-mono text-slate-100">Tháng {viewW.m}<span className="text-slate-500">/</span>{viewW.y}</span>
+              : <span className="text-slate-500">Năm {start}–{start + YEARS - 1}</span>}
+          </div>
           <label className="flex items-center gap-2 text-xs text-slate-500">
             Hệ số sẵn sàng
             <select value={avail} disabled={readOnly} onChange={(e) => setAvail(Number(e.target.value))}
@@ -326,18 +330,10 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
             </select>
           </label>
           {mode === "in" && (
-            <div className="flex rounded-lg border border-slate-800 bg-slate-900 p-0.5" role="group" aria-label="Cách xem lưới nhập">
-              <button onClick={() => pickInView("all")} aria-pressed={inView === "all"}
-                className={`h-10 rounded-md px-4 text-sm font-medium ${inView === "all" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Toàn bộ</button>
-              <button onClick={() => pickInView("one")} aria-pressed={inView === "one"}
-                className={`h-10 rounded-md px-4 text-sm font-medium ${inView === "one" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Từng dự án</button>
-            </div>
-          )}
-          {mode === "in" && (
             <button onClick={() => window.dispatchEvent(new Event("artius:planNow"))} className={btnGhost}>Về tuần này</button>
           )}
-          {/* v13.32 — lọc nhanh dự án (chỉ ở cách xem Toàn bộ) */}
-          {mode === "in" && inView === "all" && (
+          {/* v13.32 — lọc nhanh dự án */}
+          {mode === "in" && (
             <div className="relative w-full sm:w-52">
               <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm dự án" aria-label="Tìm dự án"
@@ -361,7 +357,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
             <>
               <button onClick={onSnapshot} title="Chụp lại lưới hiện tại để về sau so với thực tế trên bản đã chốt"
                 className={`flex-1 sm:flex-none ${btnGhost}`}><Camera size={15} /> Chốt bản {snaps.length ? `(${snaps.length})` : ""}</button>
-              <button onClick={() => { setDirty(false); setBusy(true); Promise.all([loadPlan(start), loadPlan(start + 1)]).then(([a, b]) => { const l = fillRef.current(joinYears(normalizeYear(a, start), normalizeYear(b, start + 1), n1, n2)); setPlan(l); setBaseline(l); resetHist(); setBusy(false); }).catch(() => setBusy(false)); }}
+              <button onClick={() => { setDirty(false); setBusy(true); Promise.all(years.map(loadPlan)).then((parts) => { const l = fillRef.current(joinYears(parts.map((pp, k) => normalizeYear(pp, years[k])))); setPlan(l); setBaseline(l); resetHist(); setBusy(false); }).catch(() => setBusy(false)); }}
                 className={`flex-1 sm:flex-none ${btnGhost}`}><RotateCcw size={15} /> Tải lại</button>
               <button onClick={onSave} disabled={(!dirty && !saveErr) || busy || saving} className={`flex-1 sm:flex-none ${btnPrimary} disabled:opacity-40`}><Save size={15} /> Lưu{changedCells.size > 0 ? ` (${changedCells.size})` : ""}</button>
             </>
@@ -377,14 +373,10 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
           <PlanProjects plan={plan} projects={everyProject} roles={roles} weeks={view} nowIndex={nowIdx}
             hidden={hidden} detail={ts?.detail || []} employees={cfg.employees || []} support={Array.isArray(cfg.support) ? cfg.support : []}
             canToggle={!readOnly && canSaveProjects} onToggle={toggleActive} prole={prole} />
-        ) : mode === "in" && inView === "one" ? (
-          <PlanFocus plan={plan} onChange={editPlan} onUndo={undo} onRedo={redo} canUndo={histN[0] > 0} canRedo={histN[1] > 0} changed={changedCells}
-            projects={projects} hidden={hidden} mergedOf={mergedOf} roles={roles} weeks={view} nWeeks={weeks.length}
-            cap={cap} head={head} readOnly={readOnly} nowIndex={nowIdx} scrollKey={start} />
         ) : (
           <PlanGrid plan={plan} onChange={editPlan} onUndo={undo} onRedo={redo} canUndo={histN[0] > 0} canRedo={histN[1] > 0} changed={changedCells} query={q}
             projects={projects} hidden={hidden} onToggleHide={readOnly ? undefined : toggleHide} totals={totals} onTotals={readOnly ? undefined : onTotals} mergedOf={mergedOf} roles={roles} weeks={view} nWeeks={weeks.length}
-            cap={cap} head={head} readOnly={readOnly} nowIndex={nowIdx} scrollKey={start} />
+            cap={cap} head={head} readOnly={readOnly} nowIndex={nowIdx} scrollKey={start} onViewWeek={setViewW} />
         )}
       </Panel>
     </div>
