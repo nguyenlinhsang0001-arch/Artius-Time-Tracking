@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.37
+   ARTIUS — Quản lý giờ công theo dự án · v13.38
+   Mới ở v13.38 — Kế hoạch › Nhập liệu: bỏ dòng khoảng thời gian ("T7·1 → T10·3") trên dòng tên dự án;
+     ô lịch trên thanh công cụ lấy tháng ở GIỮA vùng đang nhìn thay vì tháng ở mép trái.
+
    Mới ở v13.37 — Kế hoạch:
      · Bỏ cách xem "Từng dự án" (và file PlanFocus.jsx); Nhập liệu chỉ còn một lưới duy nhất.
      · Lưới trải 4 NĂM LIỀN NHAU (năm trước → ba năm sau, 192 cột), cuộn ngang qua tháng 12 là sang

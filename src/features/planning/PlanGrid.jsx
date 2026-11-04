@@ -36,7 +36,6 @@ const parse = (s) => {
 /* màu vai trò theo thứ tự trong Thiết lập — một vai trò luôn giữ một màu */
 const PALETTE = ["#14b8a6", "#f59e0b", "#6366f1", "#ec4899", "#0ea5e9", "#84cc16", "#f43f5e",
   "#a855f7", "#eab308", "#3b82f6", "#fb923c", "#22c55e", "#d946ef", "#2dd4bf", "#94a3b8"];
-const wShort = (w) => (w ? `T${w.m}·${w.w}` : "");
 const wLabel = (w) => (w ? `T${w.m}/${w.y} · tuần ${w.w}` : "");
 const qSel = (v) => (window.CSS?.escape ? window.CSS.escape(v) : String(v).replace(/["\\]/g, "\\$&"));
 
@@ -295,7 +294,10 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
     let raf = 0;
     const report = () => {
       raf = 0;
-      const k = Math.min(weeksRef.current.length - 1, Math.max(0, Math.round(W.scrollLeft / CW)));
+      /* v13.38 — lấy cột ở GIỮA vùng đang nhìn, không phải mép trái. Vùng dữ liệu bắt đầu sau cột tên
+         khoá cứng, nên tâm = scrollLeft + (bề ngang nhìn thấy − cột tên) / 2. */
+      const mid = W.scrollLeft + (W.clientWidth - frzRef.current) / 2;
+      const k = Math.min(weeksRef.current.length - 1, Math.max(0, Math.floor(mid / CW)));
       if (k === viewRef.current) return;
       viewRef.current = k;
       onViewWeek(weeksRef.current[k] || null);
@@ -794,8 +796,6 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
               const free = roles.filter((r) => !used.has(r.id));
               const off = hidden.has(p.id);
               const cl = !focus && collapsed.has(p.id) && !off;   // v13.32: dự án tạm ẩn vốn đã thu gọn, không gập thêm
-              const sp = spanOf(plan[p.id]);
-              const spTxt = sp ? `${wShort(weeks.find((w) => w.i === sp.a) || { m: "?", w: "?" })} → ${wShort(weeks.find((w) => w.i === sp.b) || { m: "?", w: "?" })}` : "";
               return (
                 <React.Fragment key={p.id}>
                   {!focus && (
@@ -831,6 +831,7 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
                           </span>
                         </div>
                       </td>
+                      {/* v13.38 — bỏ dòng khoảng thời gian "T7·1 → T10·3"; mở rộng thì để trống */}
                       {cl
                         ? weeks.map((w, k) => {   /* v13.32 — gập: mỗi tuần hiện tổng số người của cả dự án */
                           const t = Object.keys(plan[p.id] || {}).reduce((a, rid) => a + cellOf(plan, p.id, rid, w.i), 0);
@@ -839,7 +840,7 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
                           if (w.ms && k > 0) cls.push("ms");
                           return <td key={w.i} className={cls.join(" ")} data-c={k}>{f(t)}</td>;
                         })
-                        : <td colSpan={nCol} className="phr">{spTxt}</td>}
+                        : <td colSpan={nCol} className="phr" />}
                     </tr>
                   )}
                   {rws.map(({ r, idx }) => (
