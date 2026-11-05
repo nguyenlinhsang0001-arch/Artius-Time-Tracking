@@ -11,6 +11,7 @@
    không có ai được giao (thành viên dự án, quyền tất cả dự án, hoặc đang hỗ trợ dự án) trong số người tính kế hoạch.
    Màn này CHỈ ĐỌC. */
 import React, { useEffect, useMemo, useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { addDays, fmt, mondayOf, weeklyTarget } from "../../core/date.jsx";
 import { NO_PROJECT, isLeaveTask } from "../../core/domain.jsx";
 import { isLight } from "../../core/theme.jsx";
@@ -33,6 +34,12 @@ const useThemeTick = () => {
   const [, bump] = useState(0);
   useEffect(() => { const f = () => bump((n) => n + 1); window.addEventListener("artius:theme", f); return () => window.removeEventListener("artius:theme", f); }, []);
 };
+/* v13.41 — hai bộ cột: thêm cột "Từng tuần" khi khoảng đang xem có nhiều hơn một tuần.
+   Viết nguyên văn cả bốn chuỗi vì Tailwind quét lớp trong mã nguồn, ghép động là không sinh ra CSS. */
+const HEAD1 = "grid-cols-[minmax(200px,1.3fr)_70px_70px_minmax(160px,1fr)_minmax(220px,1.5fr)_110px]";
+const HEADN = "grid-cols-[minmax(180px,1.15fr)_64px_64px_minmax(80px,0.5fr)_minmax(140px,0.9fr)_minmax(200px,1.3fr)_104px]";
+const ROW1 = "md:grid-cols-[minmax(200px,1.3fr)_70px_70px_minmax(160px,1fr)_minmax(220px,1.5fr)_110px]";
+const ROWN = "md:grid-cols-[minmax(180px,1.15fr)_64px_64px_minmax(80px,0.5fr)_minmax(140px,0.9fr)_minmax(200px,1.3fr)_104px]";
 const GROUPS = { none: "Có kế hoạch, chưa ai làm", out: "Làm ngoài kế hoạch", mix: "Đủ người nhưng sai vai trò", over: "Thực tế nhiều hơn kế hoạch", under: "Thực tế ít hơn kế hoạch", ok: "Đúng kế hoạch" };
 const ORDER = { none: 0, out: 1, mix: 2, over: 3, under: 4, ok: 5 };
 
@@ -144,11 +151,18 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
       return { ...o, p, KH, TT, d, st, okR };
     }).filter((o) => o.KH > 0.005 || o.TT > 0.005);
     list.sort((a, b) => ORDER[a.st] - ORDER[b.st] || Math.abs(b.d) - Math.abs(a.d));
-    /* người chưa gửi giờ của tuần cuối trong khoảng */
-    const lastW = weeks[weeks.length - 1];
-    const sent = new Set((lastW && hoursBy.get(lastW.monday) || []).map((x) => x.empId));
-    const missing = staff.filter((e) => e.role && !sent.has(e.id)).length;
-    return { list, common, total, missing, per };
+    /* v13.41 — tuần thiếu giờ: trước đây chỉ xét TUẦN CUỐI và chỉ đếm số người.
+       Nay xét MỌI tuần trong khoảng và giữ lại tên, vì chỉ cần một tuần thiếu giờ là cột Thực tế
+       của cả khoảng đã thấp giả — mà kết luận "thấp hơn …%" vẫn hiện đỏ như thể dự án chạy chậm thật. */
+    const who = staff.filter((e) => e.role);
+    const gap = weeks.map((w) => {
+      const sent = new Set((hoursBy.get(w.monday) || []).map((x) => x.empId));
+      return { w, miss: who.filter((e) => !sent.has(e.id)) };
+    }).filter((x) => x.miss.length);
+    const missNames = [...new Set(gap.flatMap((x) => x.miss.map((e) => e.name || e.id)))];
+    const lastGap = gap.find((x) => x.w.monday === weeks[weeks.length - 1]?.monday);
+    return { list, common, total, missing: lastGap ? lastGap.miss.length : 0,
+      gapWeeks: gap.length, gapNames: missNames, nStaff: who.length, per };
   }, [P, weeks, hoursBy, roles, projects, projIds, liveIds, roleOf, STD, nW, staff]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <p className="px-4 py-8 text-sm text-slate-500">Đang tải giờ đã chấm…</p>;
@@ -159,11 +173,44 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
   const KH = L.reduce((a, o) => a + o.KH, 0), TT = L.reduce((a, o) => a + o.TT, 0), okR = L.reduce((a, o) => a + o.okR, 0);
   const none = L.filter((o) => o.st === "none"), out = L.filter((o) => o.st === "out");
   const mx = Math.max(0.5, ...L.map((o) => Math.abs(o.d)));
+  /* v13.41 — chỉ "thấp hơn" và "chưa ai làm" mới có thể do người chưa gửi giờ gây ra;
+     các kết luận còn lại không bị ảnh hưởng nên không đánh dấu. */
+  const doubt = (st) => data.gapWeeks > 0 && (st === "under" || st === "none");
   const pill = (st, o) => {
     const map = { none: [C.red, C.redBg, "chưa ai làm"], out: [C.over, C.overBg, "ngoài kế hoạch"], mix: [C.mix, C.mixBg, "đủ người, lệch vai trò"], ok: [C.ok, C.okBg, "đúng kế hoạch"],
       over: [C.over, C.overBg, `vượt ${o.KH ? Math.round((o.d / o.KH) * 100) : 0}%`], under: [C.under, C.underBg, `thấp hơn ${o.KH ? Math.round((-o.d / o.KH) * 100) : 0}%`] };
     const [c, bg, t] = map[st];
-    return <span className="inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px]" style={{ color: c, background: bg }}>{t}</span>;
+    const q = doubt(st);
+    return <span className="inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px]" style={{ color: c, background: bg }}
+      title={q ? `Còn ${data.gapNames.length} người chưa gửi giờ trong khoảng này — số thực tế có thể thấp hơn thực tế, kết luận này chưa chắc` : undefined}>
+      {t}{q && <span style={{ opacity: .75 }}> *</span>}</span>;
+  };
+  /* v13.41 — biểu đồ nhỏ theo TUẦN trong từng hàng. Khi xem nhiều tuần, bảng đang nén thành một con số
+     bình quân nên dự án chấm 0 / 0 / 0 / 4 trông y hệt dự án chấm 1 / 1 / 1 / 1 — hai tình huống cần hai
+     quyết định khác hẳn nhau. Dữ liệu o.wk[k] = { kh, tt } đã tính sẵn cho biểu đồ lũy kế, chỉ vẽ thêm.
+     Thước đo riêng từng hàng (xem HÌNH DẠNG theo thời gian); độ lớn giữa các dự án đã có ở hai cột số. */
+  const spark = (o) => {
+    const mxw = Math.max(0.0001, ...o.wk.map((x) => Math.max(x.kh, x.tt)));
+    const lab = o.wk.map((x, k) => `${wLabel(weeks[k])}: ${U(x.kh)} → ${U(x.tt)}`).join("\n");
+    return (
+      <span className="hidden h-[22px] items-end gap-[2px] md:flex" title={`Kế hoạch → thực tế từng tuần\n${lab}`}>
+        {o.wk.map((x, k) => {
+          const d = x.tt - x.kh;
+          const c = x.kh < 0.005 && x.tt > 0.005 ? C.over
+            : Math.abs(d) <= Math.max(0.15, x.kh * 0.15) ? C.ok : d > 0 ? C.over : C.under;
+          return (
+            <span key={k} className="relative block min-w-[3px] flex-1" style={{ height: "100%" }}>
+              {/* kế hoạch: cột nền nhạt */}
+              <span className="absolute bottom-0 left-0 right-0 rounded-[1px]"
+                style={{ height: `${Math.max(x.kh > 0.005 ? 6 : 0, (x.kh / mxw) * 100)}%`, background: C.plan, opacity: .34 }} />
+              {/* thực tế: cột đặc, hẹp hơn, nằm đè lên */}
+              <span className="absolute bottom-0 rounded-[1px]"
+                style={{ left: "18%", right: "18%", height: `${Math.max(x.tt > 0.005 ? 6 : 0, (x.tt / mxw) * 100)}%`, background: c }} />
+            </span>
+          );
+        })}
+      </span>
+    );
   };
   const tile = (k, v, s, color) => (
     <div className="rounded-lg border border-slate-800 px-3 py-2" style={{ background: C.tile }}>
@@ -277,10 +324,26 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
         {tile("Làm ngoài kế hoạch", US(out.reduce((a, o) => a + o.TT, 0)), out.length ? out.map((o) => o.p.name).join(", ") : "không có", out.length ? C.over : undefined)}
       </div>
 
+      {/* v13.41 — dải cảnh báo khi khoảng đang xem có tuần thiếu giờ gửi. Đây là chỗ dễ kết luận sai nhất:
+          thiếu người gửi thì cột Thực tế thấp giả, mà chip "thấp hơn …%" vẫn hiện như dự án chạy chậm thật. */}
+      {data.gapWeeks > 0 && (
+        <div className="flex items-start gap-2.5 border-b px-3 py-2.5 text-[12.5px] md:px-4"
+          style={{ background: C.mixBg, borderColor: C.line, color: C.mix }}>
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+          <div>
+            <b className="font-semibold">{data.gapNames.length} / {data.nStaff} người chưa gửi giờ</b>
+            {nW > 1 ? ` ở ${data.gapWeeks} trong ${nW} tuần của khoảng này` : " trong tuần này"} — cột Thực tế đang thấp hơn thực tế,
+            các kết luận có dấu <b className="font-semibold">*</b> chưa chắc đúng.
+            <div className="mt-0.5 text-slate-400">{data.gapNames.join(" · ")}</div>
+          </div>
+        </div>
+      )}
+
       <div className="grid items-start xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="min-w-0 border-slate-800 xl:border-r">
-          <div className="hidden grid-cols-[minmax(200px,1.3fr)_70px_70px_minmax(160px,1fr)_minmax(220px,1.5fr)_110px] items-center gap-3 border-b border-slate-800 px-4 py-2 text-[10.5px] uppercase tracking-wider text-slate-500 md:grid">
+          <div className={`hidden ${nW > 1 ? HEADN : HEAD1} items-center gap-3 border-b border-slate-800 px-4 py-2 text-[10.5px] uppercase tracking-wider text-slate-500 md:grid`}>
             <span>Dự án</span><span className="text-right">Kế hoạch</span><span className="text-right">Thực tế</span>
+            {nW > 1 && <span>Từng tuần</span>}
             <span className="text-center">thiếu ← lệch → vượt</span><span>Theo vai trò · kế hoạch → thực tế</span><span>Kết luận</span>
           </div>
           {L.length === 0 && <p className="px-4 py-6 text-sm text-slate-500">Khoảng này chưa có kế hoạch hay giờ chấm vào dự án nào.</p>}
@@ -293,7 +356,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
                   <div className="px-4 py-1.5 text-[10.5px] uppercase tracking-wider text-slate-500" style={{ background: C.grp, borderBottom: `1px solid ${C.line}` }}>{GROUPS[o.st]}</div>
                 )}
                 <div onClick={() => setSel(o.pid)} onMouseEnter={() => setHov(o.pid)} onMouseLeave={() => setHov((h) => (h === o.pid ? null : h))}
-                  className="grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 text-[12.5px] md:grid-cols-[minmax(200px,1.3fr)_70px_70px_minmax(160px,1fr)_minmax(220px,1.5fr)_110px]"
+                  className={`grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 text-[12.5px] ${nW > 1 ? ROWN : ROW1}`}
                   style={{ background: on ? C.sel : hov === o.pid ? C.hover : "transparent", borderLeft: `3px solid ${on ? C.selBar : "transparent"}`, borderBottom: `1px solid ${C.line}` }}>
                   <span className="truncate text-slate-200" style={on ? { color: C.selName } : undefined}>
                     {o.p.name}{o.p.code && <span className="ml-1.5 font-mono text-[11px] text-slate-500">{o.p.code}</span>}
@@ -302,6 +365,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
                   </span>
                   <span className="hidden text-right font-mono text-slate-300 md:block">{o.KH > 0.005 ? U(o.KH) : "—"}</span>
                   <span className="hidden text-right font-mono text-slate-100 md:block">{o.TT > 0.005 ? U(o.TT) : "—"}</span>
+                  {nW > 1 && spark(o)}
                   <span className="relative hidden h-3.5 md:block">
                     <span className="absolute bottom-[-3px] top-[-3px]" style={{ left: "50%", borderLeft: `1px solid ${C.zero}` }} />
                     <span className="absolute top-[2px] h-2.5 rounded-sm" style={pos ? { left: "50%", width: `${w}%`, background: C.over } : { right: "50%", width: `${w}%`, background: C.under }} />

@@ -1,6 +1,14 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.40
+   ARTIUS — Quản lý giờ công theo dự án · v13.41
+   Mới ở v13.41 — Kế hoạch › So với thực tế, hai chỗ vá:
+     · Cột "Từng tuần" trong bảng: mỗi tuần một cặp cột (kế hoạch nhạt, thực tế đặc — xanh lá đúng,
+       cam vượt, xanh dương thiếu). Chỉ hiện khi khoảng đang xem có nhiều hơn một tuần. Trước đây cả
+       bảng nén thành một con số bình quân nên dự án chấm 0/0/0/4 trông y hệt dự án chấm 1/1/1/1.
+     · Tuần thiếu giờ gửi: trước chỉ đếm người của TUẦN CUỐI và giấu trong dòng phụ một ô số liệu.
+       Nay xét mọi tuần trong khoảng, hiện dải cảnh báo kèm tên, và đánh dấu * lên các kết luận
+       "thấp hơn …%" / "chưa ai làm" — đúng những kết luận có thể do thiếu giờ gửi gây ra.
+
    Mới ở v13.40 — Kế hoạch › Theo dự án: bỏ nốt ghi chú "Tuần hiện tại …" ở hàng tiêu đề; hàng này giờ chỉ
      còn trục tháng. Vạch đỏ trên trục và trong từng dải đã cho biết tuần hiện tại.
 
