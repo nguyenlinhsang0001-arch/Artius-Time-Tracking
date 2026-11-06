@@ -1,6 +1,16 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.43
+   ARTIUS — Quản lý giờ công theo dự án · v13.44
+   Mới ở v13.44 — Kế hoạch:
+     · Ô lịch trên thanh công cụ BẤM ĐƯỢC: chọn thẳng tháng trong 4 năm, lưới cuộn tới tháng đó
+       (đang ở tab khác thì tự về Nhập liệu). Tháng đầu / cuối cửa sổ 4 năm không kéo ra giữa được
+       nên ô lịch vẫn ghi tháng đang nằm giữa màn hình.
+     · Bảng bên phải của "So với thực tế": danh sách "Người … đang làm ở" đổi thành khối BỔ SUNG,
+       MẶC ĐỊNH ĐÓNG, bấm tiêu đề mới mở. Trong đó liệt kê mọi người cùng vai trò kèm hệ số tải
+       của chính khoảng đang xem (Quá tải / Bình thường / Thiếu giờ / Trống việc · %, cùng công thức
+       với tab Nhân sự), xếp người rảnh nhất lên trước; rê chuột vào một người thì hiện thẻ chi tiết
+       giờ của người đó theo từng dự án, giờ việc chung / vắng, tổng và OT / cố gắng / trống việc.
+
    Mới ở v13.43 — Ngưỡng kết luận chuyển từ Thiết lập về ngay tab Kế hoạch › So với thực tế:
      nút "Ngưỡng 15% / 30%" trên thanh công cụ, bấm là sửa và lưu tại chỗ, bảng bên dưới đổi chip
      ngay. Bỏ khung tương ứng trong Thiết lập để chỉ còn một chỗ chỉnh. Người chỉ-xem không thấy nút.

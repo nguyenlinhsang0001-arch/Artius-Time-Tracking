@@ -7,6 +7,7 @@ import { fmt, mondayOf } from "../../core/date.jsx";
 import { dbTsSent, ensureMonths, useDataTick, weekDone } from "../../core/db.jsx";
 import { ROLES, isResigned } from "../../core/domain.jsx";
 import { CTRL, Panel, btnGhost, btnPrimary } from "../../core/ui.jsx";
+import { allocLimits } from "../../shared/alloc.jsx";
 import { PER_YEAR, actualByCell, diffCells, foldMerged, joinYears, normalizeYear, planLimits, prunePlan, realWeeksOfYears, slotIndexOf, splitYears, weeksOfYears } from "./planCalc.js";
 import { PlanActual } from "./PlanActual.jsx";
 import { PlanGrid } from "./PlanGrid.jsx";
@@ -25,6 +26,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
   const start = thisYear - 1;
   const [mode, setMode] = useState("in");
   const [viewW, setViewW] = useState(null);   // cột tuần đang ở mép trái, để hiện mốc thời gian
+  const [openCal, setOpenCal] = useState(false);   // v13.44: ô lịch bấm được, chọn thẳng tháng
   const [plan, setPlan] = useState({});
   const [dirty, setDirty] = useState(false);
   /* ---------- v13.32: lùi / tiến (Ctrl + Z, Ctrl + Y) ----------
@@ -82,6 +84,16 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
   const view = weeks;
   const realWeeks = useMemo(() => realWeeksOfYears(start, YEARS), [start]);   // các thứ Hai thật, để so giờ thực tế
   const nowIdx = slotIndexOf(start, new Date(), YEARS);
+  /* v13.44 — nhảy thẳng tới tuần đầu của một tháng. Lưới nằm trong PlanGrid nên báo qua sự kiện,
+     giống nút "Về tuần này". Đang ở tab khác thì chuyển về Nhập liệu rồi mới cuộn — phát hai lần
+     (ngay và sau 80ms) vì lần mount đầu lưới tự cuộn về tuần này, phát lại mới ăn. */
+  const gotoMonth = useCallback((y, m) => {
+    const k = (y - start) * PER_YEAR + (m - 1) * 4;
+    setMode("in");
+    const go = () => window.dispatchEvent(new CustomEvent("artius:planGoto", { detail: k }));
+    requestAnimationFrame(go);
+    setTimeout(go, 80);
+  }, [start]);
   /* v13.32 — ô đã sửa kể từ lần lưu cuối; tính lại khi lưới hoặc mốc đổi (vài nghìn ô, không đáng kể) */
   const changedCells = useMemo(() => diffCells(plan, baseline, weeks.length), [plan, baseline, weeks.length]);
 
@@ -314,13 +326,37 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
         right={busy ? <Loader2 className="shrink-0 animate-spin text-slate-500" size={16} /> : null}>
 
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
-          {/* v13.37 — không còn chọn cặp năm: lưới trải thẳng {YEARS} năm, ô này HIỆN mốc thời gian đang xem */}
-          <div aria-live="polite" title="Mốc thời gian đang ở mép trái lưới — cuộn ngang để đổi"
-            className="flex h-11 w-40 shrink-0 items-center justify-center gap-2 rounded-md border border-slate-700 bg-slate-900 px-3 text-sm">
-            <CalendarRange size={15} className="shrink-0 text-slate-500" />
-            {viewW
-              ? <span className="font-mono text-slate-100">Tháng {viewW.m}<span className="text-slate-500">/</span>{viewW.y}</span>
-              : <span className="text-slate-500">Năm {start}–{start + YEARS - 1}</span>}
+          {/* v13.37 — không còn chọn cặp năm: lưới trải thẳng {YEARS} năm, ô này HIỆN mốc thời gian đang xem.
+              v13.44 — bấm vào để CHỌN THẲNG tháng, khỏi phải cuộn ngang qua mấy chục cột. */}
+          <div className="relative shrink-0">
+            <button aria-live="polite" aria-expanded={openCal} onClick={() => setOpenCal((v) => !v)}
+              title="Bấm để chọn tháng — hoặc cuộn ngang lưới"
+              className="flex h-11 w-40 items-center justify-center gap-2 rounded-md border border-slate-700 bg-slate-900 px-3 text-sm hover:border-slate-500">
+              <CalendarRange size={15} className="shrink-0 text-slate-500" />
+              {viewW
+                ? <span className="font-mono text-slate-100">Tháng {viewW.m}<span className="text-slate-500">/</span>{viewW.y}</span>
+                : <span className="text-slate-500">Năm {start}–{start + YEARS - 1}</span>}
+            </button>
+            {openCal && <>
+              <div className="fixed inset-0 z-20" onClick={() => setOpenCal(false)} />
+              <div className="absolute left-0 top-12 z-30 w-[268px] rounded-md border border-slate-700 bg-slate-900 p-2.5 shadow-xl">
+                {years.map((y) => (
+                  <div key={y} className="mb-1.5 last:mb-0">
+                    <div className="mb-1 text-[10.5px] uppercase tracking-wider text-slate-500">{y}{y === thisYear ? " · năm nay" : ""}</div>
+                    <div className="grid grid-cols-6 gap-1">
+                      {Array.from({ length: 12 }, (_, k) => k + 1).map((m) => {
+                        const on = viewW && viewW.y === y && viewW.m === m;
+                        const now = y === thisYear && m === new Date().getMonth() + 1;
+                        return (
+                          <button key={m} onClick={() => { gotoMonth(y, m); setOpenCal(false); }}
+                            className={`h-7 rounded text-[12px] ${on ? "bg-teal-600 text-white" : now ? "border border-teal-800 text-teal-300 hover:bg-slate-800" : "text-slate-300 hover:bg-slate-800"}`}>{m}</button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>}
           </div>
           <label className="flex items-center gap-2 text-xs text-slate-500">
             Hệ số sẵn sàng
@@ -370,6 +406,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
             support={Array.isArray(cfg.support) ? cfg.support : []}
             detail={ts?.detail || []} staff={planStaff} hoursCfg={cfg.hours} prole={prole} loading={!ts}
             cap={cap} lim={planLimits(cfg)} flash={flash}
+            holidays={cfg.holidays || []} aLim={allocLimits(cfg)}
             onLim={readOnly ? null : async (tol, mix) => {
               const ok = await saveCfg({ ...cfg, planTol: tol, planMix: mix });
               flash(ok === false ? "Chưa lưu được ngưỡng." : "Đã lưu ngưỡng kết luận.", ok === false ? "err" : undefined);

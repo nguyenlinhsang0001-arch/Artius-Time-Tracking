@@ -286,6 +286,18 @@ export function PlanGrid({ plan, onChange, projects: allProjects, hidden = new S
     W.scrollLeft += r.left - wr.left - frzRef.current - (W.clientWidth - frzRef.current) / 2 + r.width / 2;
   }, []);
   useEffect(() => { toNow(); }, [scrollKey, toNow]);
+  /* v13.44 — nhảy tới một cột tuần bất kỳ (ô lịch trên thanh công cụ chọn tháng).
+     Nghịch đảo đúng phép tính của hàm báo mốc bên dưới, nên chọn tháng nào thì tháng đó ra giữa màn hình. */
+  const toCol = useCallback((k) => {
+    const W = wrap.current; if (!W) return;
+    const i = Math.max(0, Math.min(weeksRef.current.length - 1, Math.round(k)));
+    W.scrollLeft = Math.max(0, i * CW + CW / 2 - (W.clientWidth - frzRef.current) / 2);
+  }, []);
+  useEffect(() => {
+    const f = (e) => toCol(Number(e.detail) || 0);
+    window.addEventListener("artius:planGoto", f);
+    return () => window.removeEventListener("artius:planGoto", f);
+  }, [toCol]);
   /* v13.37 — lưới trải nhiều năm nên phải cho biết đang ở đâu: báo lên cột tuần nằm ở MÉP TRÁI
      vùng cuộn, để thanh công cụ hiện "Tháng 11/2026". Gom bằng rAF cho khỏi gọi liên tục khi cuộn. */
   const viewRef = useRef(-1);

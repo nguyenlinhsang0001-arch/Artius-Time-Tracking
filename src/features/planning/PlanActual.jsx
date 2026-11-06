@@ -12,9 +12,10 @@
    Màn này CHỈ ĐỌC. */
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Search, SlidersHorizontal, X } from "lucide-react";
-import { addDays, fmt, mondayOf, weeklyTarget } from "../../core/date.jsx";
-import { NO_PROJECT, isLeaveTask } from "../../core/domain.jsx";
+import { addDays, effortHoursFor, fmt, makeHolidayIndex, mondayOf, weeklyTarget } from "../../core/date.jsx";
+import { NO_PROJECT, isIdleTask, isLeaveTask, isOtId } from "../../core/domain.jsx";
 import { isLight } from "../../core/theme.jsx";
+import { ALLOC_ST, allocLimits, allocState } from "../../shared/alloc.jsx";
 import { cellOf, foldMerged, joinYears, normalizeYear, planLimits, slotIndexOf } from "./planCalc.js";
 import { listSnapshots, loadSnapshot } from "./planStore.js";
 
@@ -46,7 +47,9 @@ const ORDER = { none: 0, out: 1, mix: 2, over: 3, under: 4, ok: 5 };
 export function PlanActual({ plan, projects, roles, start, realWeeks, detail, staff, hoursCfg, prole = (r) => r, loading = false,
   hidden = new Set(), support = [], /* v13.42 */ cap = new Map(), lim = { tol: 15, mix: 30 },
   /* v13.43 — chỉnh ngưỡng ngay tại đây; không truyền onLim (hoặc chỉ xem) thì nút biến mất */
-  onLim = null, flash = null }) {
+  onLim = null, flash = null,
+  /* v13.44 — để tính hệ số tải trong khối BỔ SUNG, đúng công thức của tab Nhân sự */
+  holidays = [], aLim = allocLimits(null) }) {
   useThemeTick();
   const C = isLight() ? TONE.light : TONE.dark;
   const [range, setRange] = useState("last");   /* last | 4 | all */
@@ -63,6 +66,8 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
   const [openLim, setOpenLim] = useState(false);   /* v13.43: bảng chỉnh ngưỡng ngay trên thanh công cụ */
   const [lv, setLv] = useState({ tol: String(lim.tol), mix: String(lim.mix) });
   const [saving, setSaving] = useState(false);
+  const [openSup, setOpenSup] = useState(() => new Set());   /* v13.44: "pid|rid" đang mở khối BỔ SUNG */
+  const [hovP, setHovP] = useState("");                      /* v13.44: người đang rê chuột trong BỔ SUNG */
   const STD = weeklyTarget(hoursCfg) || 44;
   const colorOf = useMemo(() => new Map(roles.map((r, k) => [r.id, PALETTE[k % PALETTE.length]])), [roles]);
 
@@ -190,6 +195,41 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
       gapWeeks: gap.length, gapNames: missNames, nStaff: who.length, per };
   }, [P, weeks, hoursBy, roles, projects, projIds, liveIds, roleOf, STD, nW, staff, lim]);   // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* v13.44 — hệ số tải của từng người TRONG CHÍNH KHOẢNG ĐANG XEM, dùng đúng allocState và công thức %
+     của tab Nhân sự để hai nơi không ra hai con số. Giờ chuẩn lấy STD × số tuần — cùng thước với cả màn này
+     ("44 giờ = 1 người"), nên không tính giờ chuẩn riêng từng người như tab Nhân sự; chênh lệch chỉ xảy ra
+     với người làm bán thời gian. by: giờ theo dự án, khoá "" là việc chung / vắng. */
+  const load = useMemo(() => {
+    const hs = makeHolidayIndex(holidays);
+    const mons = new Set(weeks.map((w) => w.monday));
+    const day = new Map();   /* "emp|ngày" -> { ot, reg, idle } — giờ cố gắng tính theo NGÀY */
+    const tot = new Map();
+    for (const d of detail || []) {
+      const h = Number(d.hours) || 0; if (!h) continue;
+      if (!mons.has(fmt(mondayOf(new Date(d.date))))) continue;
+      const k = `${d.empId}|${d.date}`;
+      const c = day.get(k) || { ot: 0, reg: 0, idle: 0 };
+      if (isOtId(d.taskId)) c.ot += h;
+      else if (!isLeaveTask(d.taskId)) { c.reg += h; if (isIdleTask(d.taskId)) c.idle += h; }
+      day.set(k, c);
+      const t = tot.get(d.empId) || { t: 0, ot: 0, idle: 0, eff: 0, by: new Map() };
+      t.t += h;
+      const pk = !d.projectId || d.projectId === NO_PROJECT || isLeaveTask(d.taskId) ? "" : d.projectId;
+      t.by.set(pk, (t.by.get(pk) || 0) + h);
+      tot.set(d.empId, t);
+    }
+    for (const [k, c] of day) {
+      const [eid, date] = k.split("|");
+      const t = tot.get(eid); if (!t) continue;
+      t.ot += c.ot; t.idle += c.idle;
+      t.eff += effortHoursFor(date, c.reg - c.idle, hoursCfg, hs);
+    }
+    const sd = STD * nW;
+    const out = new Map();
+    for (const [eid, t] of tot) out.set(eid, { ...t, sd, st: allocState(t.t, t.ot, t.eff, t.idle, sd, aLim), p: sd ? Math.round(((t.t - t.idle) / sd) * 100) : null });
+    return out;
+  }, [detail, weeks, hoursCfg, holidays, STD, nW, aLim]);
+
   if (loading) return <p className="px-4 py-8 text-sm text-slate-500">Đang tải giờ đã chấm…</p>;
   if (!doneWeeks.length) return <p className="px-4 py-8 text-sm text-slate-500">Chưa có tuần nào đã qua có giờ gửi trong hai năm đang xem.</p>;
 
@@ -266,7 +306,6 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
   const US = (v) => `${U(v)} ${UL}`;
   const ddTxt = (d) => `${d > 0.005 ? "+" : d < -0.005 ? "−" : ""}${U(Math.abs(d))}`;
   const pname = (pid) => (pid ? (projects.find((x) => x.id === pid)?.name || pid) : "việc chung / vắng");
-  const lagging = (a, b) => b < a - Math.max(0.15, a * 0.15);
   const isOpen = (o, r) => { const k = `${o.pid}|${r.id}`; if (k in tog) return tog[k];
     const a = o.kh[r.id] || 0, b = o.tt[r.id] || 0; return Math.abs(b - a) > Math.max(0.15, a * 0.15); };
   const flip = (o, r) => setTog((t) => ({ ...t, [`${o.pid}|${r.id}`]: !isOpen(o, r) }));
@@ -276,7 +315,13 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
     const inP = [...o.ppl].filter(([id]) => roleOf.get(id) === r.id).sort((x, y) => y[1] - x[1]);
     const mxH = Math.max(planH, 1, ...inP.map((x) => x[1]));
     const tot = (id) => [...(data.per.get(id) || new Map()).values()].reduce((s2, v) => s2 + v, 0);
-    const others = lagging(a, b) ? staff.filter((e) => e.role === r.id).map((e) => [e, [...(data.per.get(e.id) || new Map())].filter(([k]) => k !== o.pid).sort((x, y) => y[1] - x[1])]) : [];
+    /* v13.44 — BỔ SUNG: ai cùng vai trò có thể kéo thêm vào dự án này. Xếp người RẢNH NHẤT lên trước
+       (theo % tải trong khoảng đang xem), người chưa gửi giờ coi như rảnh. Chi tiết giờ để trong thẻ rê chuột
+       cho đỡ chật — khối này mặc định đóng, bấm tiêu đề mới mở. */
+    const supKey = `${o.pid}|${r.id}`, supOpen = openSup.has(supKey);
+    const sup = staff.filter((e) => e.role === r.id)
+      .map((e) => ({ e, L: load.get(e.id) || null, on: o.ppl.has(e.id) }))
+      .sort((x, y) => (x.L?.p ?? -1) - (y.L?.p ?? -1));
     return (
       <div className="py-1.5 pl-5 pr-1 text-[12px]" style={{ background: C.grp }}>
         {inP.length ? <>
@@ -292,12 +337,56 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
               <div className="text-[11px] text-slate-500">{Math.round((h / T2) * 100)}% giờ của người này{planH ? ` · gánh ${Math.round((h / planH) * 100)}% kế hoạch vai trò` : ""}</div>
             </div>); })}
         </> : <div className="mb-1" style={{ color: C.under }}>Không ai thuộc vai trò {r.id} chấm giờ vào dự án này.</div>}
-        {others.length > 0 && <>
-          <div className="mb-0.5 mt-1.5 text-[10.5px] uppercase tracking-wider text-slate-500">Người {r.id} trong khoảng này đang làm ở</div>
-          {others.map(([e, l]) => (
-            <div key={e.id} className="py-0.5"><span className="text-slate-200">{e.name || e.id}</span>{" "}
-              <span className="text-slate-500">— {l.length ? l.map(([k, h]) => `${pname(k)} ${f0(r2(h))} h`).join(" · ") : "chưa gửi giờ"}</span></div>
-          ))}
+        {sup.length > 0 && <>
+          <button onClick={() => setOpenSup((s) => { const n = new Set(s); if (n.has(supKey)) n.delete(supKey); else n.add(supKey); return n; })}
+            aria-expanded={supOpen}
+            className="mt-2 flex w-full items-center gap-1.5 border-t pt-1.5 text-[10.5px] uppercase tracking-wider text-slate-500 hover:text-slate-300"
+            style={{ borderColor: C.line }}>
+            <span className="inline-block w-3 text-[10px]">{supOpen ? "▾" : "▸"}</span>
+            Bổ sung
+            <span className="font-sans normal-case tracking-normal text-slate-600">{sup.length} người {r.id} · rê chuột xem giờ</span>
+          </button>
+          {supOpen && sup.map(({ e, L, on }, si) => {
+            const key = `${supKey}|${e.id}`;
+            /* hai người cuối thì lật thẻ lên trên, khỏi rơi ra ngoài đáy khung */
+            const up = sup.length > 2 && si >= sup.length - 2;
+            const rows = L ? [...L.by].sort((x, y) => y[1] - x[1]) : [];
+            return (
+              <div key={e.id} className="relative py-0.5"
+                onMouseEnter={() => setHovP(key)} onMouseLeave={() => setHovP((h) => (h === key ? "" : h))}>
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-slate-200">{e.name || e.id}</span>
+                  {on && <span className="shrink-0 rounded border border-slate-700 px-1 text-[10px] text-slate-500">đang ở dự án này</span>}
+                  {L ? <span className={`ml-auto shrink-0 rounded-full border px-1.5 text-[10px] leading-[15px] ${ALLOC_ST[L.st][1]}`}>
+                    {ALLOC_ST[L.st][0]}{L.p != null ? ` · ${L.p}%` : ""}</span>
+                    : <span className="ml-auto shrink-0 rounded-full border border-slate-700 px-1.5 text-[10px] leading-[15px] text-slate-500">chưa gửi giờ</span>}
+                </div>
+                {hovP === key && (
+                  <div className={`absolute right-0 z-30 w-[250px] rounded-md border border-slate-700 p-2 text-[11.5px] shadow-xl ${up ? "bottom-full mb-0.5" : "top-full mt-0.5"}`}
+                    style={{ background: C.grp }}>
+                    <div className="mb-1 text-[10.5px] uppercase tracking-wider text-slate-500">
+                      {rangeTxt} · chuẩn {f0(r2(L ? L.sd : STD * nW))} h
+                    </div>
+                    {rows.length ? rows.map(([k, h]) => (
+                      <div key={k || "_"} className="flex gap-2 py-[1px]">
+                        <span className="truncate" style={{ color: k ? undefined : C.mix }}>{k ? pname(k) : "việc chung / vắng"}</span>
+                        <span className="ml-auto shrink-0 font-mono text-slate-300">{f0(r2(h))} h</span>
+                      </div>
+                    )) : <div className="text-slate-500">Chưa gửi giờ nào trong khoảng này.</div>}
+                    {L && <div className="mt-1 flex gap-2 border-t pt-1 font-mono text-slate-200" style={{ borderColor: C.line }}>
+                      <span className="font-sans text-slate-500">Tổng</span>
+                      <span className="ml-auto">{f0(r2(L.t))} h</span>
+                    </div>}
+                    {L && (L.ot > 0.005 || L.eff > 0.005 || L.idle > 0.005) && (
+                      <div className="text-[11px] text-slate-500">
+                        {[L.ot > 0.005 ? `OT ${f0(r2(L.ot))} h` : "", L.eff > 0.005 ? `cố gắng ${f0(r2(L.eff))} h` : "", L.idle > 0.005 ? `trống việc ${f0(r2(L.idle))} h` : ""].filter(Boolean).join(" · ")}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </>}
       </div>
     );
