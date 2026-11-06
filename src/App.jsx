@@ -1,6 +1,16 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.49
+   ARTIUS — Quản lý giờ công theo dự án · v13.50
+   Mới ở v13.50 — Chấm công nhân viên: bỏ 26 thông báo theo danh sách Sang chốt
+     (A3, B1-B4, B6, C1-C5, C7-C9, C11-C16, C18-C20, E4-E6).
+     Ba chỗ bỏ xong sẽ thành "bấm mà không có gì xảy ra", nên thay thông báo bằng TRẠNG THÁI nút:
+       · nút "Gửi giờ công" tự khoá khi chưa có giờ mới nào để gửi (thay C11 + C12);
+       · nút "Tăng ca" tự khoá khi không còn khung giờ trống (thay C5);
+       · ô chọn dự án vốn đã khoá sẵn khi khối có giờ (thay C16).
+     Hai chỗ đổi cách xử lý: bấm ✓ / Xong ở khối chưa có giờ thì cứ thu gọn luôn thay vì chặn (C1, C2);
+     trùng dòng thì con trỏ nhảy tới dòng đang có, không báo (C3, C7).
+     Bỏ cả hàm addTaskToGroup vì không nơi nào gọi — thông báo C4 vốn không bao giờ hiện.
+
    Mới ở v13.49 — Chấm công nhân viên: bỏ thông báo của nút ✓ ("Đã tạm lưu giờ … Thêm tác vụ cho
      dự án khác, xong hết thì bấm Gửi giờ công."). Nút ✓ chỉ thu gọn khối và nhớ tạm trên MÁY NÀY,
      chữ "đã lưu" làm người dùng tưởng giờ đã nằm trên hệ thống. Chú thích rê chuột đổi thành

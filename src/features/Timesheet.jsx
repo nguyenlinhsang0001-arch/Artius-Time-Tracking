@@ -213,13 +213,12 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     setOpenKeys((s) => { const n = new Set(s); n.delete(gk); return n; });
     gridInputs.current = {}; mobileInputs.current = [];
     writeDraft(next);
-    /* v13.49 — bỏ thông báo "Đã tạm lưu giờ …": nút ✓ chỉ thu gọn khối và nhớ tạm trên MÁY NÀY,
-       chữ "đã lưu" làm người ta tưởng giờ đã nằm trên hệ thống. Khối biến mất thì vẫn phải báo. */
-    if (!next.some((r) => groupKey(r) === gk)) flash("Khối này chưa có giờ nào nên đã bỏ khỏi bảng.", "err");
+    /* v13.49 bỏ thông báo "Đã tạm lưu giờ …" · v13.50 bỏ nốt "Khối này chưa có giờ nào nên đã bỏ khỏi bảng"
+       (C1): khối trống thu gọn lại là biến mất, nhìn là thấy. */
   };
   // v8.9 (điện thoại): thu gọn khối đang mở — chỉ giữ tác vụ có giờ, tạm lưu trên máy, không báo gì thêm
   const foldGroup = (gk) => {
-    if (!rows.some((r) => groupKey(r) === gk && rowHasHours(r))) { flash("Khối này chưa có giờ nào — nhập giờ trước khi thu gọn.", "err"); return; }
+    /* v13.50 (C2) — bỏ báo lỗi: khối chưa có giờ thì thu gọn luôn, giống nút ✓ bên máy tính, khỏi chặn tay người dùng. */
     const next = collapseIn(rows, new Set([gk]));
     setRows(next);
     setOpenKeys((s2) => { const n = new Set(s2); n.delete(gk); return n; });
@@ -324,7 +323,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       setRows(got.length || admin ? got : [{ projectId: "", phaseId: NO_PHASE, taskId: "", note: "", days: {} }]);
       setOpenKeys(new Set()); setUndoRow(null);
       setDirty(restored > 0); setLoading(false);
-      if (restored > 0) flash("Đã khôi phục giờ tạm lưu chưa gửi trên máy này. Kiểm tra lại rồi bấm Gửi giờ công.");
+      /* v13.50 (B1) — khôi phục xong không báo: giờ đã hiện sẵn trên bảng. */
     })();
     return () => { alive = false; };
   }, [empId, monday, reloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -352,7 +351,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   const addCombo = (c, focus = "hours") => {
     const key = rowKey({ projectId: c.projectId, phaseId: c.phaseId || DEFAULT_PHASE, taskId: c.taskId });
     const at = rows.findIndex((r) => rowKey(r) === key);
-    if (at >= 0) { flash("Dòng này đã có trong tuần, con trỏ đã nhảy tới đó.", "err"); focusRow(at); return; }
+    if (at >= 0) { focusRow(at); return; }   // v13.50 (C3): không báo nữa — con trỏ nhảy tới dòng đó là đủ thấy
     const row = { projectId: c.projectId, phaseId: c.phaseId || DEFAULT_PHASE, taskId: c.taskId, note: "", days: {} };
     // cùng dự án + giai đoạn thì chèn ngay dưới dòng cuối của nhóm đó, không đẩy xuống cuối bảng
     let last = -1;
@@ -367,22 +366,19 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   /* Nút + ở đầu mỗi khối: thêm một hạng mục nữa vào đúng dự án + giai đoạn đó.
      Chọn sẵn hạng mục đầu tiên chưa dùng trong khối rồi đưa con trỏ vào ô chọn,
      bấm phím là đổi được ngay, không phải quay lại ô tìm kiếm. */
-  const addTaskToGroup = (g) => {
-    const pool = (g.projectId === NO_PROJECT ? [...commonTasks, ...LEAVE_TASKS] : projTasks).filter((t) => !isOtTask(t));
-    const used = new Set(g.items.map(({ r }) => r.taskId));
-    const t = pool.find((x) => !used.has(x.id));
-    if (!t) return flash("Khối này đã dùng hết hạng mục có thể chọn.", "err");
-    addCombo({ projectId: g.projectId, phaseId: g.phaseId, taskId: t.id }, "task");
-  };
 
   /* v4.9 — "+ Thêm dòng tăng ca" trong khối dự án: tạo dòng tăng ca trống (khung giờ đầu tiên chưa có dòng trống),
      nhân sự chọn "Tăng ca cho tác vụ" rồi mới nhập giờ. Mỗi khung giờ chỉ có một dòng trống cùng lúc (tránh trùng rowKey). */
-  const addOtRow = (g) => {
+  /* v13.50 — tách riêng để nút "Tăng ca" tự khoá khi không còn khung giờ trống, thay cho thông báo C5 cũ. */
+  const freeBandOf = (g) => {
     // v5.0: khung giờ lần lượt — dòng thứ nhất là khung đầu (17:30 – 21:00), dòng sau lấy khung kế tiếp, hết thì quay lại từ đầu
     const nOt = rows.filter((r) => groupKey(r) === g.key && isOtId(r.taskId) && (r.days[activeDay] > 0 || r.fresh === activeDay || dayKeys.has(rowKey(r)))).length;   // v9.2: đếm theo ngày đang xem
     const order = otBands.map((_, k) => otBands[(nOt + k) % otBands.length]);
-    const freeBand = order.find((t) => !rows.some((r) => groupKey(r) === g.key && !r.otFor && isOtId(r.taskId) && otBandKey(taskById.get(r.taskId) || t) === otBandKey(t)));
-    if (!freeBand) return flash("Chọn tác vụ cho dòng tăng ca đang trống trước đã.", "err");
+    return order.find((t) => !rows.some((r) => groupKey(r) === g.key && !r.otFor && isOtId(r.taskId) && otBandKey(taskById.get(r.taskId) || t) === otBandKey(t)));
+  };
+  const addOtRow = (g) => {
+    const freeBand = freeBandOf(g);
+    if (!freeBand) return undefined;
     const row = { projectId: g.projectId, phaseId: g.phaseId || DEFAULT_PHASE, taskId: freeBand.id, otFor: "", note: "", days: {}, fresh: activeDay };   // v9.2: fresh = dòng mới tạo ở ngày đang xem (điện thoại), không lưu lên server
     let last = -1;
     rows.forEach((r, k) => { if (groupKey(r) === g.key) last = k; });
@@ -460,7 +456,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       setDirty(true);
       return;
     }
-    if (dup >= 0) return flash("Đã có dòng cho tổ hợp này rồi.", "err");
+    if (dup >= 0) return undefined;   // v13.50 (C7): trùng C3, không báo
     setRows((r) => r.map((x, j) => (j === i ? next : x)));
     setDirty(true);
   };
@@ -487,15 +483,14 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       }
     }
     setCopying(false);
-    if (found.size === 0) return flash("Tuần trước chưa chấm công nên không có gì để chép.", "err");
+    if (found.size === 0) return undefined;   // v13.50 (C8)
     const have = new Set(rows.map(rowKey));
     const toAdd = [...found.entries()].filter(([k]) => !have.has(k)).map(([, v]) => v);
-    if (toAdd.length === 0) return flash("Các dòng của tuần trước đều đã có trong tuần này.");
+    if (toAdd.length === 0) return undefined;   // v13.50 (B3)
     // v3.2: các khối vừa chép được mở sẵn, hiện đủ hạng mục để nhập giờ
     const keys = new Set(toAdd.map(groupKey));
     setRows(expandIn(sortByGroup([...rows, ...toAdd]), keys)); setDirty(true);
     setOpenKeys((s) => new Set([...s, ...keys]));
-    flash(`Đã chép ${keys.size} khối từ tuần trước. Nhập giờ rồi bấm ✓ ở từng khối.`);
   };
   const setHour = (i, d, v) => {
     const n = v === "" ? undefined : Math.max(0, Math.min(24, Number(v)));
@@ -606,21 +601,18 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     const seen = new Set();
     for (const r of rows) {
       const k = rowKey(r);
-      if (seen.has(k)) { flash("Có 2 dòng trùng Dự án + Giai đoạn + Hạng mục. Gộp lại giúp em.", "err"); return false; }
+      if (seen.has(k)) return false;   // v13.50 (C9): hai dòng trùng thì không ghi; dòng trùng nhìn thấy ngay trên bảng
       seen.add(k);
     }
     { const msg = otProblem(); if (msg) { flash(msg, "err"); return false; } }
-    if (submitMode === "submit" && !days.some((d) => !isSent(d) && !pastLk(d) && sendTotal(d) > 0)) {
-      flash("Chưa có giờ mới để gửi. Nhập giờ vào các ngày chưa gửi trước đã.", "err");
-      return false;
-    }
+    /* v13.50 (C11 + C12) — không báo nữa: nút "Gửi giờ công" đã bị khoá khi chưa có giờ mới nào để gửi. */
+    if (submitMode === "submit" && !days.some((d) => !isSent(d) && !pastLk(d) && sendTotal(d) > 0)) return false;
 
     setSaving(true);
     /* v1.8: đọc lại đúng các tháng của nhân sự này ngay trước khi ghi, rồi mới chèn giờ của tuần đang sửa
        vào. Không đọc lại được thì dừng, không ghi bản cũ lên server. */
     if (!(await refreshTs(empId, yms))) {
-      setSaving(false); setSaveFailed(true);
-      flash(`Chưa ghi được — ${LAST_STORAGE_ERROR || "mất kết nối"}`, "err");
+      setSaving(false); setSaveFailed(true);   // v13.50 (C13): dải đỏ "Chưa ghi được lên hệ thống" đã nói, khỏi báo thêm
       return false;
     }
     const next = { ...buckets };
@@ -663,8 +655,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     }
     if (!admin && submitMode === "submit" && newly.length === 0) {
       // các ngày định gửi đã được gửi/khoá từ máy khác trong lúc đang nhập
-      setSaving(false); setDirty(false); setReloadKey((k) => k + 1);
-      flash("Không có giờ mới nào được ghi: ngày đã gửi trước đó hoặc dự án đã đóng. Màn hình vừa được tải lại.", "err");
+      setSaving(false); setDirty(false); setReloadKey((k) => k + 1);   // v13.50 (C15): bỏ báo, màn hình tự tải lại
       return false;
     }
 
@@ -675,13 +666,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     if (failed.length > 0) {
       // giữ nguyên dirty để nút Lưu vẫn sáng và người dùng biết là chưa xong
       setSaving(false);
-      setSaveFailed(true);
-      flash(
-        RATE_LIMITED
-          ? "Đã chạm hạn mức lệnh của phiên — tải lại trang rồi nhập lại."
-          : `Chưa ghi được — ${LAST_STORAGE_ERROR}`,
-        "err"
-      );
+      setSaveFailed(true);   // v13.50 (C13 + C14): dải đỏ bên dưới đã báo, bỏ hộp nổi
       return false;
     }
 
@@ -720,10 +705,9 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     }
     const text = lines.join("\n");
     try {
-      await navigator.clipboard.writeText(text);
-      flash("Đã chép vào bộ nhớ tạm. Dán vào ghi chú hoặc tin nhắn để giữ lại.");
+      await navigator.clipboard.writeText(text);   // v13.50 (B6): chép xong không báo
     } catch {
-      flash("Trình duyệt không cho chép tự động. Chụp màn hình lại giúp em.", "err");
+      flash("Trình duyệt không cho chép tự động. Chụp màn hình lại giúp em.", "err");   // C20: giữ — không chép được thì phải nói
     }
   };
 
@@ -763,7 +747,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   }, [monday, otBusy, onOtReady]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const askSubmitWeek = () => {
-    if (toSend.length === 0) return flash("Chưa có giờ mới để gửi. Nhập giờ vào các ngày chưa gửi (tới hôm nay) trước đã.", "err");
+    if (toSend.length === 0) return undefined;   // v13.50 (C12): nút đã khoá sẵn, không báo nữa
     const msg = otProblem();   // v4.9: báo lỗi dòng tăng ca trước khi hỏi xác nhận gửi
     if (msg) return flash(msg, "err");
     setAskSubmit(true);
@@ -790,14 +774,14 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     const first = rows.findIndex((r) => groupKey(r) === gk);
     if (patch.projectId !== undefined) {
       const pid = patch.projectId;
-      if (mine.some(rowHasHours)) return flash("Khối đã có giờ. Xoá giờ trong khối (hoặc xoá khối) trước khi đổi dự án.", "err");
+      if (mine.some(rowHasHours)) return undefined;   // v13.50 (C16): ô chọn dự án đã khoá sẵn khi khối có giờ
       const phaseId = pid === NO_PROJECT ? DEFAULT_PHASE : ((admin ? openPhasesOf(pid) : setOpenPhases(pid))[0]?.id || NO_PHASE);
       const nk = groupKey({ projectId: pid, phaseId });
       if (nk !== gk && rows.some((r) => groupKey(r) === nk)) {
-        return flash(`${projFull(pid)}${pid === NO_PROJECT ? "" : ` · ${phaseLabel(phaseId)}`} đã có ở khối khác — bấm nút Sửa ở khối đó để chấm thêm.`, "err");
+        return flash(`${projFull(pid)}${pid === NO_PROJECT ? "" : ` · ${phaseLabel(phaseId)}`} đã có ở khối khác — bấm nút Sửa ở khối đó để chấm thêm.`, "err");   // C17: giữ
       }
       const pool = poolFor(pid).filter((t) => !isOtTask(t));   // v5.1: dòng tăng ca chỉ tạo bằng nút Tăng ca / Thêm dòng tăng ca
-      if (!pool.length) return flash(pid === NO_PROJECT ? "Chưa có tác vụ chung nào." : "Bạn chưa có tác vụ dự án nào cho vai trò của mình. Báo quản lý bổ sung trong tab Tác vụ.", "err");
+      if (!pool.length) return undefined;   // v13.50 (C19): không còn báo
       const next = rows.filter((r) => groupKey(r) !== gk);
       next.splice(first, 0, ...pool.map((t) => ({ projectId: pid, phaseId, taskId: t.id, note: "", days: {} })));
       gridInputs.current = {}; mobileInputs.current = [];
@@ -809,7 +793,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     if (patch.phaseId !== undefined) {
       const nk = groupKey({ projectId: mine[0].projectId, phaseId: patch.phaseId });
       if (nk === gk) return;
-      if (rows.some((r) => groupKey(r) === nk)) return flash(`${phaseLabel(patch.phaseId)} của dự án này đã có ở khối khác — bấm nút Sửa ở khối đó.`, "err");
+      if (rows.some((r) => groupKey(r) === nk)) return undefined;   // v13.50 (C18): trùng C17
       setRows(rows.map((r) => (groupKey(r) === gk ? { ...r, phaseId: patch.phaseId } : r)));
       setOpenKeys((s) => { if (!s.has(gk)) return s; const n = new Set(s); n.delete(gk); n.add(nk); return n; });
       setDirty(true);
@@ -1139,7 +1123,6 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     setRows(sortByGroup([...base, ...add])); setDirty(true);
     setDayKeys((s2) => new Set([...s2, ...picked.map((tid) => rowKey({ projectId: pid, phaseId: ph || DEFAULT_PHASE, taskId: tid }))]));
     setAddSheet(null);
-    flash(`Đã thêm ${add.length} tác vụ. Bấm − / + hoặc chạm vào số để nhập giờ.`);
   };
 
   return (
@@ -1265,17 +1248,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
         </div>
       )}
 
-      {!loading && myTasks.length === 0 && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-amber-900 bg-amber-950 p-3 text-sm text-amber-100">
-          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-400" />
-          <div>
-            {emp?.role
-              ? <>Vai trò <b>{roleLabel(emp.role)}</b> chưa được gán tác vụ nào.</>
-              : <>Bạn chưa được phân vai trò và chưa có tác vụ dùng chung nào.</>}
-            {" "}Nhờ quản lý vào tab Tác vụ bổ sung, hoặc kiểm tra lại vai trò của bạn ở tab Nhân sự.
-          </div>
-        </div>
-      )}
+      {/* v13.50 (A3) — bỏ dải "Vai trò … chưa được gán tác vụ nào". */}
 
       {loading ? (
         <div className="flex items-center gap-2 p-10 text-sm text-slate-400"><Loader2 className="animate-spin" size={16} /> Đang tải bảng công…</div>
@@ -1336,10 +1309,10 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                         <div className="flex items-center gap-2">
                           <div className="shrink-0" style={{ width: GUT }}>
                             {open ? (
-                              <button onClick={() => doneGroup(g.key)} title="Xong — thu gọn khối này (chưa gửi)"
+                              <button onClick={() => doneGroup(g.key)}
                                 className={`${iconBtn} border-teal-600 bg-teal-600 text-white hover:border-teal-500 hover:bg-teal-500 hover:text-white`}><Check size={16} /></button>
                             ) : canEdit ? (
-                              <button onClick={() => editGroup(g.key)} title="Sửa giờ của khối này"
+                              <button onClick={() => editGroup(g.key)}
                                 className={`${iconBtn} pen-glow`}><Pencil size={14} /></button>
                             ) : null}
                           </div>
@@ -1384,7 +1357,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                         {open && sec.ot && sec.items.length === 0 && (
                           <tr><td colSpan={9} className="px-3 pb-2.5 pt-2">
                             <div style={{ paddingLeft: GUT + 8 }}>
-                              <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r)}
+                              <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r) || !freeBandOf(g)}
                                 className={`${btnBase} border border-teal-900 text-teal-300 hover:border-teal-700 disabled:opacity-40`}><Zap size={14} /> Tăng ca</button>
                             </div>
                           </td></tr>
@@ -1475,7 +1448,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                         {open && sec.ot && sec.items.length > 0 && (
                           <tr><td colSpan={9} className="px-3 pb-2.5 pt-1.5">
                             <div style={{ paddingLeft: GUT + 8 }}>
-                              <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r)}
+                              <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r) || !freeBandOf(g)}
                                 className={`${btnBase} border border-teal-900 text-teal-300 hover:border-teal-700 disabled:opacity-40`}><Plus size={14} /> Thêm dòng tăng ca</button>
                             </div>
                           </td></tr>
@@ -1505,7 +1478,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                       {days.map((d) => {
                         const ot = otHrs(d);
                         const hot = ot > OT_ALERT; // vượt ngưỡng thì đổi đỏ, khỏi phải nhẩm
-                        return <td key={d} title={hot ? `OT vượt ${OT_ALERT} giờ` : undefined}
+                        return <td key={d}
                           className={`px-1 py-2 text-center ${dayCol(d)} ${hot ? "font-semibold text-red-400" : ot ? "text-teal-400" : "text-slate-700"}`}>{ot ? ot.toFixed(1) : "·"}</td>;
                       })}
                       <td className={`px-2 py-2 text-center font-semibold ${anyOtHigh ? "text-red-400" : "text-teal-400"}`}>{otTotal.toFixed(1)}</td>
@@ -1665,7 +1638,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                       </div>
                       {open && sec.ot && (
                         <div className="px-3 pt-1">
-                          <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r)}
+                          <button onClick={() => addOtRow(g)} disabled={locked || projClosed(g.items[0].r) || !freeBandOf(g)}
                             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-teal-900 px-3 text-xs text-teal-300 disabled:opacity-40">
                             {sec.items.length ? <><Plus size={13} /> Thêm dòng tăng ca</> : <><Zap size={13} /> Tăng ca</>}</button>
                         </div>
@@ -1718,7 +1691,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
             <CheckCircle2 size={15} /> Đã gửi giờ công
           </button>
         ) : (
-          <button onClick={() => (admin ? save("submit") : askSubmitWeek())} disabled={saving || locked} className={`col-span-2 w-full md:w-auto ${btnPrimary} disabled:opacity-40`}>
+          <button onClick={() => (admin ? save("submit") : askSubmitWeek())} disabled={saving || locked || (!admin && toSend.length === 0)} className={`col-span-2 w-full md:w-auto ${btnPrimary} disabled:opacity-40`}>
             {saving && !admin ? <Loader2 className="animate-spin" size={15} /> : <CheckCircle2 size={15} />} {admin ? "Đánh dấu đã gửi" : "Gửi giờ công"}
           </button>
         )}
@@ -1735,7 +1708,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                 <CheckCircle2 size={15} /> Đã gửi giờ công
               </button>
             ) : (
-              <button onClick={askSubmitWeek} disabled={saving || locked}
+              <button onClick={askSubmitWeek} disabled={saving || locked || toSend.length === 0}
                 className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-teal-600 text-sm font-semibold text-white disabled:opacity-40">
                 <CheckCircle2 size={15} /> Gửi giờ công
                 {toSend.length > 0 && <span className="rounded-full bg-white/25 px-2 text-xs font-medium">{toSend.length} ngày</span>}
