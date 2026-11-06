@@ -1,6 +1,17 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.45
+   ARTIUS — Quản lý giờ công theo dự án · v13.46
+   Mới ở v13.46 — Kế hoạch › So với thực tế: thêm khoảng "TUẦN NÀY (đang chạy)".
+     Trước đây màn này cắt bỏ tuần hiện tại nên giữa tuần không thấy dự án nào đang lệch quân để bù.
+     Nay chọn "Tuần này" thì:
+       · kế hoạch cả tuần được CẮT THEO TỈ LỆ giờ chuẩn đã trôi qua (gồm cả hôm nay, trừ ngày lễ),
+         để không so một tuần mới đi nửa chặng với kế hoạch trọn tuần;
+       · cột Thực tế tính cả GIỜ NHÁP chưa bấm gửi — không có nó thì giữa tuần cột này gần như trống,
+         vì mọi người thường gửi vào cuối tuần. Dải xanh phía trên ghi rõ bao nhiêu giờ còn là nháp;
+       · ô "Quân số kỳ này" cũng cắt theo cùng tỉ lệ;
+       · các kết luận "thấp hơn …%" / "chưa ai làm" vẫn mang dấu * vì tuần chưa xong.
+     Tuần đã qua giữ nguyên cách cũ: chỉ giờ đã gửi, kế hoạch trọn tuần.
+
    Mới ở v13.45 — Kế hoạch › So với thực tế, dọn bớt chữ ở bảng kết luận bên phải:
      · Bỏ dòng "bấm một vai trò để mở / đóng danh sách người".
      · Bảng vai trò chỉ còn tên đầy đủ (Thiết kế, Họa viên 3D…), bỏ mã TK / 3D đứng trước.

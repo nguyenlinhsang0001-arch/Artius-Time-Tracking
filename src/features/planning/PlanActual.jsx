@@ -12,7 +12,7 @@
    Màn này CHỈ ĐỌC. */
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Search, SlidersHorizontal, X } from "lucide-react";
-import { addDays, effortHoursFor, fmt, makeHolidayIndex, mondayOf, weeklyTarget } from "../../core/date.jsx";
+import { addDays, effortHoursFor, fmt, makeHolidayIndex, minHoursFor, mondayOf, weekDays, weeklyTarget } from "../../core/date.jsx";
 import { NO_PROJECT, isIdleTask, isLeaveTask, isOtId } from "../../core/domain.jsx";
 import { isLight } from "../../core/theme.jsx";
 import { ALLOC_ST, allocLimits, allocState } from "../../shared/alloc.jsx";
@@ -44,7 +44,7 @@ const ROWN = "md:grid-cols-[minmax(180px,1.15fr)_64px_64px_minmax(80px,0.5fr)_mi
 const GROUPS = { none: "Có kế hoạch, chưa ai làm", out: "Làm ngoài kế hoạch", mix: "Đủ người nhưng sai vai trò", over: "Thực tế nhiều hơn kế hoạch", under: "Thực tế ít hơn kế hoạch", ok: "Đúng kế hoạch" };
 const ORDER = { none: 0, out: 1, mix: 2, over: 3, under: 4, ok: 5 };
 
-export function PlanActual({ plan, projects, roles, start, realWeeks, detail, staff, hoursCfg, prole = (r) => r, loading = false,
+export function PlanActual({ plan, projects, roles, start, realWeeks, detail, draft = [], staff, hoursCfg, prole = (r) => r, loading = false,
   hidden = new Set(), support = [], /* v13.42 */ cap = new Map(), lim = { tol: 15, mix: 30 },
   /* v13.43 — chỉnh ngưỡng ngay tại đây; không truyền onLim (hoặc chỉ xem) thì nút biến mất */
   onLim = null, flash = null,
@@ -121,23 +121,40 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
   const assigned = (pid) => staff.some((e) => e.allProjects || (Array.isArray(e.projects) && e.projects.includes(pid)))
     || support.some((x) => x.pid === pid && x.from <= today && today <= x.until && staff.some((e) => e.id === x.empId));
   const thisMon = fmt(mondayOf(new Date()));
+  /* v13.46 — giữ cả TUẦN ĐANG CHẠY (trước đây cắt bỏ), vì chế độ "Tuần này" cần nó.
+     Giờ nháp chỉ nhận của tuần đang chạy: tuần đã qua mà đem giờ chưa gửi vào thì sai bản tổng kết. */
   const hoursBy = useMemo(() => {
-    const m = new Map();   /* monday -> [{ empId, pid, h }] */
-    for (const d of detail || []) {
+    const m = new Map();   /* monday -> [{ empId, pid, task, h, dr }] */
+    const push = (d, dr) => {
       const mon = fmt(mondayOf(new Date(d.date)));
-      if (mon >= thisMon) continue;
+      if (mon > thisMon || (dr && mon !== thisMon)) return;
       if (!m.has(mon)) m.set(mon, []);
-      m.get(mon).push({ empId: d.empId, pid: d.projectId, task: d.taskId, h: Number(d.hours) || 0 });
-    }
+      m.get(mon).push({ empId: d.empId, pid: d.projectId, task: d.taskId, h: Number(d.hours) || 0, dr });
+    };
+    for (const d of detail || []) push(d, false);
+    for (const d of draft || []) push(d, true);
     return m;
-  }, [detail, thisMon]);
+  }, [detail, draft, thisMon]);
   const doneWeeks = useMemo(() => realWeeks.filter((w) => w.monday < thisMon && hoursBy.has(w.monday)), [realWeeks, hoursBy, thisMon]);
+  /* v13.46 — tuần đang chạy và phần đã trôi qua của nó: kế hoạch cả tuần phải chia theo tỉ lệ này,
+     nếu không thì giữa tuần dự án nào cũng ra "thấp hơn kế hoạch". Tính theo GIỜ CHUẨN đã tới
+     (gồm cả hôm nay, vì người ta chấm công trọn ngày), bỏ ngày lễ. */
+  const nowW = useMemo(() => realWeeks.find((w) => w.monday === thisMon) || null, [realWeeks, thisMon]);
+  const frac = useMemo(() => {
+    const hs = makeHolidayIndex(holidays), today = fmt(new Date());
+    let tot = 0, got = 0;
+    for (const d of weekDays(thisMon)) { const h = minHoursFor(d, hoursCfg, hs) || 0; tot += h; if (d <= today) got += h; }
+    return tot > 0 ? Math.min(1, Math.max(0.01, got / tot)) : 1;
+  }, [thisMon, hoursCfg, holidays]);
   const weeks = useMemo(() => {
+    if (range === "now") return nowW ? [nowW] : [];
     if (!doneWeeks.length) return [];
     if (range === "last") return doneWeeks.slice(-1);
     if (range === "4") return doneWeeks.slice(-4);
     return doneWeeks;
-  }, [doneWeeks, range]);
+  }, [doneWeeks, range, nowW]);
+  const running = range === "now";   /* đang xem tuần chưa xong */
+  useEffect(() => { if (!doneWeeks.length && nowW && range !== "now") setRange("now"); }, [doneWeeks.length, nowW, range]);
   const nW = weeks.length || 1;
   const wLabel = (w) => { const d = new Date(w.monday); return `T${d.getMonth() + 1}·${Math.min(4, Math.ceil(d.getDate() / 7))}`; };
   const rangeTxt = weeks.length ? (weeks.length === 1 ? `tuần ${wLabel(weeks[0])} (${fmt(new Date(weeks[0].monday)).slice(8, 10)}/${fmt(new Date(weeks[0].monday)).slice(5, 7)} – ${fmt(addDays(new Date(weeks[0].monday), 6)).slice(8, 10)}/${fmt(addDays(new Date(weeks[0].monday), 6)).slice(5, 7)})`
@@ -147,21 +164,23 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
   const data = useMemo(() => {
     const rows = new Map();
     const get = (pid) => { if (!rows.has(pid)) rows.set(pid, { pid, kh: {}, tt: {}, ppl: new Map(), wk: weeks.map(() => ({ kh: 0, tt: 0 })) }); return rows.get(pid); };
-    let common = 0, total = 0;
+    let common = 0, total = 0, drft = 0;
     const per = new Map();   /* empId -> Map(pid | "" (việc chung / vắng) -> giờ) */
     const add = (e, k, h) => { if (!per.has(e)) per.set(e, new Map()); const m = per.get(e); m.set(k, (m.get(k) || 0) + h); };
+    /* v13.46 — tuần đang chạy: kế hoạch cả tuần chia theo phần ngày đã trôi qua, để so cho cùng mốc */
+    const sc = running ? frac : 1;
     weeks.forEach((w, k) => {
       const i = w.i;
       for (const pid of Object.keys(P || {})) {
         if (!liveIds.has(pid)) continue;   /* v13.3: dự án đã đóng / tạm ẩn không tính kế hoạch */
         for (const r of roles) {
-        const v = cellOf(P, pid, r.id, i); if (!v) continue;
+        const v = cellOf(P, pid, r.id, i) * sc; if (!v) continue;
         const o = get(pid); o.kh[r.id] = (o.kh[r.id] || 0) + v / nW; o.wk[k].kh += v;
         }
       }
       for (const x of hoursBy.get(w.monday) || []) {
         if (!x.h) continue;
-        total += x.h;
+        total += x.h; if (x.dr) drft += x.h;
         if (!x.pid || x.pid === NO_PROJECT || !projIds.has(x.pid) || isLeaveTask(x.task)) { common += x.h; add(x.empId, "", x.h); continue; }
         add(x.empId, x.pid, x.h);
         const rid = roleOf.get(x.empId); if (!rid) continue;
@@ -191,9 +210,9 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
     }).filter((x) => x.miss.length);
     const missNames = [...new Set(gap.flatMap((x) => x.miss.map((e) => e.name || e.id)))];
     const lastGap = gap.find((x) => x.w.monday === weeks[weeks.length - 1]?.monday);
-    return { list, common, total, missing: lastGap ? lastGap.miss.length : 0,
+    return { list, common, total, drft, missing: lastGap ? lastGap.miss.length : 0,
       gapWeeks: gap.length, gapNames: missNames, nStaff: who.length, per };
-  }, [P, weeks, hoursBy, roles, projects, projIds, liveIds, roleOf, STD, nW, staff, lim]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [P, weeks, hoursBy, roles, projects, projIds, liveIds, roleOf, STD, nW, staff, lim, running, frac]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   /* v13.44 — hệ số tải của từng người TRONG CHÍNH KHOẢNG ĐANG XEM, dùng đúng allocState và công thức %
      của tab Nhân sự để hai nơi không ra hai con số. Giờ chuẩn lấy STD × số tuần — cùng thước với cả màn này
@@ -231,7 +250,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
   }, [detail, weeks, hoursCfg, holidays, STD, nW, aLim]);
 
   if (loading) return <p className="px-4 py-8 text-sm text-slate-500">Đang tải giờ đã chấm…</p>;
-  if (!doneWeeks.length) return <p className="px-4 py-8 text-sm text-slate-500">Chưa có tuần nào đã qua có giờ gửi trong hai năm đang xem.</p>;
+  if (!doneWeeks.length && !nowW) return <p className="px-4 py-8 text-sm text-slate-500">Chưa có tuần nào đã qua có giờ gửi trong khoảng năm đang xem.</p>;
 
   /* v13.42 — lọc theo kết luận và tìm dự án, cho giống tab "Theo dự án" bên cạnh.
      Lọc chỉ đổi BẢNG; các ô số liệu phía trên vẫn tính trên toàn bộ, để con số tổng không nhảy theo bộ lọc. */
@@ -246,22 +265,23 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
   /* v13.42 — quân số kỳ này và các vai trò có KẾ HOẠCH VƯỢT QUÁ số người đang có.
      Kế hoạch đặt 3 người 3D trong khi công ty chỉ có 2 thì suất đó không bao giờ chạy đủ,
      mà bảng xếp theo dự án không chỗ nào nói ra điều đó. */
-  const CAP = roles.reduce((a, r) => a + (cap.get(r.id) || 0), 0);
+  const CAP = roles.reduce((a, r) => a + (cap.get(r.id) || 0), 0) * (running ? frac : 1);
   const overCap = roles.map((r) => {
-    const c = cap.get(r.id) || 0, k = ALL.reduce((a, o) => a + (o.kh[r.id] || 0), 0);
+    const c = (cap.get(r.id) || 0) * (running ? frac : 1), k = ALL.reduce((a, o) => a + (o.kh[r.id] || 0), 0);
     return { r, c, k, gap: k - c };
   }).filter((x) => x.c > 0 && x.gap > 0.01).sort((a, b) => b.gap - a.gap);
   const mx = Math.max(0.5, ...ALL.map((o) => Math.abs(o.d)));   // thước thanh lệch giữ nguyên khi lọc
   /* v13.41 — chỉ "thấp hơn" và "chưa ai làm" mới có thể do người chưa gửi giờ gây ra;
      các kết luận còn lại không bị ảnh hưởng nên không đánh dấu. */
-  const doubt = (st) => data.gapWeeks > 0 && (st === "under" || st === "none");
+  const doubt = (st) => (running || data.gapWeeks > 0) && (st === "under" || st === "none");
   const pill = (st, o) => {
     const map = { none: [C.red, C.redBg, "chưa ai làm"], out: [C.over, C.overBg, "ngoài kế hoạch"], mix: [C.mix, C.mixBg, "đủ người, lệch vai trò"], ok: [C.ok, C.okBg, "đúng kế hoạch"],
       over: [C.over, C.overBg, `vượt ${o.KH ? Math.round((o.d / o.KH) * 100) : 0}%`], under: [C.under, C.underBg, `thấp hơn ${o.KH ? Math.round((-o.d / o.KH) * 100) : 0}%`] };
     const [c, bg, t] = map[st];
     const q = doubt(st);
     return <span className="inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px]" style={{ color: c, background: bg }}
-      title={q ? `Còn ${data.gapNames.length} người chưa gửi giờ trong khoảng này — số thực tế có thể thấp hơn thực tế, kết luận này chưa chắc` : undefined}>
+      title={q ? (running ? `Tuần chưa xong và còn ${f0(r2(data.drft))} giờ nháp chưa gửi — kết luận này chưa chắc`
+        : `Còn ${data.gapNames.length} người chưa gửi giờ trong khoảng này — số thực tế có thể thấp hơn thực tế, kết luận này chưa chắc`) : undefined}>
       {t}{q && <span style={{ opacity: .75 }}> *</span>}</span>;
   };
   /* v13.41 — biểu đồ nhỏ theo TUẦN trong từng hàng. Khi xem nhiều tuần, bảng đang nén thành một con số
@@ -425,7 +445,9 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2.5 md:px-4">
         <span className="text-xs text-slate-500">Khoảng</span>
         <div className="flex overflow-hidden rounded-md border border-slate-700">
-          <button onClick={() => setRange("last")} className={seg(range === "last")}>Tuần trước</button>
+          {/* v13.46 — tuần đang chạy: kế hoạch chia theo phần ngày đã qua, thực tế gồm cả giờ nháp */}
+          <button onClick={() => setRange("now")} disabled={!nowW} className={`${seg(range === "now")} disabled:opacity-40`}>Tuần này</button>
+          <button onClick={() => setRange("last")} disabled={!doneWeeks.length} className={`${seg(range === "last")} disabled:opacity-40`}>Tuần trước</button>
           <button onClick={() => setRange("4")} disabled={doneWeeks.length < 2} className={`${seg(range === "4")} disabled:opacity-40`}>4 tuần gần nhất</button>
           <button onClick={() => setRange("all")} disabled={doneWeeks.length < 2} className={`${seg(range === "all")} disabled:opacity-40`}>Từ khi có giờ chấm</button>
         </div>
@@ -471,7 +493,8 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
             </>}
           </div>
         )}
-        <span className={`${onLim ? "ml-2" : "ml-auto"} text-[11.5px] text-slate-500`}>{rangeTxt} · {f0(STD)} giờ = 1 người</span>
+        <span className={`${onLim ? "ml-2" : "ml-auto"} text-[11.5px] text-slate-500`}>
+          {rangeTxt}{running ? ` · đang chạy, đã qua ${Math.round(frac * 100)}%` : ""} · {f0(STD)} giờ = 1 người</span>
       </div>
 
       <div className="grid gap-2 border-b border-slate-800 px-3 py-3 sm:grid-cols-2 md:px-4 xl:grid-cols-6">
@@ -542,7 +565,22 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
 
       {/* v13.41 — dải cảnh báo khi khoảng đang xem có tuần thiếu giờ gửi. Đây là chỗ dễ kết luận sai nhất:
           thiếu người gửi thì cột Thực tế thấp giả, mà chip "thấp hơn …%" vẫn hiện như dự án chạy chậm thật. */}
-      {data.gapWeeks > 0 && (
+      {/* v13.46 — tuần đang chạy: nói rõ đang so với phần kế hoạch nào và bao nhiêu giờ còn là nháp */}
+      {running && (
+        <div className="flex items-start gap-2.5 border-b px-3 py-2.5 text-[12.5px] md:px-4"
+          style={{ background: C.underBg, borderColor: C.line, color: C.under }}>
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+          <div>
+            <b className="font-semibold">Tuần đang chạy — số liệu chưa chốt.</b> Kế hoạch đã cắt còn {Math.round(frac * 100)}%
+            (phần ngày đã qua) để so cho cùng mốc.
+            <div className="mt-0.5 text-slate-400">
+              Thực tế gồm {f0(r2(data.drft))} giờ NHÁP chưa bấm gửi
+              {data.gapNames.length ? ` · ${data.gapNames.length} / ${data.nStaff} người chưa chấm giờ nào: ${data.gapNames.join(" · ")}` : " · mọi người đều đã chấm"}
+            </div>
+          </div>
+        </div>
+      )}
+      {!running && data.gapWeeks > 0 && (
         <div className="flex items-start gap-2.5 border-b px-3 py-2.5 text-[12.5px] md:px-4"
           style={{ background: C.mixBg, borderColor: C.line, color: C.mix }}>
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />

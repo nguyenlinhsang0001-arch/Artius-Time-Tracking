@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarRange, Camera, Download, Loader2, Merge, Redo2, RotateCcw, Save, Search, Undo2, X } from "lucide-react";
 import { fmt, mondayOf } from "../../core/date.jsx";
-import { dbTsSent, ensureMonths, useDataTick, weekDone } from "../../core/db.jsx";
+import { dbTs, dbTsSent, ensureMonths, useDataTick, weekDone } from "../../core/db.jsx";
 import { ROLES, isResigned } from "../../core/domain.jsx";
 import { CTRL, Panel, btnGhost, btnPrimary } from "../../core/ui.jsx";
 import { allocLimits } from "../../shared/alloc.jsx";
@@ -194,11 +194,23 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
       await ensureMonths(yms);
       if (!alive) return;
       const detail = [];
+      /* v13.46 — giờ NHÁP (chưa bấm gửi) của riêng TUẦN ĐANG CHẠY. Màn "So với thực tế" cần nó để
+         giữa tuần còn nhìn được dự án nào đang lệch quân mà bù; tuần đã qua vẫn chỉ tính giờ đã gửi. */
+      const draft = [];
+      const curMon = fmt(mondayOf(new Date()));
       for (const ym of yms) for (const e of staff) {
         const d = dbTsSent(e.id, ym); if (!d?.rows) continue;
         for (const r of d.rows) for (const [date, h] of Object.entries(r.days || {})) {
           if (!h) continue;
           detail.push({ empId: e.id, date, hours: Number(h), projectId: r.projectId, taskId: r.taskId });
+        }
+      }
+      for (const ym of yms) for (const e of staff) {
+        const b = dbTs(e.id, ym); if (!b?.rows) continue;
+        const sent = b.sent || {};
+        for (const r of b.rows) for (const [date, h] of Object.entries(r.days || {})) {
+          if (!h || sent[date] || fmt(mondayOf(new Date(date))) !== curMon) continue;
+          draft.push({ empId: e.id, date, hours: Number(h), projectId: r.projectId, taskId: r.taskId });
         }
       }
       /* tuần "đủ giờ": đã qua và mọi nhân sự còn làm đều đã gửi tuần đó */
@@ -209,7 +221,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
         const need = staff.filter((e) => !e.resignedAt || e.resignedAt > w.monday);
         if (need.length && need.every((e) => weekDone(e.id, w.monday))) ok.add(w.monday);
       }
-      if (alive) setTs({ detail, okWeeks: ok });
+      if (alive) setTs({ detail, draft, okWeeks: ok });
     })();
     return () => { alive = false; };
   }, [start, years, staff, realWeeks, tick]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -404,7 +416,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
         {mode === "ac" ? (
           <PlanActual plan={plan} projects={everyProject} roles={roles} start={start} realWeeks={realWeeks} hidden={hidden}
             support={Array.isArray(cfg.support) ? cfg.support : []}
-            detail={ts?.detail || []} staff={planStaff} hoursCfg={cfg.hours} prole={prole} loading={!ts}
+            detail={ts?.detail || []} draft={ts?.draft || []} staff={planStaff} hoursCfg={cfg.hours} prole={prole} loading={!ts}
             cap={cap} lim={planLimits(cfg)} flash={flash}
             holidays={cfg.holidays || []} aLim={allocLimits(cfg)}
             onLim={readOnly ? null : async (tol, mix) => {
