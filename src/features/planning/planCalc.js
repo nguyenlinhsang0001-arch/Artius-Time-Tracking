@@ -269,3 +269,11 @@ export const contribOf = (plan, projectIds, rid, wi) => projectIds
   .map((pid) => ({ pid, v: cellOf(plan, pid, rid, wi) }))
   .filter((x) => x.v > 0)
   .sort((x, y) => y.v - x.v);
+
+/* v13.42 — ngưỡng kết luận của màn "So với thực tế", trước đây gắn cứng trong PlanActual.
+   tol: lệch tổng trong bao nhiêu % kế hoạch thì coi là "đúng kế hoạch" (mặc định 15).
+   mix: tổng sai lệch theo vai trò vượt bao nhiêu % kế hoạch thì là "đủ người nhưng sai vai trò" (mặc định 30). */
+export const planLimits = (cfg) => ({
+  tol: Math.min(100, Math.max(1, Number(cfg?.planTol ?? 15))),
+  mix: Math.min(200, Math.max(1, Number(cfg?.planMix ?? 30))),
+});

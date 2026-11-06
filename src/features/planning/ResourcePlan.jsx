@@ -7,7 +7,7 @@ import { fmt, mondayOf } from "../../core/date.jsx";
 import { dbTsSent, ensureMonths, useDataTick, weekDone } from "../../core/db.jsx";
 import { ROLES, isResigned } from "../../core/domain.jsx";
 import { CTRL, Panel, btnGhost, btnPrimary } from "../../core/ui.jsx";
-import { PER_YEAR, actualByCell, diffCells, foldMerged, joinYears, normalizeYear, prunePlan, realWeeksOfYears, slotIndexOf, splitYears, weeksOfYears } from "./planCalc.js";
+import { PER_YEAR, actualByCell, diffCells, foldMerged, joinYears, normalizeYear, planLimits, prunePlan, realWeeksOfYears, slotIndexOf, splitYears, weeksOfYears } from "./planCalc.js";
 import { PlanActual } from "./PlanActual.jsx";
 import { PlanGrid } from "./PlanGrid.jsx";
 import { PlanProjects } from "./PlanProjects.jsx";
@@ -368,7 +368,8 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
         {mode === "ac" ? (
           <PlanActual plan={plan} projects={everyProject} roles={roles} start={start} realWeeks={realWeeks} hidden={hidden}
             support={Array.isArray(cfg.support) ? cfg.support : []}
-            detail={ts?.detail || []} staff={planStaff} hoursCfg={cfg.hours} prole={prole} loading={!ts} />
+            detail={ts?.detail || []} staff={planStaff} hoursCfg={cfg.hours} prole={prole} loading={!ts}
+            cap={cap} lim={planLimits(cfg)} />
         ) : mode === "pj" ? (
           <PlanProjects plan={plan} projects={everyProject} roles={roles} weeks={view} nowIndex={nowIdx}
             hidden={hidden} detail={ts?.detail || []} employees={cfg.employees || []} support={Array.isArray(cfg.support) ? cfg.support : []}

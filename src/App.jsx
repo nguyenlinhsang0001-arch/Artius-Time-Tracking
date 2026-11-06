@@ -1,6 +1,16 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.41
+   ARTIUS — Quản lý giờ công theo dự án · v13.42
+   Mới ở v13.42 — Kế hoạch › So với thực tế, bốn chỗ:
+     · Ô "Giờ việc chung / vắng" bấm được: bóc ra danh sách ai nghỉ / làm việc chung bao nhiêu giờ,
+       thay vì chỉ một con số tổng không biết của ai.
+     · Thêm thanh lọc theo kết luận và ô tìm dự án (gõ không dấu cũng ra), giống tab "Theo dự án".
+       Các ô số liệu phía trên vẫn tính trên TOÀN BỘ dự án, không đổi theo bộ lọc.
+     · Ngưỡng kết luận (lệch bao nhiêu % thì coi là "đúng kế hoạch", sai vai trò bao nhiêu % thì là
+       "đủ người nhưng sai vai trò") chuyển vào Thiết lập, trước đây gắn cứng 15% / 30% trong code.
+     · Thêm ô "Quân số kỳ này" (tổng giờ công ty có thể làm trong khoảng) và dải đỏ cảnh báo khi
+       kế hoạch của một vai trò xin nhiều hơn số người đang có — suất thừa đó không bao giờ chạy đủ.
+
    Mới ở v13.41 — Kế hoạch › So với thực tế, hai chỗ vá:
      · Cột "Từng tuần" trong bảng: mỗi tuần một cặp cột (kế hoạch nhạt, thực tế đặc — xanh lá đúng,
        cam vượt, xanh dương thiếu). Chỉ hiện khi khoảng đang xem có nhiều hơn một tuần. Trước đây cả

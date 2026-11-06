@@ -11,11 +11,11 @@
    không có ai được giao (thành viên dự án, quyền tất cả dự án, hoặc đang hỗ trợ dự án) trong số người tính kế hoạch.
    Màn này CHỈ ĐỌC. */
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Search, X } from "lucide-react";
 import { addDays, fmt, mondayOf, weeklyTarget } from "../../core/date.jsx";
 import { NO_PROJECT, isLeaveTask } from "../../core/domain.jsx";
 import { isLight } from "../../core/theme.jsx";
-import { cellOf, foldMerged, joinYears, normalizeYear, slotIndexOf } from "./planCalc.js";
+import { cellOf, foldMerged, joinYears, normalizeYear, planLimits, slotIndexOf } from "./planCalc.js";
 import { listSnapshots, loadSnapshot } from "./planStore.js";
 
 const f0 = (n) => String(+Number(n).toFixed(2)).replace(".", ",");
@@ -44,7 +44,7 @@ const GROUPS = { none: "Có kế hoạch, chưa ai làm", out: "Làm ngoài kế
 const ORDER = { none: 0, out: 1, mix: 2, over: 3, under: 4, ok: 5 };
 
 export function PlanActual({ plan, projects, roles, start, realWeeks, detail, staff, hoursCfg, prole = (r) => r, loading = false,
-  hidden = new Set(), support = [] }) {
+  hidden = new Set(), support = [], /* v13.42 */ cap = new Map(), lim = { tol: 15, mix: 30 } }) {
   useThemeTick();
   const C = isLight() ? TONE.light : TONE.dark;
   const [range, setRange] = useState("last");   /* last | 4 | all */
@@ -55,6 +55,9 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
   const [hov, setHov] = useState(null);
   const [unit, setUnit] = useState("h");        /* h = giờ | p = người */
   const [tog, setTog] = useState({});           /* "pid|rid" -> mở / đóng do người dùng bấm */
+  const [openCom, setOpenCom] = useState(false);   /* v13.42: bóc giờ việc chung / vắng */
+  const [fSt, setFSt] = useState("all");           /* v13.42: lọc theo kết luận */
+  const [q, setQ] = useState("");                  /* v13.42: tìm dự án */
   const STD = weeklyTarget(hoursCfg) || 44;
   const colorOf = useMemo(() => new Map(roles.map((r, k) => [r.id, PALETTE[k % PALETTE.length]])), [roles]);
 
@@ -146,7 +149,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
       const KH = sum(o.kh), TT = sum(o.tt), d = TT - KH;
       const mis = roles.reduce((a, r) => a + Math.abs((o.tt[r.id] || 0) - (o.kh[r.id] || 0)), 0);
       const st = KH < 0.005 && TT > 0 ? "out" : TT < 0.005 && KH > 0 ? "none"
-        : Math.abs(d) <= Math.max(0.25, KH * 0.15) ? (mis > Math.max(0.5, KH * 0.3) ? "mix" : "ok") : d > 0 ? "over" : "under";
+        : Math.abs(d) <= Math.max(0.25, (KH * lim.tol) / 100) ? (mis > Math.max(0.5, (KH * lim.mix) / 100) ? "mix" : "ok") : d > 0 ? "over" : "under";
       const okR = roles.reduce((a, r) => a + Math.min(o.kh[r.id] || 0, o.tt[r.id] || 0), 0);
       return { ...o, p, KH, TT, d, st, okR };
     }).filter((o) => o.KH > 0.005 || o.TT > 0.005);
@@ -163,16 +166,30 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
     const lastGap = gap.find((x) => x.w.monday === weeks[weeks.length - 1]?.monday);
     return { list, common, total, missing: lastGap ? lastGap.miss.length : 0,
       gapWeeks: gap.length, gapNames: missNames, nStaff: who.length, per };
-  }, [P, weeks, hoursBy, roles, projects, projIds, liveIds, roleOf, STD, nW, staff]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [P, weeks, hoursBy, roles, projects, projIds, liveIds, roleOf, STD, nW, staff, lim]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <p className="px-4 py-8 text-sm text-slate-500">Đang tải giờ đã chấm…</p>;
   if (!doneWeeks.length) return <p className="px-4 py-8 text-sm text-slate-500">Chưa có tuần nào đã qua có giờ gửi trong hai năm đang xem.</p>;
 
-  const L = data.list;
+  /* v13.42 — lọc theo kết luận và tìm dự án, cho giống tab "Theo dự án" bên cạnh.
+     Lọc chỉ đổi BẢNG; các ô số liệu phía trên vẫn tính trên toàn bộ, để con số tổng không nhảy theo bộ lọc. */
+  const ALL = data.list;
+  const nrm = (x) => String(x || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").trim();
+  const kw = nrm(q);
+  const L = ALL.filter((o) => (fSt === "all" || o.st === fSt)
+    && (!kw || nrm(`${o.p.name} ${o.p.code || ""}`).includes(kw)));
   const cur = L.find((o) => o.pid === sel) || L[0];
-  const KH = L.reduce((a, o) => a + o.KH, 0), TT = L.reduce((a, o) => a + o.TT, 0), okR = L.reduce((a, o) => a + o.okR, 0);
-  const none = L.filter((o) => o.st === "none"), out = L.filter((o) => o.st === "out");
-  const mx = Math.max(0.5, ...L.map((o) => Math.abs(o.d)));
+  const KH = ALL.reduce((a, o) => a + o.KH, 0), TT = ALL.reduce((a, o) => a + o.TT, 0), okR = ALL.reduce((a, o) => a + o.okR, 0);
+  const none = ALL.filter((o) => o.st === "none"), out = ALL.filter((o) => o.st === "out");
+  /* v13.42 — quân số kỳ này và các vai trò có KẾ HOẠCH VƯỢT QUÁ số người đang có.
+     Kế hoạch đặt 3 người 3D trong khi công ty chỉ có 2 thì suất đó không bao giờ chạy đủ,
+     mà bảng xếp theo dự án không chỗ nào nói ra điều đó. */
+  const CAP = roles.reduce((a, r) => a + (cap.get(r.id) || 0), 0);
+  const overCap = roles.map((r) => {
+    const c = cap.get(r.id) || 0, k = ALL.reduce((a, o) => a + (o.kh[r.id] || 0), 0);
+    return { r, c, k, gap: k - c };
+  }).filter((x) => x.c > 0 && x.gap > 0.01).sort((a, b) => b.gap - a.gap);
+  const mx = Math.max(0.5, ...ALL.map((o) => Math.abs(o.d)));   // thước thanh lệch giữ nguyên khi lọc
   /* v13.41 — chỉ "thấp hơn" và "chưa ai làm" mới có thể do người chưa gửi giờ gây ra;
      các kết luận còn lại không bị ảnh hưởng nên không đánh dấu. */
   const doubt = (st) => data.gapWeeks > 0 && (st === "under" || st === "none");
@@ -316,13 +333,71 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
         <span className="ml-auto text-[11.5px] text-slate-500">{rangeTxt} · {f0(STD)} giờ = 1 người</span>
       </div>
 
-      <div className="grid gap-2 border-b border-slate-800 px-3 py-3 sm:grid-cols-2 md:px-4 xl:grid-cols-5">
-        {tile(nW > 1 && !isH ? "Kế hoạch bình quân / tuần" : "Kế hoạch", US(KH), `${L.filter((o) => o.KH > 0.005).length} dự án có kế hoạch`)}
-        {tile("Thực tế đổ vào dự án", US(TT), `chưa tính ${f0(r2(data.common))} giờ việc chung / vắng${data.missing ? ` · ${data.missing} người chưa gửi tuần cuối` : ""}`)}
+      <div className="grid gap-2 border-b border-slate-800 px-3 py-3 sm:grid-cols-2 md:px-4 xl:grid-cols-6">
+        {/* v13.42 — ô quân số: kế hoạch đang xin bao nhiêu phần số người thật sự có */}
+        {tile("Quân số kỳ này", CAP > 0 ? US(CAP) : "—",
+          CAP > 0 ? `kế hoạch dùng ${Math.round((KH / CAP) * 100)}%${overCap.length ? ` · ${overCap.length} vai trò xin quá người` : ""}` : "chưa đặt hệ số sẵn sàng",
+          overCap.length ? C.red : undefined)}
+        {tile(nW > 1 && !isH ? "Kế hoạch bình quân / tuần" : "Kế hoạch", US(KH), `${ALL.filter((o) => o.KH > 0.005).length} dự án có kế hoạch`)}
+        {/* v13.42 — bấm để bóc giờ việc chung / vắng ra theo người */}
+        <button onClick={() => setOpenCom((x) => !x)} aria-expanded={openCom} className="rounded-lg border border-slate-800 px-3 py-2 text-left hover:border-slate-600" style={{ background: C.tile }}>
+          <div className="text-[11px] text-slate-500">Thực tế đổ vào dự án</div>
+          <div className="mt-0.5 font-mono text-[19px] leading-tight text-slate-100">{US(TT)}</div>
+          <div className="text-[11.5px] text-slate-400">
+            <span className="underline decoration-dotted underline-offset-2">chưa tính {f0(r2(data.common))} giờ việc chung / vắng</span>
+            {data.missing ? ` · ${data.missing} người chưa gửi tuần cuối` : ""}
+          </div>
+        </button>
         {tile("Đúng dự án, đúng vai trò", KH > 0 ? `${Math.round((okR / KH) * 100)}%` : "—", `${U(okR)} / ${US(KH)} kế hoạch được làm đúng chỗ`)}
         {tile("Có kế hoạch mà chưa ai làm", `${none.length} dự án`, none.length ? `${none.map((o) => o.p.name).join(", ")} · ${US(none.reduce((a, o) => a + o.KH, 0))}` : "không có", none.length ? C.red : undefined)}
         {tile("Làm ngoài kế hoạch", US(out.reduce((a, o) => a + o.TT, 0)), out.length ? out.map((o) => o.p.name).join(", ") : "không có", out.length ? C.over : undefined)}
       </div>
+
+      {/* v13.42 — bóc giờ việc chung / vắng theo người. Con số này bằng hơn 10% tổng giờ nên
+          đáng xem ai đang ở trong đó, trước giờ chỉ là một dòng chữ. */}
+      {openCom && (
+        <div className="border-b border-slate-800 px-3 py-3 md:px-4" style={{ background: C.grp }}>
+          <div className="mb-1.5 text-[11px] uppercase tracking-wider text-slate-500">
+            Giờ việc chung / vắng mặt · {f0(r2(data.common))} giờ trong {rangeTxt}
+          </div>
+          {(() => {
+            const rows = [...data.per].map(([id, m]) => [id, m.get("") || 0]).filter(([, h]) => h > 0.005)
+              .sort((a, b) => b[1] - a[1]);
+            if (!rows.length) return <div className="text-[12.5px] text-slate-500">Không ai chấm giờ việc chung hay vắng mặt trong khoảng này.</div>;
+            const mxh = Math.max(...rows.map((x) => x[1]));
+            return (
+              <div className="grid gap-x-8 gap-y-1 md:grid-cols-2 xl:grid-cols-3">
+                {rows.map(([id, h]) => {
+                  const tot = [...(data.per.get(id) || new Map()).values()].reduce((a, v) => a + v, 0) || h;
+                  return (
+                    <div key={id} className="grid grid-cols-[minmax(0,1fr)_60px_80px] items-center gap-2 text-[12.5px]">
+                      <span className="truncate text-slate-200">{nameOf.get(id) || id}</span>
+                      <span className="text-right font-mono text-slate-300">{f0(r2(h))} h</span>
+                      <span className="relative h-1.5 overflow-hidden rounded" style={{ background: C.line }}
+                        title={`${f0(r2(h))} / ${f0(r2(tot))} giờ của người này trong khoảng`}>
+                        <span className="absolute inset-y-0 left-0 rounded" style={{ width: `${(h / mxh) * 100}%`, background: C.mix }} /></span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* v13.42 — vai trò có kế hoạch xin nhiều hơn số người đang có: suất đó không bao giờ chạy đủ */}
+      {overCap.length > 0 && (
+        <div className="flex items-start gap-2.5 border-b px-3 py-2.5 text-[12.5px] md:px-4"
+          style={{ background: C.redBg, borderColor: C.line, color: C.red }}>
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+          <div>
+            <b className="font-semibold">Kế hoạch xin quá số người đang có</b> — suất thừa ra sẽ không bao giờ chạy đủ.
+            <div className="mt-0.5 text-slate-400">
+              {overCap.map((x) => `${x.r.id} kế hoạch ${U(x.k)} / quân số ${U(x.c)}`).join(" · ")}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* v13.41 — dải cảnh báo khi khoảng đang xem có tuần thiếu giờ gửi. Đây là chỗ dễ kết luận sai nhất:
           thiếu người gửi thì cột Thực tế thấp giả, mà chip "thấp hơn …%" vẫn hiện như dự án chạy chậm thật. */}
@@ -341,12 +416,30 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
 
       <div className="grid items-start xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="min-w-0 border-slate-800 xl:border-r">
+          {/* v13.42 — thanh lọc theo kết luận + ô tìm dự án, dùng lại kiểu nút của tab "Theo dự án" */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2 md:px-4">
+            <div className="flex flex-wrap overflow-hidden rounded-md border border-slate-700">
+              <button onClick={() => setFSt("all")} aria-pressed={fSt === "all"} className={seg(fSt === "all")}>Tất cả <span className="opacity-60">{ALL.length}</span></button>
+              {["none", "out", "mix", "over", "under", "ok"].map((k) => {
+                const n = ALL.filter((o) => o.st === k).length;
+                return n ? <button key={k} onClick={() => setFSt(k)} aria-pressed={fSt === k} className={seg(fSt === k)}>{GROUPS[k]} <span className="opacity-60">{n}</span></button> : null;
+              })}
+            </div>
+            <div className="relative w-full sm:w-56">
+              <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tìm dự án" aria-label="Tìm dự án"
+                className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 pl-7 pr-7 text-[13px] text-slate-100 placeholder:text-slate-600" />
+              {q && <button onClick={() => setQ("")} aria-label="Xoá tìm" className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-200"><X size={14} /></button>}
+            </div>
+            {(fSt !== "all" || q) && <button onClick={() => { setFSt("all"); setQ(""); }} className="text-[12px] text-slate-400 underline-offset-2 hover:text-slate-200 hover:underline">Xoá lọc</button>}
+          </div>
+
           <div className={`hidden ${nW > 1 ? HEADN : HEAD1} items-center gap-3 border-b border-slate-800 px-4 py-2 text-[10.5px] uppercase tracking-wider text-slate-500 md:grid`}>
             <span>Dự án</span><span className="text-right">Kế hoạch</span><span className="text-right">Thực tế</span>
             {nW > 1 && <span>Từng tuần</span>}
             <span className="text-center">thiếu ← lệch → vượt</span><span>Theo vai trò · kế hoạch → thực tế</span><span>Kết luận</span>
           </div>
-          {L.length === 0 && <p className="px-4 py-6 text-sm text-slate-500">Khoảng này chưa có kế hoạch hay giờ chấm vào dự án nào.</p>}
+          {L.length === 0 && <p className="px-4 py-6 text-sm text-slate-500">{ALL.length ? "Không có dự án nào khớp bộ lọc." : "Khoảng này chưa có kế hoạch hay giờ chấm vào dự án nào."}</p>}
           {L.map((o, k) => {
             const w = (Math.abs(o.d) / mx) * 26, pos = o.d > 0;
             const on = cur && cur.pid === o.pid;
