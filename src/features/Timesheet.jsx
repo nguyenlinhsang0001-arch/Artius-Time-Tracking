@@ -208,14 +208,14 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     } catch { /* trình duyệt chặn lưu trữ: vẫn giữ trên màn hình như cũ */ }
   };
   const doneGroup = (gk) => {
-    const g0 = rows.find((r) => groupKey(r) === gk);
     const next = collapseIn(rows, new Set([gk]));
     setRows(next);
     setOpenKeys((s) => { const n = new Set(s); n.delete(gk); return n; });
     gridInputs.current = {}; mobileInputs.current = [];
     writeDraft(next);
+    /* v13.49 — bỏ thông báo "Đã tạm lưu giờ …": nút ✓ chỉ thu gọn khối và nhớ tạm trên MÁY NÀY,
+       chữ "đã lưu" làm người ta tưởng giờ đã nằm trên hệ thống. Khối biến mất thì vẫn phải báo. */
     if (!next.some((r) => groupKey(r) === gk)) flash("Khối này chưa có giờ nào nên đã bỏ khỏi bảng.", "err");
-    else flash(`Đã tạm lưu giờ ${g0 ? projFull(g0.projectId) : ""}. Thêm tác vụ cho dự án khác, xong hết thì bấm Gửi giờ công.`);
   };
   // v8.9 (điện thoại): thu gọn khối đang mở — chỉ giữ tác vụ có giờ, tạm lưu trên máy, không báo gì thêm
   const foldGroup = (gk) => {
@@ -1336,7 +1336,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                         <div className="flex items-center gap-2">
                           <div className="shrink-0" style={{ width: GUT }}>
                             {open ? (
-                              <button onClick={() => doneGroup(g.key)} title="Xong — tạm lưu giờ của khối này"
+                              <button onClick={() => doneGroup(g.key)} title="Xong — thu gọn khối này (chưa gửi)"
                                 className={`${iconBtn} border-teal-600 bg-teal-600 text-white hover:border-teal-500 hover:bg-teal-500 hover:text-white`}><Check size={16} /></button>
                             ) : canEdit ? (
                               <button onClick={() => editGroup(g.key)} title="Sửa giờ của khối này"

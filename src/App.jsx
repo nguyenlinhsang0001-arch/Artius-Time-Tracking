@@ -1,6 +1,12 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.48
+   ARTIUS — Quản lý giờ công theo dự án · v13.49
+   Mới ở v13.49 — Chấm công nhân viên: bỏ thông báo của nút ✓ ("Đã tạm lưu giờ … Thêm tác vụ cho
+     dự án khác, xong hết thì bấm Gửi giờ công."). Nút ✓ chỉ thu gọn khối và nhớ tạm trên MÁY NÀY,
+     chữ "đã lưu" làm người dùng tưởng giờ đã nằm trên hệ thống. Chú thích rê chuột đổi thành
+     "Xong — thu gọn khối này (chưa gửi)". Trường hợp khối không có giờ nào nên bị bỏ khỏi bảng
+     thì vẫn báo, vì lúc đó có thứ biến mất khỏi màn hình.
+
    Mới ở v13.48 — Chấm công của nhân viên:
      · Ô chọn dự án: "Khác" đổi thành "Việc chung / Vắng mặt" (chỉ ở màn nhân viên; các màn quản lý
        vẫn để "Khác" cho gọn cột).
