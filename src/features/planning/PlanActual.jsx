@@ -231,8 +231,8 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
       if (isOtId(d.taskId)) c.ot += h;
       else if (!isLeaveTask(d.taskId)) { c.reg += h; if (isIdleTask(d.taskId)) c.idle += h; }
       day.set(k, c);
-      const t = tot.get(d.empId) || { t: 0, ot: 0, idle: 0, eff: 0, by: new Map() };
-      t.t += h;
+      const t = tot.get(d.empId) || { t: 0, ot: 0, idle: 0, eff: 0, lv: 0, by: new Map() };
+      t.t += h; if (isLeaveTask(d.taskId)) t.lv += h;
       const pk = !d.projectId || d.projectId === NO_PROJECT || isLeaveTask(d.taskId) ? "" : d.projectId;
       t.by.set(pk, (t.by.get(pk) || 0) + h);
       tot.set(d.empId, t);
@@ -245,7 +245,10 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
     }
     const sd = STD * nW;
     const out = new Map();
-    for (const [eid, t] of tot) out.set(eid, { ...t, sd, st: allocState(t.t, t.ot, t.eff, t.idle, sd, aLim), p: sd ? Math.round(((t.t - t.idle) / sd) * 100) : null });
+    /* work = thời gian LÀM VIỆC thật: bỏ giờ vắng mặt và giờ trống việc. Dùng làm mẫu số cho
+       "…% thời gian làm việc của họ" — mẫu số cũ gồm cả hai thứ đó nên người nghỉ phép bị hiện thấp oan. */
+    for (const [eid, t] of tot) out.set(eid, { ...t, sd, work: Math.max(0, t.t - t.lv - t.idle),
+      st: allocState(t.t, t.ot, t.eff, t.idle, sd, aLim), p: sd ? Math.round(((t.t - t.idle) / sd) * 100) : null });
     return out;
   }, [detail, weeks, hoursCfg, holidays, STD, nW, aLim]);
 
@@ -345,16 +348,22 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
     return (
       <div className="py-1.5 pl-5 pr-1 text-[12px]" style={{ background: C.grp }}>
         {inP.length ? <>
-          <div className="mb-0.5 text-[10.5px] uppercase tracking-wider text-slate-500">Đã chấm vào dự án{planH ? ` · kế hoạch vai trò ${f0(Math.round(planH * 10) / 10)} h` : ""}</div>
-          {inP.map(([id, h]) => { const T2 = tot(id) || h; return (
+          {inP.map(([id, h]) => { const L = load.get(id); return (
             <div key={id} className="py-0.5">
               <div className="grid grid-cols-[minmax(0,1fr)_58px_110px] items-center gap-2">
                 <span className="truncate text-slate-200">{nameOf.get(id)}</span>
                 <span className="text-right font-mono text-slate-300">{f0(r2(h))} h</span>
-                <span className="relative h-1.5 overflow-hidden rounded" style={{ background: C.line }} title={`${f0(r2(h))} / ${f0(r2(T2))} h trong khoảng`}>
+                <span className="relative h-1.5 overflow-hidden rounded" style={{ background: C.line }} title={`${f0(r2(h))} / ${f0(r2(L?.work || h))} h làm việc trong khoảng`}>
                   <span className="absolute inset-y-0 left-0 rounded" style={{ width: `${Math.min(100, (h / mxH) * 100)}%`, background: colorOf.get(r.id) }} /></span>
               </div>
-              <div className="text-[11px] text-slate-500">{Math.round((h / T2) * 100)}% giờ của người này{planH ? ` · gánh ${Math.round((h / planH) * 100)}% kế hoạch vai trò` : ""}</div>
+              {/* v13.47 — mẫu số là THỜI GIAN LÀM VIỆC (bỏ vắng mặt, trống việc), kèm mức tải của khoảng
+                  để biết người này còn nhận thêm được không. Bỏ "gánh …% kế hoạch vai trò": hàng vai trò
+                  ngay trên đã có Kế hoạch, Thực tế và Lệch; chia nhỏ ra đầu người không thêm thông tin. */}
+              <div className="text-[11px] text-slate-500">
+                {L && L.work > 0.005 ? `${Math.round((h / L.work) * 100)}% thời gian làm việc của họ` : `${f0(r2(h))} h`}
+                {L && L.p != null && <> · <span style={{ color: L.st === "hi" ? C.red : L.st === "lo" ? C.mix : undefined }}>
+                  tải {nW > 1 ? "kỳ này" : "tuần"} {L.p}%{L.st === "hi" ? " — quá tải" : ""}</span></>}
+              </div>
             </div>); })}
         </> : <div className="mb-1" style={{ color: C.under }}>Không ai thuộc vai trò {r.name || r.id} chấm giờ vào dự án này.</div>}
         {sup.length > 0 && <>

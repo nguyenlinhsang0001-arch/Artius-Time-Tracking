@@ -1,6 +1,18 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.46
+   ARTIUS — Quản lý giờ công theo dự án · v13.47
+   Mới ở v13.47 — Kế hoạch › So với thực tế, khối người của từng vai trò ở bảng bên phải:
+     · Bỏ dòng tiêu đề "ĐÃ CHẤM VÀO DỰ ÁN · KẾ HOẠCH VAI TRÒ … H" — con số kế hoạch đã nằm
+       ngay ở cột Kế hoạch của hàng vai trò phía trên.
+     · Dòng chú thích dưới tên mỗi người đổi từ "…% giờ của người này · gánh …% kế hoạch vai trò"
+       thành "…% thời gian làm việc của họ · tải tuần …%". Hai sửa chữa:
+         – Mẫu số cũ là TỔNG GIỜ ĐÃ CHẤM, gồm cả giờ vắng mặt và giờ trống việc, nên người nghỉ phép
+           bị hiện tỉ lệ thấp như thể chia người đi chỗ khác. Nay mẫu số là giờ LÀM VIỆC thật.
+         – Bỏ "gánh …% kế hoạch vai trò": hàng vai trò ngay trên đã có Kế hoạch / Thực tế / Lệch,
+           chia nhỏ con số đó ra đầu người không thêm thông tin mà còn đẻ ra những số như "320%".
+           Thay bằng mức tải của chính người đó trong khoảng đang xem (cùng công thức tab Nhân sự),
+           tô đỏ khi quá tải — đó mới là thứ quyết định có kéo thêm việc cho họ được không.
+
    Mới ở v13.46 — Kế hoạch › So với thực tế: thêm khoảng "TUẦN NÀY (đang chạy)".
      Trước đây màn này cắt bỏ tuần hiện tại nên giữa tuần không thấy dự án nào đang lệch quân để bù.
      Nay chọn "Tuần này" thì:
