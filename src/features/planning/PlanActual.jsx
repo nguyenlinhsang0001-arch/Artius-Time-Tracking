@@ -319,8 +319,8 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
        (theo % tải trong khoảng đang xem), người chưa gửi giờ coi như rảnh. Chi tiết giờ để trong thẻ rê chuột
        cho đỡ chật — khối này mặc định đóng, bấm tiêu đề mới mở. */
     const supKey = `${o.pid}|${r.id}`, supOpen = openSup.has(supKey);
-    const sup = staff.filter((e) => e.role === r.id)
-      .map((e) => ({ e, L: load.get(e.id) || null, on: o.ppl.has(e.id) }))
+    const sup = staff.filter((e) => e.role === r.id && !o.ppl.has(e.id))   /* người đã ở trong dự án nằm ở khối trên */
+      .map((e) => ({ e, L: load.get(e.id) || null }))
       .sort((x, y) => (x.L?.p ?? -1) - (y.L?.p ?? -1));
     return (
       <div className="py-1.5 pl-5 pr-1 text-[12px]" style={{ background: C.grp }}>
@@ -336,7 +336,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
               </div>
               <div className="text-[11px] text-slate-500">{Math.round((h / T2) * 100)}% giờ của người này{planH ? ` · gánh ${Math.round((h / planH) * 100)}% kế hoạch vai trò` : ""}</div>
             </div>); })}
-        </> : <div className="mb-1" style={{ color: C.under }}>Không ai thuộc vai trò {r.id} chấm giờ vào dự án này.</div>}
+        </> : <div className="mb-1" style={{ color: C.under }}>Không ai thuộc vai trò {r.name || r.id} chấm giờ vào dự án này.</div>}
         {sup.length > 0 && <>
           <button onClick={() => setOpenSup((s) => { const n = new Set(s); if (n.has(supKey)) n.delete(supKey); else n.add(supKey); return n; })}
             aria-expanded={supOpen}
@@ -344,9 +344,8 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
             style={{ borderColor: C.line }}>
             <span className="inline-block w-3 text-[10px]">{supOpen ? "▾" : "▸"}</span>
             Bổ sung
-            <span className="font-sans normal-case tracking-normal text-slate-600">{sup.length} người {r.id} · rê chuột xem giờ</span>
           </button>
-          {supOpen && sup.map(({ e, L, on }, si) => {
+          {supOpen && sup.map(({ e, L }, si) => {
             const key = `${supKey}|${e.id}`;
             /* hai người cuối thì lật thẻ lên trên, khỏi rơi ra ngoài đáy khung */
             const up = sup.length > 2 && si >= sup.length - 2;
@@ -356,7 +355,6 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
                 onMouseEnter={() => setHovP(key)} onMouseLeave={() => setHovP((h) => (h === key ? "" : h))}>
                 <div className="flex items-center gap-2">
                   <span className="truncate text-slate-200">{e.name || e.id}</span>
-                  {on && <span className="shrink-0 rounded border border-slate-700 px-1 text-[10px] text-slate-500">đang ở dự án này</span>}
                   {L ? <span className={`ml-auto shrink-0 rounded-full border px-1.5 text-[10px] leading-[15px] ${ALLOC_ST[L.st][1]}`}>
                     {ALLOC_ST[L.st][0]}{L.p != null ? ` · ${L.p}%` : ""}</span>
                     : <span className="ml-auto shrink-0 rounded-full border border-slate-700 px-1.5 text-[10px] leading-[15px] text-slate-500">chưa gửi giờ</span>}
@@ -627,7 +625,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
             <div className="text-sm font-semibold" style={{ color: C.selName }}>{cur.p.name}{cur.p.code && <span className="ml-1.5 font-mono text-[11px] font-normal text-slate-500">{cur.p.code}</span>}</div>
             <div className="mb-3 mt-1 flex flex-wrap items-center gap-2 text-[11.5px] text-slate-500">{rangeTxt} {pill(cur.st, cur)}
               {cur.p.active === false && <span>dự án đã đóng — không tính kế hoạch</span>}
-              {cur.st === "none" && !assigned(cur.pid) && <span style={{ color: C.red }}>chưa giao ai vào dự án</span>}<span>bấm một vai trò để mở / đóng danh sách người</span></div>
+              {cur.st === "none" && !assigned(cur.pid) && <span style={{ color: C.red }}>chưa giao ai vào dự án</span>}</div>
             <table className="mb-3 w-full text-[12.5px]">
               <thead><tr className="text-[10.5px] uppercase tracking-wider text-slate-500" style={{ borderBottom: `1px solid ${C.line}` }}>
                 <th className="py-1.5 text-left font-medium">Vai trò</th><th className="py-1.5 text-right font-medium">Kế hoạch</th><th className="py-1.5 text-right font-medium">Thực tế</th><th className="py-1.5 text-right font-medium">Lệch</th></tr></thead>
@@ -637,7 +635,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
                   return (
                     <React.Fragment key={r.id}>
                     <tr onClick={() => flip(cur, r)} className="cursor-pointer" style={{ borderBottom: `1px solid ${C.line}` }}>
-                      <td className="py-1.5"><span className="mr-1 inline-block w-3 text-[10px] text-slate-500">{op ? "▾" : "▸"}</span><span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: colorOf.get(r.id) }} /><span className="font-mono">{r.id}</span> <span className="text-slate-400">{r.name}</span></td>
+                      <td className="py-1.5"><span className="mr-1 inline-block w-3 text-[10px] text-slate-500">{op ? "▾" : "▸"}</span><span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: colorOf.get(r.id) }} /><span className="text-slate-200">{r.name || r.id}</span></td>
                       <td className="py-1.5 text-right font-mono">{a ? U(a) : "—"}</td>
                       <td className="py-1.5 text-right font-mono">{b ? U(b) : "—"}</td>
                       <td className="py-1.5 text-right font-mono" style={{ color: Math.abs(d) <= Math.max(0.15, a * 0.15) ? undefined : d > 0 ? C.over : C.under }}>{ddTxt(d)}</td>

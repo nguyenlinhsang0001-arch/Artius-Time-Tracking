@@ -1,6 +1,13 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.44
+   ARTIUS — Quản lý giờ công theo dự án · v13.45
+   Mới ở v13.45 — Kế hoạch › So với thực tế, dọn bớt chữ ở bảng kết luận bên phải:
+     · Bỏ dòng "bấm một vai trò để mở / đóng danh sách người".
+     · Bảng vai trò chỉ còn tên đầy đủ (Thiết kế, Họa viên 3D…), bỏ mã TK / 3D đứng trước.
+     · Tiêu đề khối chỉ còn "BỔ SUNG", bỏ phần "… người TK · rê chuột xem giờ".
+     · BỔ SUNG chỉ liệt kê người CHƯA chấm giờ vào dự án — người đã ở trong dự án đã nằm
+       ở khối ngay trên, không lặp lại (bỏ luôn nhãn "đang ở dự án này").
+
    Mới ở v13.44 — Kế hoạch:
      · Ô lịch trên thanh công cụ BẤM ĐƯỢC: chọn thẳng tháng trong 4 năm, lưới cuộn tới tháng đó
        (đang ở tab khác thì tự về Nhập liệu). Tháng đầu / cuối cửa sổ 4 năm không kéo ra giữa được
