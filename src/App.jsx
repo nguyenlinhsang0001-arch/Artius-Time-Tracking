@@ -1,6 +1,10 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.42
+   ARTIUS — Quản lý giờ công theo dự án · v13.43
+   Mới ở v13.43 — Ngưỡng kết luận chuyển từ Thiết lập về ngay tab Kế hoạch › So với thực tế:
+     nút "Ngưỡng 15% / 30%" trên thanh công cụ, bấm là sửa và lưu tại chỗ, bảng bên dưới đổi chip
+     ngay. Bỏ khung tương ứng trong Thiết lập để chỉ còn một chỗ chỉnh. Người chỉ-xem không thấy nút.
+
    Mới ở v13.42 — Kế hoạch › So với thực tế, bốn chỗ:
      · Ô "Giờ việc chung / vắng" bấm được: bóc ra danh sách ai nghỉ / làm việc chung bao nhiêu giờ,
        thay vì chỉ một con số tổng không biết của ai.

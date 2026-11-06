@@ -11,7 +11,7 @@
    không có ai được giao (thành viên dự án, quyền tất cả dự án, hoặc đang hỗ trợ dự án) trong số người tính kế hoạch.
    Màn này CHỈ ĐỌC. */
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Search, X } from "lucide-react";
+import { AlertTriangle, Search, SlidersHorizontal, X } from "lucide-react";
 import { addDays, fmt, mondayOf, weeklyTarget } from "../../core/date.jsx";
 import { NO_PROJECT, isLeaveTask } from "../../core/domain.jsx";
 import { isLight } from "../../core/theme.jsx";
@@ -44,7 +44,9 @@ const GROUPS = { none: "Có kế hoạch, chưa ai làm", out: "Làm ngoài kế
 const ORDER = { none: 0, out: 1, mix: 2, over: 3, under: 4, ok: 5 };
 
 export function PlanActual({ plan, projects, roles, start, realWeeks, detail, staff, hoursCfg, prole = (r) => r, loading = false,
-  hidden = new Set(), support = [], /* v13.42 */ cap = new Map(), lim = { tol: 15, mix: 30 } }) {
+  hidden = new Set(), support = [], /* v13.42 */ cap = new Map(), lim = { tol: 15, mix: 30 },
+  /* v13.43 — chỉnh ngưỡng ngay tại đây; không truyền onLim (hoặc chỉ xem) thì nút biến mất */
+  onLim = null, flash = null }) {
   useThemeTick();
   const C = isLight() ? TONE.light : TONE.dark;
   const [range, setRange] = useState("last");   /* last | 4 | all */
@@ -58,8 +60,28 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
   const [openCom, setOpenCom] = useState(false);   /* v13.42: bóc giờ việc chung / vắng */
   const [fSt, setFSt] = useState("all");           /* v13.42: lọc theo kết luận */
   const [q, setQ] = useState("");                  /* v13.42: tìm dự án */
+  const [openLim, setOpenLim] = useState(false);   /* v13.43: bảng chỉnh ngưỡng ngay trên thanh công cụ */
+  const [lv, setLv] = useState({ tol: String(lim.tol), mix: String(lim.mix) });
+  const [saving, setSaving] = useState(false);
   const STD = weeklyTarget(hoursCfg) || 44;
   const colorOf = useMemo(() => new Map(roles.map((r, k) => [r.id, PALETTE[k % PALETTE.length]])), [roles]);
+
+  /* v13.43 — ô nhập ngưỡng bám theo giá trị đang lưu; Esc đóng bảng */
+  useEffect(() => { setLv({ tol: String(lim.tol), mix: String(lim.mix) }); }, [lim.tol, lim.mix]);
+  useEffect(() => {
+    if (!openLim) return undefined;
+    const f = (e) => { if (e.key === "Escape") setOpenLim(false); };
+    window.addEventListener("keydown", f);
+    return () => window.removeEventListener("keydown", f);
+  }, [openLim]);
+  const saveLim = async () => {
+    const t = Number(lv.tol), m = Number(lv.mix);
+    if (!(t >= 1 && t <= 100)) return flash?.("Ngưỡng đúng kế hoạch phải từ 1 đến 100%.", "err");
+    if (!(m >= 1 && m <= 200)) return flash?.("Ngưỡng lệch vai trò phải từ 1 đến 200%.", "err");
+    setSaving(true);
+    try { await onLim(t, m); setOpenLim(false); } finally { setSaving(false); }
+    return undefined;
+  };
 
   /* bản chốt: mỗi lần chốt ghi một bản cho mỗi năm, cùng nhãn — ghép lại thành một bản hai năm */
   useEffect(() => {
@@ -330,7 +352,39 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, st
           <button onClick={() => setUnit("p")} aria-pressed={!isH} className={seg(!isH)}>Người</button>
           <button onClick={() => setUnit("h")} aria-pressed={isH} className={seg(isH)}>Giờ</button>
         </div>
-        <span className="ml-auto text-[11.5px] text-slate-500">{rangeTxt} · {f0(STD)} giờ = 1 người</span>
+        {/* v13.43 — ngưỡng kết luận chuyển từ Thiết lập về đây: chỗ duy nhất nhìn thấy kết quả của nó.
+            Bấm là sửa và lưu ngay, bảng bên dưới đổi chip theo. */}
+        {onLim && (
+          <div className="relative ml-auto">
+            <button onClick={() => setOpenLim((v) => !v)} aria-expanded={openLim}
+              className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-700 px-2.5 text-[12.5px] text-slate-400 hover:border-slate-500 hover:text-slate-200"
+              title="Ngưỡng quyết định các chip Đúng kế hoạch / Vượt / Thấp hơn / Lệch vai trò">
+              <SlidersHorizontal size={14} /> Ngưỡng <span className="font-mono text-slate-300">{lim.tol}% / {lim.mix}%</span>
+            </button>
+            {openLim && <>
+              <div className="fixed inset-0 z-20" onClick={() => setOpenLim(false)} />
+              <div className="absolute right-0 top-10 z-30 w-[340px] rounded-lg border border-slate-700 p-3 shadow-xl"
+                style={{ background: C.grp }}>
+                <div className="mb-2 text-[10.5px] uppercase tracking-wider text-slate-500">Ngưỡng kết luận kế hoạch so với thực tế</div>
+                <label className="mb-1 block text-[11.5px] text-slate-500">Đúng kế hoạch khi lệch trong (% kế hoạch)</label>
+                <input type="number" inputMode="numeric" min="1" max="100" value={lv.tol}
+                  onChange={(e) => setLv((x) => ({ ...x, tol: e.target.value }))}
+                  className="mb-2.5 h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-2 font-mono text-[13px] text-slate-100" />
+                <label className="mb-1 block text-[11.5px] text-slate-500">Lệch vai trò khi tổng sai lệch vượt (% kế hoạch)</label>
+                <input type="number" inputMode="numeric" min="1" max="200" value={lv.mix}
+                  onChange={(e) => setLv((x) => ({ ...x, mix: e.target.value }))}
+                  className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-2 font-mono text-[13px] text-slate-100" />
+                <div className="mt-3 flex items-center gap-2 border-t border-slate-800 pt-2.5">
+                  <button onClick={() => setLv({ tol: "15", mix: "30" })} className="text-[12px] text-slate-500 underline-offset-2 hover:text-slate-300 hover:underline">Về mặc định 15% / 30%</button>
+                  <button onClick={saveLim} disabled={saving}
+                    className="ml-auto h-8 shrink-0 rounded-md bg-teal-600 px-3 text-[12.5px] font-medium text-white hover:bg-teal-500 disabled:opacity-50">
+                    {saving ? "Đang lưu…" : "Lưu ngưỡng"}</button>
+                </div>
+              </div>
+            </>}
+          </div>
+        )}
+        <span className={`${onLim ? "ml-2" : "ml-auto"} text-[11.5px] text-slate-500`}>{rangeTxt} · {f0(STD)} giờ = 1 người</span>
       </div>
 
       <div className="grid gap-2 border-b border-slate-800 px-3 py-3 sm:grid-cols-2 md:px-4 xl:grid-cols-6">

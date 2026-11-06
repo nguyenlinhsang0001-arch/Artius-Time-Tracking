@@ -11,7 +11,6 @@ import { DB, LAST_STORAGE_ERROR, STORAGE_OK, TS_PREFIX, allLoaded, commitConfig,
 import { DEFAULT_PHASE, DEFAULT_PHASES, LEAVE_TASKS, NO_PROJECT, OT_MIG_NOTE, empNameTag, fmtH, isLeaveTask, isResigned, otBandIdFor, otBandKey, otSpan, phaseColor, tone, toneT, uid } from "../core/domain.jsx";
 import { CTRL, ConfirmDialog, DateField, Panel, btnDanger, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
 import { allocLimits } from "../shared/alloc.jsx";
-import { planLimits } from "./planning/planCalc.js";
 import { Dashboard } from "./dashboard/Dashboard.jsx";
 
 /* ============================ KIỂM TRA LƯU TRỮ ============================
@@ -604,37 +603,6 @@ export function AllocLimitPanel({ cfg, saveCfg, flash }) {
 }
 
 /* v13.42 — Ngưỡng kết luận cho màn Kế hoạch › So với thực tế, trước đây gắn cứng trong mã */
-export function PlanLimitPanel({ cfg, saveCfg, flash }) {
-  const cur = planLimits(cfg);
-  const [v, setV] = useState({ tol: String(cur.tol), mix: String(cur.mix) });
-  useEffect(() => { const c = planLimits(cfg); setV({ tol: String(c.tol), mix: String(c.mix) }); }, [cfg.planTol, cfg.planMix]); // eslint-disable-line react-hooks/exhaustive-deps
-  const save = async () => {
-    const t = Number(v.tol), m = Number(v.mix);
-    if (!(t >= 1 && t <= 100)) return flash("Ngưỡng đúng kế hoạch phải từ 1 đến 100%.", "err");
-    if (!(m >= 1 && m <= 200)) return flash("Ngưỡng lệch vai trò phải từ 1 đến 200%.", "err");
-    await saveCfg({ ...cfg, planTol: t, planMix: m });
-    flash("Đã lưu ngưỡng kết luận kế hoạch.");
-  };
-  return (
-    <Panel title="Ngưỡng kết luận kế hoạch so với thực tế">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:max-w-xl">
-        <div>
-          <label className="mb-1 block text-xs text-slate-500">Đúng kế hoạch khi lệch trong (% kế hoạch)</label>
-          <input type="number" inputMode="numeric" min="1" max="100" value={v.tol} onChange={(e) => setV((x) => ({ ...x, tol: e.target.value }))} className={`font-mono ${inputCls}`} />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-slate-500">Lệch vai trò khi tổng sai lệch vượt (% kế hoạch)</label>
-          <input type="number" inputMode="numeric" min="1" max="200" value={v.mix} onChange={(e) => setV((x) => ({ ...x, mix: e.target.value }))} className={`font-mono ${inputCls}`} />
-        </div>
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-800 pt-3">
-        <span className="text-xs text-slate-500">Quyết định các chip Đúng kế hoạch / Vượt / Thấp hơn / Đủ người nhưng sai vai trò ở tab Kế hoạch › So với thực tế. Mặc định 15% / 30%.</span>
-        <button onClick={save} className={`ml-auto shrink-0 ${btnPrimary}`}><Save size={14} /> Lưu ngưỡng</button>
-      </div>
-    </Panel>
-  );
-}
-
 export function SettingsTab({ cfg, saveCfg, flash }) {
   const [day, setDay] = useState(cfg.deadlineDay || 5);
   const [confirm, setConfirm] = useState("");
@@ -720,8 +688,6 @@ export function SettingsTab({ cfg, saveCfg, flash }) {
       <OtRatePanel cfg={cfg} saveCfg={saveCfg} flash={flash} />
 
       <AllocLimitPanel cfg={cfg} saveCfg={saveCfg} flash={flash} />
-      <PlanLimitPanel cfg={cfg} saveCfg={saveCfg} flash={flash} />
-
       <ReminderPanel cfg={cfg} saveCfg={saveCfg} flash={flash} />
 
       <AccessPanel flash={flash} />

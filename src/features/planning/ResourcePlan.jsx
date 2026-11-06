@@ -369,7 +369,11 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
           <PlanActual plan={plan} projects={everyProject} roles={roles} start={start} realWeeks={realWeeks} hidden={hidden}
             support={Array.isArray(cfg.support) ? cfg.support : []}
             detail={ts?.detail || []} staff={planStaff} hoursCfg={cfg.hours} prole={prole} loading={!ts}
-            cap={cap} lim={planLimits(cfg)} />
+            cap={cap} lim={planLimits(cfg)} flash={flash}
+            onLim={readOnly ? null : async (tol, mix) => {
+              const ok = await saveCfg({ ...cfg, planTol: tol, planMix: mix });
+              flash(ok === false ? "Chưa lưu được ngưỡng." : "Đã lưu ngưỡng kết luận.", ok === false ? "err" : undefined);
+            }} />
         ) : mode === "pj" ? (
           <PlanProjects plan={plan} projects={everyProject} roles={roles} weeks={view} nowIndex={nowIdx}
             hidden={hidden} detail={ts?.detail || []} employees={cfg.employees || []} support={Array.isArray(cfg.support) ? cfg.support : []}
