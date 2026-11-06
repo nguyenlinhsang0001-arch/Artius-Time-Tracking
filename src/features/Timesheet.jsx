@@ -10,6 +10,10 @@ import { CTRL, ConfirmDialog, GUT, NoteDialog, WeekPicker, btnBase, btnGhost, bt
 import { DeadlineBanner } from "../shared/deadline.jsx";
 import { runOtExport } from "../shared/otReport.js";   // v13.31: xuất Excel tăng ca, dùng chung với Dashboard cá nhân
 
+/* v13.48 — màn nhân viên gọi thẳng tên khối không-dự-án. "Khác" quá chung chung, nhìn vào không biết
+   bên trong là việc chung của công ty hay nghỉ phép. Các màn quản lý vẫn dùng "Khác" cho gọn cột. */
+const NOPROJ_LABEL = "Việc chung / Vắng mặt";
+
 /* v12.36 — nút bút chì "Sửa giờ của khối này" phát sáng nhịp nhẹ để dễ thấy.
    CSS gắn một lần lúc nạp module; màu đặt riêng cho mode sáng / tối (không trông vào LIGHT_CSS).
    Máy bật "giảm chuyển động" thì quầng sáng đứng yên. */
@@ -165,7 +169,8 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands, cfg.otLegacy]);
   const projName = (id) => cfg.projects.find((p) => p.id === id)?.name || "(dự án đã xoá)";
   // Tên kèm mã, dùng ở chỗ cần nhận diện nhanh bằng mã số
-  const projFull = (id) => { if (id === NO_PROJECT) return "Khác"; const p = cfg.projects.find((x) => x.id === id); return p ? `${p.code ? `[${p.code}] ` : ""}${p.name}` : "(dự án đã xoá)"; };
+  /* v13.48 — màn nhân viên gọi thẳng tên: "Khác" không nói lên đây là việc chung hay nghỉ phép */
+  const projFull = (id) => { if (id === NO_PROJECT) return NOPROJ_LABEL; const p = cfg.projects.find((x) => x.id === id); return p ? `${p.code ? `[${p.code}] ` : ""}${p.name}` : "(dự án đã xoá)"; };
   const taskName = (id) => { const t = taskById.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
 
   /* ---------- v3.2: khối mở / thu gọn ---------- */
@@ -597,11 +602,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     return null;
   };
   const save = async (submitMode = null, silent = false) => {
-    if (!admin && submitMode !== "submit" && submitMode !== "draft") return false;   // v1.9: nhân sự ghi bằng Gửi; v8.1 thêm Lưu nháp (ghi giờ lên server, chưa gửi)
-    if (submitMode === "draft" && !dirty && !rows.some((r) => rowReady(r) && days.some((d) => !isSent(d) && !futureBlocked(r, d) && r.days[d] > 0))) {
-      flash("Chưa có giờ nào để lưu nháp.", "err");
-      return false;
-    }
+    if (!admin && submitMode !== "submit") return false;   // v1.9: nhân sự ghi bằng Gửi · v13.48: bỏ Lưu nháp
     const seen = new Set();
     for (const r of rows) {
       const k = rowKey(r);
@@ -685,12 +686,11 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     }
 
     setBuckets(next); setSaving(false); setDirty(false); setSaveFailed(false); setSavedTick((t) => t + 1);
-    if (!admin && (submitMode === "submit" || submitMode === "draft")) { try { localStorage.removeItem(draftKeyOf(monday)); } catch { /* bỏ qua */ } }
-    if (submitMode && submitMode !== "draft") setReloadKey((k) => k + 1);   // nạp lại để màn hình khớp đúng bản vừa ghi (lưu nháp: giữ nguyên màn hình đang nhập)
+    if (!admin && submitMode === "submit") { try { localStorage.removeItem(draftKeyOf(monday)); } catch { /* bỏ qua */ } }
+    if (submitMode) setReloadKey((k) => k + 1);   // nạp lại để màn hình khớp đúng bản vừa ghi
     const sentLabel = newly.sort().map(dayName).join(", ");
     if (!silent) flash(
-      submitMode === "draft" ? "Đã lưu nháp lên hệ thống — chưa gửi. Mở trên máy khác vẫn thấy; xong hết thì bấm Gửi giờ công."
-        : submitMode === "submit" ? (newly.length === 0 ? "Không có ngày nào mới để đánh dấu." : admin ? `Đã đánh dấu đã gửi: ${sentLabel}.` : `Đã gửi ${sentLabel}. Các ngày này đã khoá.`)
+      submitMode === "submit" ? (newly.length === 0 ? "Không có ngày nào mới để đánh dấu." : admin ? `Đã đánh dấu đã gửi: ${sentLabel}.` : `Đã gửi ${sentLabel}. Các ngày này đã khoá.`)
         : submitMode === "unsubmit" ? "Đã mở khoá cả tuần — nhân sự sửa lại được, giờ tuần này tạm chưa tính cho tới khi gửi lại."
         : "Đã lưu thay đổi."
     );
@@ -979,7 +979,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   const projOptions = (r) => (
     <>
       {r.projectId === "" && <option value="" disabled>— Chọn dự án —</option>}
-      <option value={NO_PROJECT}>Khác</option>
+      <option value={NO_PROJECT}>{NOPROJ_LABEL}</option>
       {activeProjects.map((p) => <option key={p.id} value={p.id}>{p.code ? `[${p.code}] ` : ""}{p.name}{isSupProj(p.id) ? ` — hỗ trợ tới ${dLabel(supUntil(p.id))}` : ""}</option>)}
       {r.projectId !== NO_PROJECT && r.projectId !== "" && !activeProjects.some((p) => p.id === r.projectId) && <option value={r.projectId}>{projName(r.projectId)} ({!cfg.projects.some((p) => p.id === r.projectId && p.active) ? "đã đóng" : openPhasesOf(r.projectId).length === 0 ? "chưa mở giai đoạn" : "không còn được giao"})</option>}
     </>
@@ -1697,16 +1697,10 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
         </>
       )}
 
-      {/* v8.4: điện thoại — nhân sự dùng thanh Lưu nháp / Gửi cố định ở đáy màn (bên dưới); quản lý giữ nút như cũ */}
+      {/* v8.4: điện thoại — nhân sự dùng thanh Gửi cố định ở đáy màn (bên dưới); quản lý giữ nút như cũ */}
       <div className={`${admin ? "grid grid-cols-2" : "hidden"} gap-2 md:flex md:flex-wrap md:items-center`}>
         <button onClick={focusQuick} disabled={locked} className={`${btnGhost} hidden disabled:opacity-40 md:inline-flex`}><Plus size={15} /> Thêm tác vụ</button>
-        {/* v1.9: quản lý lưu được khi sửa bảng công của người khác · v8.1: nhân sự có lại nút Lưu nháp (ghi lên server, chưa gửi) */}
-        {!admin && (
-          <button onClick={() => save("draft")} disabled={saving || locked} title="Lưu tạm giờ đang nhập lên hệ thống, chưa gửi — quản lý thấy là Nháp, chưa tính vào báo cáo"
-            className={`${btnGhost} disabled:opacity-40`}>
-            {saving && <Loader2 className="animate-spin" size={15} />} Lưu nháp
-          </button>
-        )}
+        {/* v1.9: quản lý lưu được khi sửa bảng công của người khác · v13.48: nhân sự không còn Lưu nháp */}
         {admin && (
           <button onClick={() => save(null)} disabled={saving} className={`${btnGhost} disabled:opacity-40`}>
             {saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Lưu thay đổi
@@ -1731,15 +1725,11 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
         {atRisk && <span className="col-span-2 text-center text-xs text-amber-400 md:text-left">{admin ? "Có thay đổi chưa lưu" : "Có giờ chưa gửi"}</span>}
       </div>
 
-      {/* v8.4 — điện thoại: Lưu nháp + Gửi giờ công cố định ngay trên thanh menu đáy, không phải cuộn */}
+      {/* v8.4 — điện thoại: nút Gửi giờ công cố định ngay trên thanh menu đáy, không phải cuộn */}
       {!admin && (
         <>
           <div className="h-14 md:hidden" />
           <div className="fixed inset-x-0 bottom-[52px] z-30 flex gap-2 border-t border-slate-800 bg-slate-950/95 px-3 py-2 backdrop-blur md:hidden">
-            <button onClick={() => save("draft")} disabled={saving || locked} title="Lưu tạm lên hệ thống, chưa gửi"
-              className="inline-flex h-11 w-[104px] shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 text-sm font-medium text-slate-200 disabled:opacity-40">
-              {saving && <Loader2 className="animate-spin" size={14} />} Lưu nháp
-            </button>
             {sentDays.length > 0 && toSend.length === 0 && !saving ? (
               <button disabled className="inline-flex h-11 flex-1 cursor-default items-center justify-center gap-1.5 rounded-xl border border-teal-800 bg-teal-950 text-sm font-medium text-teal-300">
                 <CheckCircle2 size={15} /> Đã gửi giờ công

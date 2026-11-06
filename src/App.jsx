@@ -1,6 +1,17 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.47
+   ARTIUS — Quản lý giờ công theo dự án · v13.48
+   Mới ở v13.48 — Chấm công của nhân viên:
+     · Ô chọn dự án: "Khác" đổi thành "Việc chung / Vắng mặt" (chỉ ở màn nhân viên; các màn quản lý
+       vẫn để "Khác" cho gọn cột).
+     · BỎ nút "Lưu nháp" (cả máy tính lẫn điện thoại) và đường ghi nháp lên server. Nhân sự chỉ còn
+       "Gửi giờ công"; gửi và khoá vẫn theo TỪNG NGÀY nên gửi dần trong tuần vẫn được.
+       Bản nháp tạm trên MÁY (localStorage) giữ nguyên — đó là lưới an toàn khi lỡ tải lại trang,
+       không phải nút bấm. Hệ quả: nguồn "giờ nháp" mà Kế hoạch › Tuần này (v13.46) đọc sẽ cạn dần,
+       giữa tuần chỉ còn thấy giờ đã GỬI.
+     · Nút "Excel tăng ca" phát sáng nhịp nhẹ trong ba ngày cuối tháng (ngày cuối − 2 → ngày cuối),
+       nhắc xuất bảng trước khi chốt công. Chỉ sáng khi nút đang trỏ đúng tháng hiện tại.
+
    Mới ở v13.47 — Kế hoạch › So với thực tế, khối người của từng vai trò ở bảng bên phải:
      · Bỏ dòng tiêu đề "ĐÃ CHẤM VÀO DỰ ÁN · KẾ HOẠCH VAI TRÒ … H" — con số kế hoạch đã nằm
        ngay ở cột Kế hoạch của hàng vai trò phía trên.
@@ -839,6 +850,14 @@ export function AppMain() {
   const [tab, setTab] = useState("dash");
   const [sheetDirty, setSheetDirty] = useState(false);   // bảng công còn thay đổi chưa lưu
   const [otBtn, setOtBtn] = useState(null);   // v13.30: { ym, run, busy } do EmployeeArea đẩy lên, hiện thành nút trên header
+  /* v13.48 — nút "Excel tăng ca" phát sáng nhẹ trong BA NGÀY CUỐI THÁNG (ngày cuối − 2 → ngày cuối),
+     nhắc xuất bảng trước khi chốt công. Chỉ sáng khi nút đang trỏ đúng tháng hiện tại. */
+  const otGlow = useMemo(() => {
+    if (!otBtn) return false;
+    const now = new Date(), last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    return otBtn.ym === ym && now.getDate() >= last - 2;
+  }, [otBtn]);
   const [pendingTab, setPendingTab] = useState(null);    // tab muốn sang, đang chờ xác nhận
   const [tsMonday, setTsMonday] = useState(null);        // v7.0: bấm ngày trên Lịch tháng → mở Chấm công đúng tuần đó
   // Rời khỏi màn chấm công khi còn thay đổi chưa lưu thì hỏi lại — trước đây mất dữ liệu lặng lẽ
@@ -1160,6 +1179,16 @@ export function AppMain() {
            (teal-300 vốn dành cho nền tối, nằm trên nền trắng thì mờ) */
         html[data-theme="light"] .ot-ym { color: #0f766e; }
 
+        /* v13.48 — ba ngày cuối tháng: nút "Excel tăng ca" sáng nhịp nhẹ để nhớ xuất trước khi chốt công.
+           Cùng cách làm với nút bút chì ở Chấm công; máy bật "giảm chuyển động" thì quầng sáng đứng yên. */
+        .ot-glow { border-color: #14b8a6 !important; color: #5eead4 !important; background: rgba(20,184,166,.12) !important; animation: otGlow 2.4s ease-in-out infinite; }
+        .ot-glow:hover { background: rgba(20,184,166,.24) !important; color: #99f6e4 !important; }
+        @keyframes otGlow { 0%,100% { box-shadow: 0 0 5px rgba(45,212,191,.30); } 50% { box-shadow: 0 0 0 3px rgba(45,212,191,.16), 0 0 13px rgba(45,212,191,.55); } }
+        html[data-theme="light"] .ot-glow { border-color: #0d9488 !important; color: #0f766e !important; background: #f0fdfa !important; animation-name: otGlowL; }
+        html[data-theme="light"] .ot-glow:hover { background: #ccfbf1 !important; }
+        @keyframes otGlowL { 0%,100% { box-shadow: 0 0 5px rgba(13,148,136,.25); } 50% { box-shadow: 0 0 0 3px rgba(13,148,136,.14), 0 0 12px rgba(13,148,136,.45); } }
+        @media (prefers-reduced-motion: reduce) { .ot-glow { animation: none !important; box-shadow: 0 0 8px rgba(45,212,191,.45); } }
+
         /* v7.9 — rê chuột vào ô ngày (Bảng công Tuần/Tháng, Lịch tháng cá nhân): viền xanh lá nhạt bám theo góc bo của ô */
         .cell-hov { position: relative; }
         .cell-hov:hover { outline: 2px solid #86efac; outline-offset: 1px; z-index: 2; }
@@ -1212,8 +1241,8 @@ export function AppMain() {
               {/* v13.30 — Excel tăng ca: ghi rõ tháng sẽ xuất ngay trên nút, tránh xuất nhầm tháng */}
               {(tab === "ts" || tab === "edash") && otBtn && (
                 <button onClick={otBtn.run} disabled={otBtn.busy}
-                  title={`Xuất bảng chấm công ngoài giờ tháng ${otBtn.ym.slice(5)}/${otBtn.ym.slice(0, 4)} theo mẫu giấy công ty — chỉ gồm giờ đã gửi`}
-                  className="mr-2 hidden h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-slate-100 disabled:opacity-40 md:inline-flex">
+                  title={`Xuất bảng chấm công ngoài giờ tháng ${otBtn.ym.slice(5)}/${otBtn.ym.slice(0, 4)} theo mẫu giấy công ty — chỉ gồm giờ đã gửi${otGlow ? " · sắp hết tháng, nhớ xuất" : ""}`}
+                  className={`mr-2 hidden h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-slate-100 disabled:opacity-40 md:inline-flex${otGlow ? " ot-glow" : ""}`}>
                   {otBtn.busy ? <Loader2 className="animate-spin" size={14} /> : <Download size={14} />}
                   Excel tăng ca <span className="ot-ym font-mono font-semibold text-teal-300">{otBtn.ym.slice(5)}/{otBtn.ym.slice(0, 4)}</span>
                 </button>
