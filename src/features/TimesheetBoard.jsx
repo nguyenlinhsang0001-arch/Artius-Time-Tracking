@@ -842,16 +842,18 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
               <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
                 <span className="inline-flex gap-1.5">
                   {(() => {
-                    /* v13.51 — nút này luôn làm việc với TUẦN ĐANG XEM trên bảng; ổ khoá sáng xanh khi
-                       tuần đó đang được mở cho người này, bấm lần nữa là khoá lại. */
+                    /* v13.51 — nút này luôn làm việc với TUẦN ĐANG XEM trên bảng.
+                       v13.52 — mỗi lần mở khoá đều ghi dấu lại, nên ổ khoá CỨ SÁNG XANH cho tới khi quản lý
+                       bấm khoá lại: nhìn dòng nào sáng là biết người đó xin sửa chứ không phải quên chấm.
+                       Dấu này cũng chính là thứ cho người đó vượt mốc "Khoá quá hạn". */
                     const hasSent = weekDays(monday).some((d) => daySent(e.id, d));
                     const cut = pastCut(cfg), locked = !!(cut && monday < cut);
-                    const openNow = locked ? !!pastOpenUntil(cfg, e.id, monday) : false;
-                    const canBu = !!pastLockSave && locked && !isResigned(e);
-                    if (!hasSent && !canBu && !openNow) return <span className="inline-block w-9" />;
+                    const openNow = !!pastOpenUntil(cfg, e.id, monday);
+                    const canMark = !!pastLockSave && !isResigned(e);
+                    if (!hasSent && !openNow && !(locked && canMark)) return <span className="inline-block w-9" />;
                     return (
                       <button onClick={() => setUnlockFor(e.id)}
-                        title={openNow ? `Đang mở tuần ${wkTxt} cho ${e.name} — bấm để khoá lại`
+                        title={openNow ? `Đang mở tuần ${wkTxt} cho ${e.name} (người này xin sửa) — bấm để khoá lại`
                           : `Mở khoá tuần ${wkTxt} cho ${e.name}${hasSent ? " — sửa lại và gửi lại được" : " — tuần đã quá hạn chấm công"}`}
                         className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg border hover:bg-slate-800 hover:text-slate-100 ${openNow ? "lock-on border-teal-500 text-teal-300" : "border-slate-700 text-slate-300"}`}>
                         <Unlock size={15} />
@@ -1196,7 +1198,7 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
         const cut = pastCut(cfg), locked = !!(cut && monday < cut);
         return (
           <UnlockWeekDialog key={`${unlockFor}|${monday}`} name={emp?.name || ""} monday={monday} hasSent={hasSent}
-            canBu={!!pastLockSave && locked} locked={locked} opened={!!pastOpenUntil(cfg, unlockFor, monday)}
+            canMark={!!pastLockSave} locked={locked} opened={!!pastOpenUntil(cfg, unlockFor, monday)}
             onCancel={() => setUnlockFor(null)}
             onConfirm={async ({ unlock, open, close }) => {
               const id = unlockFor; setUnlockFor(null);
@@ -1254,14 +1256,16 @@ export const cleanPastOpen = (cfg, today, fn) => {
    Một lần bấm là xong: gỡ dấu đã gửi của tuần ĐANG XEM, và nếu tuần đó đã quá hạn chấm công thì mở
    luôn quyền nhập cho người này — KHÔNG còn hỏi "mở tới ngày nào". Mở là mở, tới khi quản lý khoá lại
    hoặc nhân sự gửi lại. Đang mở sẵn thì nút này đổi thành "Khoá lại". */
-export function UnlockWeekDialog({ name, monday, hasSent, canBu, locked, opened, onCancel, onConfirm }) {
+export function UnlockWeekDialog({ name, monday, hasSent, canMark, locked, opened, onCancel, onConfirm }) {
   useEffect(() => {
     const h = (e) => { if (e.key === "Escape") onCancel(); };
     document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
   }, [onCancel]);
   const wk = `${dLabel(monday)} – ${dLabel(fmt(addDays(parseD(monday), 6)))}`;
-  const shut = opened && !hasSent;   // không còn gì để mở: chỉ còn việc khoá lại
+  /* v13.52 — đang mở mà người ta CHƯA gửi lại: việc còn lại chỉ là khoá lại.
+     Đang mở mà đã gửi lại rồi: vừa mở lại được, vừa gỡ dấu được, nên cho cả hai nút. */
+  const shut = opened && !hasSent;
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={onCancel}>
       <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -1272,16 +1276,23 @@ export function UnlockWeekDialog({ name, monday, hasSent, canBu, locked, opened,
             {shut
               ? <p className="mt-1 text-sm text-slate-400">{name} sẽ không nhập được tuần này nữa. Giờ đã nhập giữ nguyên.</p>
               : <p className="mt-1 text-sm text-slate-400">{name} sẽ sửa lại và gửi lại được tuần này. Giờ công giữ nguyên, nhưng tạm chưa tính vào tổng hợp cho tới khi gửi lại.</p>}
-            {!shut && locked && canBu && <p className="mt-2 text-xs text-teal-400">Tuần này đã quá hạn chấm công — mở khoá sẽ mở luôn quyền nhập, không đặt hạn. Khoá lại lúc nào cũng được.</p>}
-            {!shut && locked && !canBu && <p className="mt-2 text-xs text-amber-400">Tuần này đã quá hạn chấm công: mở khoá xong nhân sự vẫn chưa nhập được. Chỉ Admin mở được quyền nhập.</p>}
+            {!shut && locked && canMark && <p className="mt-2 text-xs text-teal-400">Tuần này đã quá hạn chấm công — mở khoá vẫn mở được, người này sẽ nhập được riêng tuần này. Không đặt hạn, khoá lại lúc nào cũng được.</p>}
+            {!shut && locked && !canMark && <p className="mt-2 text-xs text-amber-400">Tuần này đã quá hạn chấm công: mở khoá xong nhân sự vẫn chưa nhập được. Chỉ Admin mở được quyền nhập.</p>}
+            {!shut && canMark && <p className="mt-2 text-xs text-slate-500">Ổ khoá của dòng này sẽ sáng xanh cho tới khi anh bấm khoá lại — để biết người này xin sửa chứ không phải quên chấm.</p>}
+            {opened && hasSent && <p className="mt-2 text-xs text-teal-400">{name} đã gửi lại tuần này rồi. Xong việc thì bấm “Bỏ dấu đang mở” để ổ khoá hết sáng.</p>}
           </div>
         </div>
         <div className="mt-5 grid grid-cols-2 gap-2">
           <button onClick={onCancel} className={btnGhost}>Thôi</button>
           {shut
             ? <button onClick={() => onConfirm({ unlock: false, open: false, close: true })} className={btnDanger}><Lock size={14} /> Khoá lại</button>
-            : <button onClick={() => onConfirm({ unlock: hasSent, open: canBu, close: false })} className={btnPrimary}><CheckCircle2 size={14} /> Mở khoá</button>}
+            : <button onClick={() => onConfirm({ unlock: hasSent, open: canMark, close: false })} className={btnPrimary}><CheckCircle2 size={14} /> {opened ? "Mở khoá lại" : "Mở khoá"}</button>}
         </div>
+        {opened && hasSent && (
+          <button onClick={() => onConfirm({ unlock: false, open: false, close: true })} className={`${btnGhost} mt-2 w-full`}>
+            <Lock size={14} /> Bỏ dấu đang mở (khoá lại)
+          </button>
+        )}
       </div>
     </div>
   );

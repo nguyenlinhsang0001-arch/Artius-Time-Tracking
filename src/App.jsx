@@ -1,6 +1,15 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.51
+   ARTIUS — Quản lý giờ công theo dự án · v13.52
+   Mới ở v13.52 — Bảng công, cột "Mở khoá / sửa", hai điểm tiếp theo của v13.51:
+     · Mở khoá tuần nào thì ổ khoá dòng đó SÁNG XANH và GIỮ NGUYÊN cho tới khi bấm khoá lại —
+       kể cả tuần bình thường chưa quá hạn. Nhìn dòng sáng là biết người đó XIN SỬA, không phải
+       quên chấm công. Người đã gửi lại rồi thì hộp thoại có thêm nút "Bỏ dấu đang mở (khoá lại)".
+     · Mở khoá ĂN TRÊN "Khoá quá hạn": mở được tuần cách đây 2, 3, 4 tuần kể cả khi đang đặt
+       "Khoá quá hạn · 1 tuần". Vì mỗi lần mở đều ghi dấu vào cfg.pastOpen, mà pastLocked() và hàm
+       chặn artius_ts_guard trong database đều nhường dấu này.
+     Dấu mở không tự hết hạn, nên tuần đó vẫn nhập được cho tới khi quản lý bấm khoá lại.
+
    Mới ở v13.51 — Bảng công, cột "Mở khoá / sửa":
      · Nút ổ khoá luôn làm việc với TUẦN ĐANG XEM trên bảng; chú thích rê chuột ghi thẳng khoảng ngày
        của tuần đó và tên người, khỏi nhầm sang tuần khác.
