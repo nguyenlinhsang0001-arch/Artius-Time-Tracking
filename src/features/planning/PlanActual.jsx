@@ -165,7 +165,8 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
   /* ---------- so sánh ---------- */
   const data = useMemo(() => {
     const rows = new Map();
-    const get = (pid) => { if (!rows.has(pid)) rows.set(pid, { pid, kh: {}, tt: {}, ppl: new Map(), wk: weeks.map(() => ({ kh: 0, tt: 0 })) }); return rows.get(pid); };
+    /* v13.58 — dr: giờ NHÁP chưa gửi đổ vào chính dự án này; drp: nháp theo từng người trong dự án */
+    const get = (pid) => { if (!rows.has(pid)) rows.set(pid, { pid, kh: {}, tt: {}, ppl: new Map(), dr: 0, drp: new Map(), wk: weeks.map(() => ({ kh: 0, tt: 0 })) }); return rows.get(pid); };
     let common = 0, total = 0, drft = 0;
     const per = new Map();   /* empId -> Map(pid | "" (việc chung / vắng) -> giờ) */
     const add = (e, k, h) => { if (!per.has(e)) per.set(e, new Map()); const m = per.get(e); m.set(k, (m.get(k) || 0) + h); };
@@ -189,6 +190,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
         const o = get(x.pid);
         o.tt[rid] = (o.tt[rid] || 0) + x.h / STD / nW; o.wk[k].tt += x.h / STD;
         o.ppl.set(x.empId, (o.ppl.get(x.empId) || 0) + x.h);
+        if (x.dr) { o.dr += x.h; o.drp.set(x.empId, (o.drp.get(x.empId) || 0) + x.h); }
       }
     });
     const sum = (o) => Object.values(o).reduce((a, v) => a + v, 0);
@@ -305,7 +307,8 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
     const [c, bg, t] = map[st];
     const q = doubt(st);
     return <span className="inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px]" style={{ color: c, background: bg }}
-      title={q ? (running ? `Tuần chưa xong và còn ${f0(r2(data.drft))} giờ nháp chưa gửi — kết luận này chưa chắc`
+      title={q ? (running ? (o.dr > 0.005 ? `Tuần chưa xong — dự án này còn ${f0(r2(o.dr))} giờ nháp chưa gửi, kết luận này chưa chắc`
+          : "Tuần chưa xong — dự án này chưa có giờ nháp nào, kết luận có thể còn đổi khi mọi người chấm tiếp")
         : `Còn ${data.gapNames.length} người chưa gửi giờ trong khoảng này — số thực tế có thể thấp hơn thực tế, kết luận này chưa chắc`) : undefined}>
       {t}{q && <span style={{ opacity: .75 }}> *</span>}</span>;
   };
@@ -373,7 +376,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
           {inP.map(([id, h]) => { const L = load.get(id); return (
             <div key={id} className="py-0.5">
               <div className="grid grid-cols-[minmax(0,1fr)_58px_110px] items-center gap-2">
-                <span className="truncate text-slate-200">{nameOf.get(id)}</span>
+                <span className="truncate text-slate-200">{nameOf.get(id)}{(o.drp.get(id) || 0) > 0.005 && <span className="text-slate-500"> *</span>}</span>
                 <span className="text-right font-mono text-slate-300">{f0(r2(h))} h</span>
                 <span className="relative h-1.5 overflow-hidden rounded" style={{ background: C.line }} title={`${f0(r2(h))} / ${f0(r2(L?.work || h))} h làm việc trong khoảng`}>
                   <span className="absolute inset-y-0 left-0 rounded" style={{ width: `${Math.min(100, (h / mxH) * 100)}%`, background: colorOf.get(r.id) }} /></span>

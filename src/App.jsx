@@ -1,6 +1,12 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.57
+   ARTIUS — Quản lý giờ công theo dự án · v13.58
+   Mới ở v13.58 — Kế hoạch › So với thực tế, giờ nháp của tuần đang chạy:
+     · Chú thích rê chuột của chip kết luận (dấu *) nay ghi giờ nháp của CHÍNH dự án đó. Trước đây
+       mọi chip cùng ghi tổng nháp của cả công ty (vd "còn 70 giờ nháp") nên đọc tưởng của riêng dự án.
+     · Bảng bên phải: người nào có giờ nháp vào dự án đang xem thì có dấu * cạnh tên.
+     · Tải tuần giữ nguyên: chỉ tính giờ đã gửi, không tính nháp (khớp Bảng công).
+
    Mới ở v13.57 — Tab Kế hoạch:
      · Ba mục con xếp lại: So với thực tế · Nhập liệu · Theo dự án. Mở tab Kế hoạch là vào thẳng
        "So với thực tế" (mục đầu).
