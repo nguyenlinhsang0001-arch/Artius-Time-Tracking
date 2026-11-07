@@ -1,6 +1,17 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.50
+   ARTIUS — Quản lý giờ công theo dự án · v13.51
+   Mới ở v13.51 — Bảng công, cột "Mở khoá / sửa":
+     · Nút ổ khoá luôn làm việc với TUẦN ĐANG XEM trên bảng; chú thích rê chuột ghi thẳng khoảng ngày
+       của tuần đó và tên người, khỏi nhầm sang tuần khác.
+     · Ổ khoá SÁNG XANH nhịp nhẹ khi tuần đó đang được mở cho người này; bấm lần nữa là khoá lại.
+     · BỎ mở khoá có thời hạn: không còn ô tích "mở chấm bù" và ô ngày "Mở tới". Một lần bấm là mở hẳn —
+       gỡ dấu đã gửi của tuần, và nếu tuần đã quá hạn chấm công thì mở luôn quyền nhập cho người đó.
+       Mở tới khi quản lý khoá lại hoặc nhân sự gửi lại.
+     Kỹ thuật: cfg.pastOpen vẫn là { empId: { thứHai: "ngày" } } nhưng nay ghi mốc 9999-12-31, nên hàm
+     chặn trong database (artius_ts_guard) chạy nguyên, KHÔNG cần chạy SQL. Mốc có hạn thật do bản cũ
+     ghi vẫn tự hết hạn như trước, Thiết lập hiện "đang mở" hoặc "mở tới hết <ngày>" tuỳ loại.
+
    Mới ở v13.50 — Chấm công nhân viên: bỏ 26 thông báo theo danh sách Sang chốt
      (A3, B1-B4, B6, C1-C5, C7-C9, C11-C16, C18-C20, E4-E6).
      Ba chỗ bỏ xong sẽ thành "bấm mà không có gì xảy ra", nên thay thông báo bằng TRẠNG THÁI nút:
@@ -1204,6 +1215,15 @@ export function AppMain() {
         html[data-theme="light"] .ot-glow:hover { background: #ccfbf1 !important; }
         @keyframes otGlowL { 0%,100% { box-shadow: 0 0 5px rgba(13,148,136,.25); } 50% { box-shadow: 0 0 0 3px rgba(13,148,136,.14), 0 0 12px rgba(13,148,136,.45); } }
         @media (prefers-reduced-motion: reduce) { .ot-glow { animation: none !important; box-shadow: 0 0 8px rgba(45,212,191,.45); } }
+
+        /* v13.51 — ổ khoá ở Bảng công sáng xanh nhẹ khi tuần đó đang được mở cho nhân sự. */
+        .lock-on { background: rgba(20,184,166,.14); animation: lockOn 2.6s ease-in-out infinite; }
+        .lock-on:hover { background: rgba(20,184,166,.26) !important; color: #99f6e4 !important; }
+        @keyframes lockOn { 0%,100% { box-shadow: 0 0 4px rgba(45,212,191,.28); } 50% { box-shadow: 0 0 0 3px rgba(45,212,191,.15), 0 0 12px rgba(45,212,191,.5); } }
+        html[data-theme="light"] .lock-on { background: #f0fdfa; border-color: #0d9488 !important; color: #0f766e !important; animation-name: lockOnL; }
+        html[data-theme="light"] .lock-on:hover { background: #ccfbf1 !important; }
+        @keyframes lockOnL { 0%,100% { box-shadow: 0 0 4px rgba(13,148,136,.24); } 50% { box-shadow: 0 0 0 3px rgba(13,148,136,.13), 0 0 11px rgba(13,148,136,.42); } }
+        @media (prefers-reduced-motion: reduce) { .lock-on { animation: none !important; box-shadow: 0 0 8px rgba(45,212,191,.42); } }
 
         /* v7.9 — rê chuột vào ô ngày (Bảng công Tuần/Tháng, Lịch tháng cá nhân): viền xanh lá nhạt bám theo góc bo của ô */
         .cell-hov { position: relative; }

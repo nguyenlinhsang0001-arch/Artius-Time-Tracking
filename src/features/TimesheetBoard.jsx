@@ -7,9 +7,9 @@ import {
 import { sendNudge, fetchNudgeLog, fetchNudgeLogRange } from "../push.js";
 import { DEFAULT_HOURS, DOW, addDays, dLabel, effortHoursFor, fmt, lastOfMonth, makeHolidayIndex, minHoursFor, mondayOf, mondaysDue, mondaysOfMonth, pad, parseD, prevYm, weekDays, ymLabel, ymOf, ymsBetween } from "../core/date.jsx";
 import { LAST_STORAGE_ERROR, bumpData, commitTs, daySent, dbTs, dbTsSent, ensureMonths, loadXlsx, refreshTs, slot, useDataTick, weekDone } from "../core/db.jsx";
-import { DEFAULT_PHASE, DEPTS, LEAVE_TASKS, NO_PROJECT, NUDGE_GAP_MIN, OT_TASKS, ResignedBadge, empNameTag, fmtH, goneOnDay, isIdleTask, isLeaveTask, isOtId, isResigned, norm, pastCut, pastOpenUntil, pastWeeks, phaseLabel, roleTitle, supportKind, taskText } from "../core/domain.jsx";
+import { DEFAULT_PHASE, DEPTS, LEAVE_TASKS, NO_PROJECT, NUDGE_GAP_MIN, OT_TASKS, ResignedBadge, empNameTag, fmtH, goneOnDay, isIdleTask, isLeaveTask, isOtId, isResigned, norm, PAST_OPEN_FOREVER, pastCut, pastOpenEver, pastOpenUntil, pastWeeks, phaseLabel, roleTitle, supportKind, taskText } from "../core/domain.jsx";
 import { isLight } from "../core/theme.jsx";
-import { CTRL, FilterButton, PeriodField, Kpi, Panel, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
+import { CTRL, FilterButton, PeriodField, Kpi, Panel, btnDanger, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
 import { ALLOC_ST, allocLimits, allocState } from "../shared/alloc.jsx";
 import { pct100 } from "./dashboard/calc.jsx";   // v13.24: % làm tròn đủ 100, dùng chung với tab Nhân sự
 import { dayStyle, dayStyleSm } from "../shared/dayStyle.jsx";
@@ -257,6 +257,7 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
   const [mode, setMode] = useState("week");                     // week | month
   const [monday, setMonday] = useState(fmt(mondayOf(new Date())));
   const [ym, setYm] = useState(ymOf(today));
+  const wkTxt = `${dLabel(monday)} – ${dLabel(fmt(addDays(parseD(monday), 6)))}`;   // v13.51: tuần đang xem, dùng cho nút mở khoá
   const [q, setQ] = useState("");
   const [fDept, setFDept] = useState("all");
   /* v13.11 — lọc theo vai trò: chỉ vai trò đang có người (chưa nghỉ việc), thu theo bộ phận đang chọn */
@@ -841,16 +842,19 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
               <td className="border-b border-slate-800/70 px-2 py-1.5 text-center">
                 <span className="inline-flex gap-1.5">
                   {(() => {
+                    /* v13.51 — nút này luôn làm việc với TUẦN ĐANG XEM trên bảng; ổ khoá sáng xanh khi
+                       tuần đó đang được mở cho người này, bấm lần nữa là khoá lại. */
                     const hasSent = weekDays(monday).some((d) => daySent(e.id, d));
                     const cut = pastCut(cfg), locked = !!(cut && monday < cut);
-                    const buUntil = locked ? pastOpenUntil(cfg, e.id, monday) : null;
-                    const canBu = !!pastLockSave && locked && !isResigned(e);          // v9.8: chỉ Admin mở chấm bù (ghi vào thiết lập)
-                    if (!hasSent && !canBu) return <span className="inline-block w-9" />;
+                    const openNow = locked ? !!pastOpenUntil(cfg, e.id, monday) : false;
+                    const canBu = !!pastLockSave && locked && !isResigned(e);
+                    if (!hasSent && !canBu && !openNow) return <span className="inline-block w-9" />;
                     return (
                       <button onClick={() => setUnlockFor(e.id)}
-                        title={hasSent ? (canBu ? "Mở khoá cả tuần / mở chấm bù cho nhân sự" : "Mở khoá cả tuần — nhân sự sửa lại và gửi lại được") : (buUntil ? `Đang mở chấm bù tới hết ${dLabel(buUntil)} — bấm để đổi hạn` : "Tuần đã quá hạn chấm công — bấm để mở chấm bù cho nhân sự")}
-                        className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg border hover:bg-slate-800 hover:text-slate-100 ${buUntil ? "border-teal-700 text-teal-400" : "border-slate-700 text-slate-300"}`}>
-                        <Unlock size={15} />{buUntil && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-teal-400 ring-2 ring-slate-900" />}
+                        title={openNow ? `Đang mở tuần ${wkTxt} cho ${e.name} — bấm để khoá lại`
+                          : `Mở khoá tuần ${wkTxt} cho ${e.name}${hasSent ? " — sửa lại và gửi lại được" : " — tuần đã quá hạn chấm công"}`}
+                        className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg border hover:bg-slate-800 hover:text-slate-100 ${openNow ? "lock-on border-teal-500 text-teal-300" : "border-slate-700 text-slate-300"}`}>
+                        <Unlock size={15} />
                       </button>
                     );
                   })()}
@@ -1192,22 +1196,25 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
         const cut = pastCut(cfg), locked = !!(cut && monday < cut);
         return (
           <UnlockWeekDialog key={`${unlockFor}|${monday}`} name={emp?.name || ""} monday={monday} hasSent={hasSent}
-            canBu={!!pastLockSave && locked} locked={locked} today={today} openedUntil={locked ? pastOpenUntil(cfg, unlockFor, monday) : null}
+            canBu={!!pastLockSave && locked} locked={locked} opened={!!pastOpenUntil(cfg, unlockFor, monday)}
             onCancel={() => setUnlockFor(null)}
-            onConfirm={async ({ unlock, buUntil }) => {
+            onConfirm={async ({ unlock, open, close }) => {
               const id = unlockFor; setUnlockFor(null);
               const nm = emp?.name || "";
               let okU = true, okB = true;
               if (unlock && hasSent) okU = await unlockWeekTs(id, monday);
-              if (okU && buUntil) {
-                const next = cleanPastOpen(cfg, today, (c) => { (c[id] = c[id] || {})[monday] = buUntil; });
+              /* v13.51 — mở là mở hẳn (mốc PAST_OPEN_FOREVER), không hỏi hạn; "Khoá lại" gỡ mốc đó đi. */
+              if (okU && (open || close)) {
+                const next = cleanPastOpen(cfg, today, (c) => {
+                  if (close) { if (c[id]) delete c[id][monday]; }
+                  else (c[id] = c[id] || {})[monday] = PAST_OPEN_FOREVER;
+                });
                 okB = (await pastLockSave({ ...cfg, pastOpen: next })) !== false;
               }
               const ok = okU && okB;
-              const parts = [];
-              if (unlock && hasSent && okU) parts.push(`mở khoá tuần ${dLabel(monday)}`);
-              if (buUntil && okB) parts.push(`mở chấm bù tới hết ${dLabel(buUntil)}`);
-              flash(ok ? `Đã ${parts.join(" và ")} cho ${nm}.` : `Chưa thực hiện được — ${LAST_STORAGE_ERROR || "mất kết nối"}`, ok ? "ok" : "err");
+              const wk = `tuần ${dLabel(monday)} – ${dLabel(fmt(addDays(parseD(monday), 6)))}`;
+              flash(ok ? (close ? `Đã khoá lại ${wk} của ${nm}.` : `Đã mở khoá ${wk} cho ${nm}.`)
+                : `Chưa thực hiện được — ${LAST_STORAGE_ERROR || "mất kết nối"}`, ok ? "ok" : "err");
             }} />
         );
       })()}
@@ -1243,55 +1250,38 @@ export const cleanPastOpen = (cfg, today, fn) => {
   return cur;
 };
 
-/* v9.8 — Mở khoá tuần và / hoặc mở chấm bù cho một nhân sự (cột "Mở khoá / sửa" của Bảng công).
-   Tuần đã gửi → mở khoá. Tuần quá hạn chấm công (Admin) → tick "mở chấm bù tới ngày…". Một lần bấm làm cả hai. */
-export function UnlockWeekDialog({ name, monday, hasSent, canBu, locked, today, openedUntil, onCancel, onConfirm }) {
-  const [wantBu, setWantBu] = useState(canBu);
-  const [until, setUntil] = useState(openedUntil || fmt(addDays(new Date(), 3)));
+/* v13.51 — Mở khoá một tuần của một nhân sự (cột "Mở khoá / sửa" của Bảng công).
+   Một lần bấm là xong: gỡ dấu đã gửi của tuần ĐANG XEM, và nếu tuần đó đã quá hạn chấm công thì mở
+   luôn quyền nhập cho người này — KHÔNG còn hỏi "mở tới ngày nào". Mở là mở, tới khi quản lý khoá lại
+   hoặc nhân sự gửi lại. Đang mở sẵn thì nút này đổi thành "Khoá lại". */
+export function UnlockWeekDialog({ name, monday, hasSent, canBu, locked, opened, onCancel, onConfirm }) {
   useEffect(() => {
     const h = (e) => { if (e.key === "Escape") onCancel(); };
     document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
   }, [onCancel]);
-  const bu = canBu && (wantBu || !hasSent);
-  const bad = bu && (!until || until < today);
-  const label = hasSent ? (bu ? "Mở khoá + chấm bù" : "Mở khoá") : "Mở chấm bù";
   const wk = `${dLabel(monday)} – ${dLabel(fmt(addDays(parseD(monday), 6)))}`;
+  const shut = opened && !hasSent;   // không còn gì để mở: chỉ còn việc khoá lại
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={onCancel}>
       <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start gap-3">
-          <Unlock size={20} className="mt-0.5 shrink-0 text-teal-400" />
+          {shut ? <Lock size={20} className="mt-0.5 shrink-0 text-slate-400" /> : <Unlock size={20} className="mt-0.5 shrink-0 text-teal-400" />}
           <div className="min-w-0">
-            <h4 className="text-sm font-semibold text-slate-50">{hasSent ? `Mở khoá tuần ${wk}?` : `Mở chấm bù tuần ${wk}?`}</h4>
-            {hasSent && <p className="mt-1 text-sm text-slate-400">{name} sẽ sửa lại và gửi lại được tuần này. Giờ công giữ nguyên, nhưng tạm chưa tính vào tổng hợp cho tới khi gửi lại.</p>}
-            {!hasSent && <p className="mt-1 text-sm text-slate-400">Tuần này đã quá hạn chấm công nên {name} không tự nhập được. Mở chấm bù để nhân sự nhập và gửi trong thời hạn bên dưới.</p>}
-            {hasSent && locked && !canBu && <p className="mt-2 text-xs text-amber-400">Tuần này đã quá hạn chấm công: mở khoá xong nhân sự vẫn chưa sửa được. Chỉ Admin mở chấm bù được.</p>}
+            <h4 className="text-sm font-semibold text-slate-50">{shut ? `Khoá lại tuần ${wk}?` : `Mở khoá tuần ${wk}?`}</h4>
+            {shut
+              ? <p className="mt-1 text-sm text-slate-400">{name} sẽ không nhập được tuần này nữa. Giờ đã nhập giữ nguyên.</p>
+              : <p className="mt-1 text-sm text-slate-400">{name} sẽ sửa lại và gửi lại được tuần này. Giờ công giữ nguyên, nhưng tạm chưa tính vào tổng hợp cho tới khi gửi lại.</p>}
+            {!shut && locked && canBu && <p className="mt-2 text-xs text-teal-400">Tuần này đã quá hạn chấm công — mở khoá sẽ mở luôn quyền nhập, không đặt hạn. Khoá lại lúc nào cũng được.</p>}
+            {!shut && locked && !canBu && <p className="mt-2 text-xs text-amber-400">Tuần này đã quá hạn chấm công: mở khoá xong nhân sự vẫn chưa nhập được. Chỉ Admin mở được quyền nhập.</p>}
           </div>
         </div>
-        {canBu && (
-          <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950 p-3">
-            {hasSent && (
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-200">
-                <input type="checkbox" checked={wantBu} onChange={(e) => setWantBu(e.target.checked)} className="h-4 w-4 accent-teal-600" />
-                Mở chấm bù cho {name} (tuần đã quá hạn)
-              </label>
-            )}
-            {openedUntil && <p className="mb-2 text-xs text-teal-400">Đang mở chấm bù tới hết {dLabel(openedUntil)}.</p>}
-            {(wantBu || !hasSent) && (
-              <label className={`flex items-center gap-2 text-xs text-slate-500 ${hasSent ? "mt-2" : ""}`}>
-                <span className="whitespace-nowrap">Mở tới</span>
-                <input type="date" min={today} value={until} onChange={(e) => setUntil(e.target.value)} className={`min-w-0 flex-1 ${inputCls}`} />
-              </label>
-            )}
-            <p className="mt-2 text-xs text-slate-500">Hết ngày “Mở tới” là tuần này tự khoá lại.</p>
-          </div>
-        )}
         <div className="mt-5 grid grid-cols-2 gap-2">
           <button onClick={onCancel} className={btnGhost}>Thôi</button>
-          <button disabled={bad} onClick={() => onConfirm({ unlock: hasSent, buUntil: bu ? until : null })} className={`${btnPrimary} disabled:opacity-40`}><CheckCircle2 size={14} /> {label}</button>
+          {shut
+            ? <button onClick={() => onConfirm({ unlock: false, open: false, close: true })} className={btnDanger}><Lock size={14} /> Khoá lại</button>
+            : <button onClick={() => onConfirm({ unlock: hasSent, open: canBu, close: false })} className={btnPrimary}><CheckCircle2 size={14} /> Mở khoá</button>}
         </div>
-        {bad && <p className="mt-2 text-xs text-rose-400">Hạn mở phải từ hôm nay trở đi.</p>}
       </div>
     </div>
   );
@@ -1330,7 +1320,7 @@ export function PastLockPanel({ cfg, saveCfg, flash }) {
 
       {cut && (
         <div className="mt-4 border-t border-slate-800 pt-4">
-          <p className="text-xs text-slate-500">Mở chấm bù cho một nhân sự: ở Bảng công, bấm nút mở khoá (🔓) ở cột “Mở khoá / sửa” của người đó.</p>
+          <p className="text-xs text-slate-500">Mở một tuần quá hạn cho một nhân sự: ở Bảng công, chuyển tới đúng tuần đó rồi bấm ổ khoá (🔓) ở cột “Mở khoá / sửa” của người đó. Mở là mở hẳn, không có hạn — bấm lại ổ khoá đang sáng xanh để khoá lại.</p>
           {opens.length > 0 && (
             <div className="mt-3 space-y-1.5">
               {opens.map((o) => {
@@ -1338,7 +1328,7 @@ export function PastLockPanel({ cfg, saveCfg, flash }) {
                 return (
                   <div key={`${o.id}|${o.w}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm">
                     <span className="min-w-0 flex-1 text-slate-200">{nm(o.id)} <span className="text-slate-500">· tuần {wkLabel(o.w)}</span></span>
-                    <span className={`text-xs ${live ? "text-teal-400" : "text-slate-500"}`}>{live ? `mở tới hết ${dLabel(o.u)}` : "đã hết hạn"}</span>
+                    <span className={`text-xs ${live ? "text-teal-400" : "text-slate-500"}`}>{live ? (pastOpenEver(o.u) ? "đang mở" : `mở tới hết ${dLabel(o.u)}`) : "đã hết hạn"}</span>
                     <button onClick={async () => { if (await writeOpen((c) => { if (c[o.id]) delete c[o.id][o.w]; })) flash("Đã khoá lại tuần này."); }} disabled={busy}
                       title="Khoá lại ngay" className={`ro-hide ${iconBtn} h-8 w-8 hover:border-rose-800 hover:text-rose-400`}><X size={14} /></button>
                   </div>

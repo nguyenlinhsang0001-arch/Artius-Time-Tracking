@@ -293,6 +293,11 @@ export const goneOnDay = (e, d) => !!e?.resignedAt && d >= e.resignedAt;
 export const pastWeeks = (cfg) => { const n = Number(cfg?.pastLock?.weeks); return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 2; };
 export const pastCut = (cfg, today = fmt(new Date())) => { const w = pastWeeks(cfg); return w > 0 ? fmt(addDays(mondayOf(parseD(today)), -7 * (w - 1))) : ""; };
 export const pastOpenUntil = (cfg, empId, d, today = fmt(new Date())) => { const u = cfg?.pastOpen?.[empId]?.[fmt(mondayOf(parseD(d)))] || ""; return u >= today ? u : ""; };
+/* v13.51 — mở khoá không còn thời hạn: ghi mốc xa tít thay cho ngày hết hạn. Vẫn là một chuỗi ngày nên
+   hàm so sánh cũ (cả trong SQL artius_ts_guard) chạy nguyên, khỏi đụng database. Những mốc có hạn thật
+   do bản cũ ghi vẫn tự hết hạn như trước. */
+export const PAST_OPEN_FOREVER = "9999-12-31";
+export const pastOpenEver = (u) => u === PAST_OPEN_FOREVER;
 export const pastLocked = (cfg, empId, d, today = fmt(new Date())) => { const c = pastCut(cfg, today); return !!c && d < c && !pastOpenUntil(cfg, empId, d, today); };
 /* v8.7 — Hỗ trợ dự án có thời hạn: cfg.support = [{ id, empId, pid, phase ("" = mọi giai đoạn đang mở), from, until, note, by, at }].
    Trưởng phòng (nhân viên phòng mình) / Admin (mọi người) mở cho một nhân sự chấm công vào dự án KHÔNG được giao, trong khoảng ngày

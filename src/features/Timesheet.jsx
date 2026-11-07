@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { DEFAULT_HOURS, DOW, HOLIDAY_RING_SVG, OT_ALERT, addDays, dLabel, effortHoursFor, fmt, makeHolidayIndex, minHoursFor, mondayOf, parseD, prevYm, stdHoursFor, weekDays, ymOf } from "../core/date.jsx";
 import { LAST_STORAGE_ERROR, RATE_LIMITED, ck, commitTs, dbTs, ensureMonths, refreshTs, slot, useDataTick, useNet } from "../core/db.jsx";
-import { DEFAULT_PHASE, LEAVE_TASKS, NO_PHASE, NO_PROJECT, OT_TASKS, activePhases, empHasProj, fmtH, groupKey, guessPhase, isIdleTask, isLeaveTask, isOtId, isOtTask, leaveInfo, leaveTypeOfTask, norm, otBandKey, otBandTasks, otMaxHours, otText, pastLocked, pastOpenUntil, pastWeeks, phaseInfo, phaseLabel, projPhaseIsOpen, roleLabel, rowKey, sortByGroup, supportInRange, supportOn, taskRoles, taskText, tasksForDept, tone } from "../core/domain.jsx";
+import { DEFAULT_PHASE, LEAVE_TASKS, NO_PHASE, NO_PROJECT, OT_TASKS, activePhases, empHasProj, fmtH, groupKey, guessPhase, isIdleTask, isLeaveTask, isOtId, isOtTask, leaveInfo, leaveTypeOfTask, norm, otBandKey, otBandTasks, otMaxHours, otText, pastLocked, pastOpenEver, pastOpenUntil, pastWeeks, phaseInfo, phaseLabel, projPhaseIsOpen, roleLabel, rowKey, sortByGroup, supportInRange, supportOn, taskRoles, taskText, tasksForDept, tone } from "../core/domain.jsx";
 import { CTRL, ConfirmDialog, GUT, NoteDialog, WeekPicker, btnBase, btnGhost, btnPrimary, iconBtn, selectCls } from "../core/ui.jsx";
 import { DeadlineBanner } from "../shared/deadline.jsx";
 import { runOtExport } from "../shared/otReport.js";   // v13.31: xuất Excel tăng ca, dùng chung với Dashboard cá nhân
@@ -1241,7 +1241,9 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
           {openUntil ? <Unlock size={17} className="mt-0.5 shrink-0 text-teal-400" /> : <Lock size={17} className="mt-0.5 shrink-0 text-slate-400" />}
           <div>
             {openUntil
-              ? <>Quản lý đang mở chấm bù tuần này cho bạn tới hết ngày <b>{dLabel(openUntil)}</b>. Nhập xong nhớ bấm Gửi giờ công.</>
+              ? (pastOpenEver(openUntil)
+                ? <>Quản lý đang mở tuần này cho bạn nhập bù. Nhập xong nhớ bấm <b>Gửi giờ công</b>.</>
+                : <>Quản lý đang mở chấm bù tuần này cho bạn tới hết ngày <b>{dLabel(openUntil)}</b>. Nhập xong nhớ bấm Gửi giờ công.</>)
               : <>{pastDays.length === 7 ? "Tuần này" : `${pastDays.map(dayName).join(", ")}`} đã quá hạn chấm công — chỉ nhập / sửa được {pastWeeks(cfg)} tuần gần nhất.
                   {" "}Cần chấm bù thì nhờ quản lý mở.</>}
           </div>
