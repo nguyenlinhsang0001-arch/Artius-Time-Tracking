@@ -292,7 +292,32 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
   const hhmm = (v) => new Date(v).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
   const laterIso = (a, b) => (!a || (b && b > a) ? b : a);
   const [mNudged, setMNudged] = useState(() => new Map());      // v6.4: empId -> Map(thứ Hai tuần -> giờ đã nhắc), các tuần của tháng đang xem
-  const [unlockFor, setUnlockFor] = useState(null);             // empId đang chờ xác nhận mở khoá tuần
+  /* v13.55 — bỏ hộp hỏi lại: bấm ổ khoá là làm luôn, cho TUẦN ĐANG XEM.
+     Ổ khoá đang sáng (đã mở, người đó chưa gửi lại) → bấm là khoá lại.
+     Còn lại → mở khoá: gỡ dấu đã gửi (nếu có) và ghi dấu mở PAST_OPEN_FOREVER để vượt mốc Khoá quá hạn.
+     lockBusy chặn bấm đúp trong lúc đang ghi. */
+  const [lockBusy, setLockBusy] = useState(() => new Set());
+  const toggleLock = async (id) => {
+    const key = `${id}|${monday}`;
+    if (lockBusy.has(key)) return;
+    setLockBusy((b) => new Set(b).add(key));
+    try {
+      const hasSent = weekDays(monday).some((d) => daySent(id, d));
+      const opened = !!pastOpenUntil(cfg, id, monday);
+      const close = opened && !hasSent;
+      let okU = true;
+      if (!close && hasSent) okU = await unlockWeekTs(id, monday);
+      if (okU && pastLockSave) {
+        const next = cleanPastOpen(cfg, today, (c) => {
+          if (close) { if (c[id]) delete c[id][monday]; }
+          else (c[id] = c[id] || {})[monday] = PAST_OPEN_FOREVER;
+        });
+        await pastLockSave({ ...cfg, pastOpen: next });
+      }
+    } finally {
+      setLockBusy((b) => { const n = new Set(b); n.delete(key); return n; });
+    }
+  };
   /* v13.53 — người được mở khoá đã bấm "Gửi giờ công" (tuần đó có lại ngày đã gửi) thì tự gỡ dấu mở
      trong cfg.pastOpen: ổ khoá hết sáng, và tuần quá hạn đóng lại như cũ. Nhân viên không ghi được
      thiết lập nên việc dọn chạy ở máy Admin, mỗi khi mở Bảng công hoặc có giờ mới đổ về.
@@ -876,8 +901,8 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
                     const canMark = !!pastLockSave && !isResigned(e);
                     if (!hasSent && !openNow && !(locked && canMark)) return <span className="inline-block w-9" />;
                     return (
-                      <button onClick={() => setUnlockFor(e.id)} aria-label={`Mở / khoá tuần ${wkTxt} của ${e.name}`}
-                        className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg border hover:bg-slate-800 hover:text-slate-100 ${openNow ? "lock-on border-teal-500 text-teal-300" : "border-slate-700 text-slate-300"}`}>
+                      <button onClick={() => toggleLock(e.id)} disabled={lockBusy.has(`${e.id}|${monday}`)} aria-label={`Mở / khoá tuần ${wkTxt} của ${e.name}`}
+                        className={`relative inline-flex h-9 w-9 items-center justify-center rounded-lg border hover:bg-slate-800 hover:text-slate-100 disabled:opacity-50 ${openNow ? "lock-on border-teal-500 text-teal-300" : "border-slate-700 text-slate-300"}`}>
                         <Unlock size={15} />
                       </button>
                     );
@@ -1214,32 +1239,6 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
         );
       })()}
 
-      {unlockFor && (() => {
-        const emp = cfg.employees.find((e) => e.id === unlockFor);
-        const hasSent = weekDays(monday).some((d) => daySent(unlockFor, d));
-        const cut = pastCut(cfg), locked = !!(cut && monday < cut);
-        return (
-          <UnlockWeekDialog key={`${unlockFor}|${monday}`} name={emp?.name || ""} monday={monday} hasSent={hasSent}
-            canMark={!!pastLockSave} locked={locked} opened={!!pastOpenUntil(cfg, unlockFor, monday)}
-            onCancel={() => setUnlockFor(null)}
-            onConfirm={async ({ unlock, open, close }) => {
-              const id = unlockFor; setUnlockFor(null);
-              let okU = true, okB = true;
-              if (unlock && hasSent) okU = await unlockWeekTs(id, monday);
-              /* v13.51 — mở là mở hẳn (mốc PAST_OPEN_FOREVER), không hỏi hạn; "Khoá lại" gỡ mốc đó đi. */
-              if (okU && (open || close)) {
-                const next = cleanPastOpen(cfg, today, (c) => {
-                  if (close) { if (c[id]) delete c[id][monday]; }
-                  else (c[id] = c[id] || {})[monday] = PAST_OPEN_FOREVER;
-                });
-                okB = (await pastLockSave({ ...cfg, pastOpen: next })) !== false;
-              }
-              /* v13.54 — bỏ hết thông báo của thao tác mở / khoá. Ổ khoá sáng hay không là trạng thái thật đã lưu,
-                 nên ghi hỏng thì ổ khoá không đổi màu — nhìn là biết. */
-              void okB;
-            }} />
-        );
-      })()}
     </div>
     </div>
   );
@@ -1271,46 +1270,6 @@ export const cleanPastOpen = (cfg, today, fn) => {
   for (const id of Object.keys(cur)) if (!Object.keys(cur[id]).length) delete cur[id];
   return cur;
 };
-
-/* v13.51 — Mở khoá một tuần của một nhân sự (cột "Mở khoá / sửa" của Bảng công).
-   Một lần bấm là xong: gỡ dấu đã gửi của tuần ĐANG XEM, và nếu tuần đó đã quá hạn chấm công thì mở
-   luôn quyền nhập cho người này — KHÔNG còn hỏi "mở tới ngày nào". Mở là mở, tới khi quản lý khoá lại
-   hoặc nhân sự gửi lại. Đang mở sẵn thì nút này đổi thành "Khoá lại". */
-export function UnlockWeekDialog({ name, monday, hasSent, canMark, locked, opened, onCancel, onConfirm }) {
-  useEffect(() => {
-    const h = (e) => { if (e.key === "Escape") onCancel(); };
-    document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
-  }, [onCancel]);
-  const wk = `${dLabel(monday)} – ${dLabel(fmt(addDays(parseD(monday), 6)))}`;
-  /* v13.52 — đang mở mà người ta CHƯA gửi lại: việc còn lại chỉ là khoá lại.
-     Đang mở mà đã gửi lại rồi: vừa mở lại được, vừa gỡ dấu được, nên cho cả hai nút. */
-  const shut = opened && !hasSent;
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={onCancel}>
-      <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start gap-3">
-          {shut ? <Lock size={20} className="mt-0.5 shrink-0 text-slate-400" /> : <Unlock size={20} className="mt-0.5 shrink-0 text-teal-400" />}
-          <div className="min-w-0">
-            <h4 className="text-sm font-semibold text-slate-50">{shut ? `Khoá lại tuần ${wk}?` : `Mở khoá tuần ${wk}?`}</h4>
-            {/* v13.54 — bỏ hết các dòng giải thích, chỉ còn câu hỏi */}
-          </div>
-        </div>
-        <div className="mt-5 grid grid-cols-2 gap-2">
-          <button onClick={onCancel} className={btnGhost}>Thôi</button>
-          {shut
-            ? <button onClick={() => onConfirm({ unlock: false, open: false, close: true })} className={btnDanger}><Lock size={14} /> Khoá lại</button>
-            : <button onClick={() => onConfirm({ unlock: hasSent, open: canMark, close: false })} className={btnPrimary}><CheckCircle2 size={14} /> {opened ? "Mở khoá lại" : "Mở khoá"}</button>}
-        </div>
-        {opened && hasSent && (
-          <button onClick={() => onConfirm({ unlock: false, open: false, close: true })} className={`${btnGhost} mt-2 w-full`}>
-            <Lock size={14} /> Khoá lại
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /* v8.6 — Khoá chấm công quá hạn (v9.8: chỉ còn đổi số tuần + danh sách tuần đang mở chấm bù; mở chấm bù mới làm ở cột Mở khoá / sửa của Bảng công) */
 export function PastLockPanel({ cfg, saveCfg, flash }) {

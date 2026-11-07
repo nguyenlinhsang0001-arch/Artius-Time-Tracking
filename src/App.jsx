@@ -1,6 +1,11 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.54
+   ARTIUS — Quản lý giờ công theo dự án · v13.55
+   Mới ở v13.55 — Bảng công: bỏ hộp hỏi lại "Mở khoá tuần … ?". Bấm ổ khoá là làm luôn cho tuần đang xem:
+     ổ khoá đang sáng thì khoá lại, còn lại thì mở khoá. Trong lúc đang ghi, nút mờ đi và không bấm được
+     để khỏi bấm đúp. Lưu ý: mở khoá gỡ dấu đã gửi của cả tuần, bấm lại để khoá chỉ tắt dấu mở chứ không
+     trả lại dấu đã gửi — người đó phải gửi lại.
+
    Mới ở v13.54 — Bỏ hết thông báo xoay quanh việc mở / khoá chấm công:
      · Bảng công: chú thích rê chuột của ổ khoá và nút "Khoá quá hạn"; các dòng giải thích trong hộp
        "Mở khoá tuần … ?" (chỉ còn câu hỏi + nút); báo lỗi riêng của thao tác mở / khoá.
