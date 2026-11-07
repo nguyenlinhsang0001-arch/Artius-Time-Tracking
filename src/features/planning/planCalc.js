@@ -3,8 +3,8 @@
 
    Lưới lưu dạng: plan = { [mã dự án]: { [mã vai trò]: number[52] } }
    Vai trò nào không có số nào khác 0 thì không lưu, để khỏi phình dữ liệu. */
-import { addDays, fmt, mondayOf, weeklyTarget } from "../../core/date.jsx";
-import { isLeaveTask, isResigned } from "../../core/domain.jsx";
+import { addDays, fmt, makeHolidayIndex, minHoursFor, mondayOf, weekDays, weeklyTarget } from "../../core/date.jsx";
+import { NO_PROJECT, goneOnDay, isLeaveTask, isResigned } from "../../core/domain.jsx";
 
 /* ---------- Cột tuần ----------
    Mỗi tháng đúng 4 cột tuần (T<tháng> · 1…4), mỗi năm 48 cột, không có ngoại lệ tuần 5 — giống cách đọc file Excel kế hoạch.
@@ -277,3 +277,113 @@ export const planLimits = (cfg) => ({
   tol: Math.min(100, Math.max(1, Number(cfg?.planTol ?? 15))),
   mix: Math.min(200, Math.max(1, Number(cfg?.planMix ?? 30))),
 });
+
+
+/* ======================================================================================
+   v13.59 — SO KẾ HOẠCH VỚI THỰC TẾ: một hàm duy nhất, dùng chung cho màn "So với thực tế" và file Excel.
+   Trước đây màn hình và Excel chạy hai bộ luật khác nhau (Excel còn công thức đời v12), nên cùng một dự án
+   hai nơi nói hai kiểu.
+
+   Quy tắc:
+   · Đơn vị NGƯỜI. Kế hoạch là số trong ô lưới. Thực tế = giờ đổ vào dự án ÷ GIỜ CHUẨN CỦA CHÍNH TUẦN ĐÓ
+     (Thiết lập giờ làm, trừ ngày lễ). Trước đây chia cứng 44 h nên tuần có lễ dự án nào cũng thấp giả
+     ~18% mỗi ngày lễ. Tuần nghỉ trọn (Tết) không có giờ chuẩn thì quy đổi theo tuần thường.
+   · Tuần ĐANG CHẠY (runMon): so TRỌN NGÀY, tới hết HÔM QUA cho cả hai phía — kế hoạch cắt theo giờ chuẩn
+     các ngày đã trọn, thực tế chỉ lấy giờ (kể cả nháp) của các ngày đó. Hôm nay và ngày chưa tới chưa tính.
+   · Vai trò theo VAI TRÒ CỦA NGƯỜI chấm. Giờ vắng mặt / không thuộc dự án → "việc chung / vắng".
+   · Người "chưa gửi đủ": có ngày làm việc đã qua (có giờ chuẩn, trước hôm nay) mà không có giờ nào —
+     đúng luật "Bỏ trống ngày" của Bảng công. Trước đây chỉ xét có hay không có giờ trong tuần.
+   ====================================================================================== */
+export const PA_GROUPS = { none: "Có kế hoạch, chưa ai làm", out: "Làm ngoài kế hoạch", mix: "Đủ người nhưng sai vai trò",
+  over: "Thực tế nhiều hơn kế hoạch", under: "Thực tế ít hơn kế hoạch", ok: "Đúng kế hoạch" };
+export const PA_ORDER = { none: 0, out: 1, mix: 2, over: 3, under: 4, ok: 5 };
+export const paVerdict = (o) => o.st === "over" ? `Vượt ${o.KH ? Math.round((o.d / o.KH) * 100) : 0}%`
+  : o.st === "under" ? `Thấp hơn ${o.KH ? Math.round((-o.d / o.KH) * 100) : 0}%`
+    : { none: "Chưa ai làm", out: "Ngoài kế hoạch", mix: "Đủ người, lệch vai trò", ok: "Đúng kế hoạch" }[o.st];
+
+export function comparePlan({ plan: P, projects, roles, weeks, sent = [], draft = [], staff, hoursCfg, holidays = [],
+  lim = { tol: 15, mix: 30 }, hidden = new Set(), runMon = "", today = fmt(new Date()) }) {
+  const hs = makeHolidayIndex(holidays);
+  const full = weeklyTarget(hoursCfg) || 44;
+  const projIds = new Set(projects.map((p) => p.id));
+  const liveIds = new Set(projects.filter((p) => p.active && !hidden.has(p.id)).map((p) => p.id));
+  const roleOf = new Map(staff.map((e) => [e.id, e.role || ""]));
+  const stdOn = (d) => minHoursFor(d, hoursCfg, hs) || 0;
+  const nW = weeks.length || 1;
+
+  /* giờ chuẩn từng tuần + các ngày được tính */
+  const wk = weeks.map((w) => {
+    const days = weekDays(w.monday), run = w.monday === runMon;
+    const std = days.reduce((a, d) => a + stdOn(d), 0);
+    const upto = run ? days.filter((d) => d < today) : days;
+    const got = upto.reduce((a, d) => a + stdOn(d), 0);
+    return { w, run, std, D: std > 0 ? std : full, frac: run ? (std > 0 ? got / std : 0) : 1, days: new Set(upto) };
+  });
+  const kOf = new Map(weeks.map((w, k) => [w.monday, k]));
+
+  /* gom giờ theo tuần — nháp chỉ nhận của tuần đang chạy */
+  const bucket = weeks.map(() => []);
+  const seen = weeks.map(() => new Set());   // "emp|ngày" có giờ (đã gửi, hoặc nháp của tuần đang chạy)
+  const put = (d, dr) => {
+    const k = kOf.get(fmt(mondayOf(new Date(d.date)))); if (k == null) return;
+    if (dr && !wk[k].run) return;
+    if (!wk[k].days.has(d.date)) return;
+    const h = Number(d.hours) || 0; if (!h) return;
+    bucket[k].push({ empId: d.empId, pid: d.projectId, task: d.taskId, h, dr });
+    seen[k].add(`${d.empId}|${d.date}`);
+  };
+  for (const d of sent) put(d, false);
+  for (const d of draft) put(d, true);
+
+  const rows = new Map();
+  const get = (pid) => { if (!rows.has(pid)) rows.set(pid, { pid, kh: {}, tt: {}, ppl: new Map(), dr: 0, drp: new Map(), wk: weeks.map(() => ({ kh: 0, tt: 0 })) }); return rows.get(pid); };
+  let common = 0, total = 0, drft = 0;
+  const per = new Map();
+  const add = (e, k, h) => { if (!per.has(e)) per.set(e, new Map()); const m = per.get(e); m.set(k, (m.get(k) || 0) + h); };
+  wk.forEach(({ w, D, frac }, k) => {
+    for (const pid of Object.keys(P || {})) {
+      if (!liveIds.has(pid)) continue;
+      for (const r of roles) {
+        const v = cellOf(P, pid, r.id, w.i) * frac; if (!v) continue;
+        const o = get(pid); o.kh[r.id] = (o.kh[r.id] || 0) + v / nW; o.wk[k].kh += v;
+      }
+    }
+    for (const x of bucket[k]) {
+      total += x.h; if (x.dr) drft += x.h;
+      if (!x.pid || x.pid === NO_PROJECT || !projIds.has(x.pid) || isLeaveTask(x.task)) { common += x.h; add(x.empId, "", x.h); continue; }
+      add(x.empId, x.pid, x.h);
+      const rid = roleOf.get(x.empId); if (!rid) continue;
+      const o = get(x.pid);
+      o.tt[rid] = (o.tt[rid] || 0) + x.h / D / nW; o.wk[k].tt += x.h / D;
+      o.ppl.set(x.empId, (o.ppl.get(x.empId) || 0) + x.h);
+      if (x.dr) { o.dr += x.h; o.drp.set(x.empId, (o.drp.get(x.empId) || 0) + x.h); }
+    }
+  });
+
+  const sum = (o) => Object.values(o).reduce((a, v) => a + v, 0);
+  const list = [...rows.values()].map((o) => {
+    const p = projects.find((x) => x.id === o.pid) || { id: o.pid, name: o.pid };
+    const KH = sum(o.kh), TT = sum(o.tt), d = TT - KH;
+    const mis = roles.reduce((a, r) => a + Math.abs((o.tt[r.id] || 0) - (o.kh[r.id] || 0)), 0);
+    const st = KH < 0.005 && TT > 0 ? "out" : TT < 0.005 && KH > 0 ? "none"
+      : Math.abs(d) <= Math.max(0.25, (KH * lim.tol) / 100) ? (mis > Math.max(0.5, (KH * lim.mix) / 100) ? "mix" : "ok") : d > 0 ? "over" : "under";
+    const okR = roles.reduce((a, r) => a + Math.min(o.kh[r.id] || 0, o.tt[r.id] || 0), 0);
+    return { ...o, p, KH, TT, d, st, okR };
+  }).filter((o) => o.KH > 0.005 || o.TT > 0.005);
+  list.sort((a, b) => PA_ORDER[a.st] - PA_ORDER[b.st] || Math.abs(b.d) - Math.abs(a.d));
+
+  /* người chưa gửi đủ — có ngày làm việc đã qua mà trống giờ */
+  const who = staff.filter((e) => e.role);
+  const gap = wk.map(({ w, days }, k) => ({
+    w,
+    miss: who.filter((e) => [...days].some((d) => d < today && stdOn(d) > 0 && !goneOnDay(e, d) && !seen[k].has(`${e.id}|${d}`))),
+  })).filter((x) => x.miss.length);
+  const gapNames = [...new Set(gap.flatMap((x) => x.miss.map((e) => e.name || e.id)))];
+  const lastGap = gap.find((x) => x.w.monday === weeks[weeks.length - 1]?.monday);
+
+  /* 1 người = bao nhiêu giờ (giờ chuẩn CẢ TUẦN, có trừ lễ), bình quân các tuần trong khoảng — để đổi sang
+     đơn vị Giờ. Khoảng một tuần thì đúng tuyệt đối; nhiều tuần có tuần lễ xen giữa thì đơn vị Giờ là xấp xỉ. */
+  const hpp = wk.length ? wk.reduce((a, x) => a + x.D, 0) / wk.length : full;
+  return { list, common, total, drft, per, wk, hpp, full,
+    missing: lastGap ? lastGap.miss.length : 0, gapWeeks: gap.length, gapNames, nStaff: who.length };
+}

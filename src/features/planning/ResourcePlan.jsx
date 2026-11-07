@@ -8,7 +8,7 @@ import { dbTs, dbTsSent, ensureMonths, useDataTick, weekDone } from "../../core/
 import { ROLES, isResigned } from "../../core/domain.jsx";
 import { CTRL, Panel, btnGhost, btnPrimary } from "../../core/ui.jsx";
 import { allocLimits } from "../../shared/alloc.jsx";
-import { PER_YEAR, actualByCell, diffCells, foldMerged, joinYears, normalizeYear, planLimits, prunePlan, realWeeksOfYears, slotIndexOf, splitYears, weeksOfYears } from "./planCalc.js";
+import { PER_YEAR, diffCells, foldMerged, joinYears, normalizeYear, planLimits, prunePlan, realWeeksOfYears, slotIndexOf, splitYears, weeksOfYears } from "./planCalc.js";
 import { PlanActual } from "./PlanActual.jsx";
 import { PlanGrid } from "./PlanGrid.jsx";
 import { PlanProjects } from "./PlanProjects.jsx";
@@ -226,9 +226,6 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
     return () => { alive = false; };
   }, [start, years, staff, realWeeks, tick]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  const actual = useMemo(
-    () => actualByCell(ts?.detail || [], planStaff, cfg.hours),
-    [ts, planStaff, cfg.hours]);
 
   /* ---------- lưu ---------- */
   /* ---------- lưu (tự lưu sau khi ngừng gõ 2 giây, nút Lưu để ghi ngay) ----------
@@ -296,7 +293,12 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
   const onExport = async () => {
     try {
       const { exportPlanXlsx } = await import("./planExport.js");
-      await exportPlanXlsx({ plan: prunePlan(plan), projects: shownProjects, roles: statRoles, weeks, cap, head, actual, okWeeks: ts?.okWeeks || new Set(), realWeeks, start, snaps, avail });
+      /* v13.59 — sheet "Kế hoạch vs thực tế" chạy đúng comparePlan của màn So với thực tế, khoảng "Từ khi có giờ chấm" */
+      const thisMon = fmt(mondayOf(new Date()));
+      const sentMon = new Set((ts?.detail || []).map((d) => fmt(mondayOf(new Date(d.date)))));
+      const cmp = { weeks: realWeeks.filter((w) => w.monday < thisMon && sentMon.has(w.monday)), sent: ts?.detail || [],
+        projects: everyProject, roles, staff: planStaff, hoursCfg: cfg.hours, holidays: cfg.holidays || [], lim: planLimits(cfg), hidden };
+      await exportPlanXlsx({ plan: prunePlan(plan), projects: shownProjects, roles: statRoles, weeks, cap, head, realWeeks, start, years: YEARS, snaps, avail, cmp });
       flash("Đã xuất Excel kế hoạch.");
     } catch (e) { flash(`Chưa xuất được — ${errMsg(e)}`, "err"); }
   };

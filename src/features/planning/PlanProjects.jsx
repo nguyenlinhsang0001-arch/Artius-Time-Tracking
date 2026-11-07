@@ -89,7 +89,9 @@ export function PlanProjects({ plan, projects, roles, weeks, nowIndex, hidden = 
   const today = useMemo(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }, []);
   const rolesGiven = (pid) => {
     const ids = new Set();
-    for (const e of employees) if (!isResigned(e) && !e.noPlan && Array.isArray(e.projects) && e.projects.includes(pid)) ids.add(e.id);
+    /* v13.59 — tính cả người có quyền "tất cả dự án" (v8.8), giống màn So với thực tế. Trước đây bỏ sót
+       nên tab này báo "Thiếu người được giao" oan cho vai trò chỉ có người thuộc diện đó. */
+    for (const e of employees) if (!isResigned(e) && !e.noPlan && (e.allProjects || (Array.isArray(e.projects) && e.projects.includes(pid)))) ids.add(e.id);
     for (const x of support) if (x.pid === pid && x.from <= today && today <= x.until) ids.add(x.empId);
     const out = new Set();
     for (const id of ids) { const e = empById.get(id); if (e && !isResigned(e) && !e.noPlan && e.role) out.add(prole(e.role)); }

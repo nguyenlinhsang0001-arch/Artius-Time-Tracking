@@ -1,7 +1,7 @@
 /* ARTIUS TIME v12.10 — Xuất toàn bộ Kế hoạch ra Excel (tải thư viện xlsx khi bấm, như các nút xuất khác). */
 import { fmt } from "../../core/date.jsx";
 import { loadXlsx } from "../../core/db.jsx";
-import { cellOf, leftOf, needOf, planVsActual, verdictOf } from "./planCalc.js";
+import { cellOf, comparePlan, leftOf, needOf, paVerdict } from "./planCalc.js";
 
 const num = (n) => (n ? +Number(n).toFixed(2) : "");
 const head2 = (weeks) => [
@@ -9,7 +9,9 @@ const head2 = (weeks) => [
   ["Dự án", "Vai trò"].concat(weeks.map((w) => w.w)),
 ];
 
-export async function exportPlanXlsx({ plan, projects, roles, weeks, cap, head, actual, okWeeks, realWeeks, start, snaps, avail }) {
+export async function exportPlanXlsx({ plan, projects, roles, weeks, cap, head, realWeeks, start, years = 2, snaps, avail,
+  /* v13.59 — dữ liệu cho sheet so sánh, chạy đúng hàm comparePlan của màn "So với thực tế" */
+  cmp = null }) {
   const XLSX = await loadXlsx();
   const wb = XLSX.utils.book_new();
   const pids = projects.map((p) => p.id);
@@ -42,19 +44,34 @@ export async function exportPlanXlsx({ plan, projects, roles, weeks, cap, head, 
   ws2["!cols"] = [{ wch: 34 }, { wch: 18 }, ...Array(weeks.length).fill({ wch: 5 })];
   XLSX.utils.book_append_sheet(wb, ws2, "Tổng theo vai trò");
 
-  /* 3 — kế hoạch so với giờ thực tế (chỉ các tuần đã qua và đủ giờ) */
-  const pva = planVsActual({ plan, projects, weeks: realWeeks, okWeeks, actual }).map((x) => ({
-    "Dự án": `${x.project.code ? `${x.project.code} ` : ""}${x.project.name}`,
-    "Vai trò": `${x.rid} · ${roleName.get(x.rid) || ""}`,
-    "Kế hoạch (người-tuần)": x.kh,
-    "Thực tế (người-tuần)": x.th,
-    "Thực tế / Kế hoạch (%)": x.pc ?? "",
-    "Nhận định": verdictOf(x.pc)[0],
-    "Số tuần đủ giờ": x.weeks,
-  }));
-  const ws3 = XLSX.utils.json_to_sheet(pva.length ? pva : [{ "Ghi chú": "Chưa có tuần nào đã qua và đủ giờ của mọi nhân sự." }]);
-  ws3["!cols"] = [{ wch: 34 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 22 }, { wch: 22 }, { wch: 14 }];
-  XLSX.utils.book_append_sheet(wb, ws3, "Kế hoạch vs thực tế");
+  /* 3 — kế hoạch so với thực tế. v13.59: cùng một hàm comparePlan với màn "So với thực tế", khoảng
+     "Từ khi có giờ chấm" (mọi tuần đã qua có giờ gửi), cùng ngưỡng, cùng nhãn kết luận. Trước đây sheet này
+     còn chạy luật đời v12 (chỉ tuần cả công ty gửi đủ, ngưỡng cứng ±15%, nhãn "Dự trù thiếu / thừa người"). */
+  if (cmp && cmp.weeks?.length) {
+    const R = cmp.roles || roles;
+    const r = comparePlan({ plan, projects: cmp.projects, roles: R, weeks: cmp.weeks, sent: cmp.sent, staff: cmp.staff,
+      hoursCfg: cmp.hoursCfg, holidays: cmp.holidays, lim: cmp.lim, hidden: cmp.hidden });
+    const lbl = (w) => { const d = new Date(w.monday); return `T${d.getMonth() + 1}·${Math.min(4, Math.ceil(d.getDate() / 7))}`; };
+    const doubt = (o) => r.gapWeeks > 0 && (o.st === "under" || o.st === "none");
+    const aoa = [
+      ["Khoảng", `${cmp.weeks.length} tuần ${lbl(cmp.weeks[0])} → ${lbl(cmp.weeks[cmp.weeks.length - 1])} (mọi tuần đã qua có giờ gửi)`],
+      ["Đơn vị", "người, bình quân mỗi tuần · 1 người = giờ chuẩn của chính tuần đó (đã trừ ngày lễ)"],
+      ["Ngưỡng", `đúng kế hoạch khi lệch ≤ ${cmp.lim.tol}% · lệch vai trò khi sai lệch theo vai trò > ${cmp.lim.mix}%`],
+      ...(r.gapWeeks ? [["Lưu ý", `${r.gapNames.length} người chưa gửi đủ giờ ở ${r.gapWeeks} tuần: ${r.gapNames.join(", ")} — kết luận có dấu * chưa chắc`]] : []),
+      [],
+      ["Dự án", "Mã", "Kế hoạch", "Thực tế", "Lệch", "Kết luận", "Theo vai trò (kế hoạch → thực tế)"],
+      ...r.list.map((o) => [
+        o.p.name, o.p.code || "", +o.KH.toFixed(2), +o.TT.toFixed(2), +o.d.toFixed(2),
+        `${paVerdict(o)}${doubt(o) ? " *" : ""}`,
+        R.filter((x) => o.kh[x.id] || o.tt[x.id]).map((x) => `${x.id} ${+(o.kh[x.id] || 0).toFixed(2)} → ${+(o.tt[x.id] || 0).toFixed(2)}`).join(" · "),
+      ]),
+    ];
+    const ws3 = XLSX.utils.aoa_to_sheet(aoa);
+    ws3["!cols"] = [{ wch: 40 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 24 }, { wch: 60 }];
+    XLSX.utils.book_append_sheet(wb, ws3, "Kế hoạch vs thực tế");
+  } else {
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{ "Ghi chú": "Chưa có tuần nào đã qua có giờ gửi." }]), "Kế hoạch vs thực tế");
+  }
 
   /* 4 — các bản đã chốt */
   const sn = (snaps || []).map((s) => ({ "Nhãn": s.label || "", "Thời điểm chốt": String(s.taken_at || "").replace("T", " ").slice(0, 16) }));
@@ -62,5 +79,5 @@ export async function exportPlanXlsx({ plan, projects, roles, weeks, cap, head, 
   ws4["!cols"] = [{ wch: 26 }, { wch: 22 }];
   XLSX.utils.book_append_sheet(wb, ws4, "Bản chốt");
 
-  XLSX.writeFile(wb, `ARTIUS_ke-hoach_${start}-${start + 1}_${fmt(new Date())}.xlsx`);
+  XLSX.writeFile(wb, `ARTIUS_ke-hoach_${start}-${start + years - 1}_${fmt(new Date())}.xlsx`);
 }

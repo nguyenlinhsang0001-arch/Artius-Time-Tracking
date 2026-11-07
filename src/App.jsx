@@ -1,6 +1,17 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.58
+   ARTIUS — Quản lý giờ công theo dự án · v13.59
+   Mới ở v13.59 — Kế hoạch, sửa các điểm sai từ đợt rà soát công thức (mục 2, 3, 4, 5, 6, 7):
+     · (2) Thực tế quy ra người = giờ ÷ GIỜ CHUẨN CỦA CHÍNH TUẦN ĐÓ (trừ ngày lễ), thay cho chia cứng 44 h.
+       Tuần có lễ không còn bị thấp giả ~18% mỗi ngày lễ. Nhãn ghi "1 người = 36 giờ (tuần có ngày lễ)".
+     · (3) Toàn bộ phép so dời vào planCalc.comparePlan, dùng chung cho màn "So với thực tế" và sheet
+       "Kế hoạch vs thực tế" của file Excel — hết cảnh Excel chạy luật đời v12.
+     · (4) "Tuần này" so TRỌN NGÀY tới hết hôm qua cho cả hai phía (kế hoạch cắt theo các ngày đã trọn,
+       thực tế chỉ lấy giờ của các ngày đó). Sáng thứ 2 chưa có ngày trọn thì báo "Tuần mới bắt đầu".
+     · (5) "…% thời gian làm việc của họ": tử số và mẫu số cùng lấy giờ đã gửi.
+     · (6) "Chưa gửi đủ giờ" xét theo NGÀY TRỐNG như Bảng công, không còn chỉ xét có / không có giờ.
+     · (7) Theo dự án › "Thiếu người được giao" tính cả người có quyền tất cả dự án.
+
    Mới ở v13.58 — Kế hoạch › So với thực tế, giờ nháp của tuần đang chạy:
      · Chú thích rê chuột của chip kết luận (dấu *) nay ghi giờ nháp của CHÍNH dự án đó. Trước đây
        mọi chip cùng ghi tổng nháp của cả công ty (vd "còn 70 giờ nháp") nên đọc tưởng của riêng dự án.
