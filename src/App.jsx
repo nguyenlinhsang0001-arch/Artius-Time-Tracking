@@ -1,6 +1,14 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.55
+   ARTIUS — Quản lý giờ công theo dự án · v13.56
+   Mới ở v13.56 — Kế hoạch › So với thực tế: "tải tuần …%" nay tính đúng như Bảng công.
+     Trước đây giờ chuẩn lấy cứng 44 h × số tuần cho mọi người, nên lệch với Bảng công (vd Đỗ Chí Thành
+     40/40 = 100% bên Bảng công nhưng ra 91% ở đây vì bị tính cả 4 h thứ 7 chưa tới). Nay giờ chuẩn tính
+     RIÊNG TỪNG NGƯỜI, TỚI THỜI ĐIỂM XEM, đúng công thức stdOf của Bảng công: ngày chưa tới không tính,
+     hôm nay chỉ tính khi người đó đã chấm giờ hôm nay, bỏ ngày lễ và ngày sau khi nghỉ việc.
+     Sửa luôn lỗi kèm theo: chế độ "Tuần này" xem giữa tuần trước đây chia cho giờ chuẩn cả tuần nên
+     ai cũng hiện thiếu giờ.
+
    Mới ở v13.55 — Bảng công: bỏ hộp hỏi lại "Mở khoá tuần … ?". Bấm ổ khoá là làm luôn cho tuần đang xem:
      ổ khoá đang sáng thì khoá lại, còn lại thì mở khoá. Trong lúc đang ghi, nút mờ đi và không bấm được
      để khỏi bấm đúp. Lưu ý: mở khoá gỡ dấu đã gửi của cả tuần, bấm lại để khoá chỉ tắt dấu mở chứ không

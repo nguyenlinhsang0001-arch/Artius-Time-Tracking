@@ -13,7 +13,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Search, SlidersHorizontal, X } from "lucide-react";
 import { addDays, effortHoursFor, fmt, makeHolidayIndex, minHoursFor, mondayOf, weekDays, weeklyTarget } from "../../core/date.jsx";
-import { NO_PROJECT, isIdleTask, isLeaveTask, isOtId } from "../../core/domain.jsx";
+import { NO_PROJECT, goneOnDay, isIdleTask, isLeaveTask, isOtId } from "../../core/domain.jsx";
 import { isLight } from "../../core/theme.jsx";
 import { ALLOC_ST, allocLimits, allocState } from "../../shared/alloc.jsx";
 import { cellOf, foldMerged, joinYears, normalizeYear, planLimits, slotIndexOf } from "./planCalc.js";
@@ -227,7 +227,8 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
       const h = Number(d.hours) || 0; if (!h) continue;
       if (!mons.has(fmt(mondayOf(new Date(d.date))))) continue;
       const k = `${d.empId}|${d.date}`;
-      const c = day.get(k) || { ot: 0, reg: 0, idle: 0 };
+      const c = day.get(k) || { ot: 0, reg: 0, idle: 0, any: 0 };
+      c.any += h;   // v13.56: có chấm giờ ngày này chưa — để biết HÔM NAY có tính vào giờ chuẩn không
       if (isOtId(d.taskId)) c.ot += h;
       else if (!isLeaveTask(d.taskId)) { c.reg += h; if (isIdleTask(d.taskId)) c.idle += h; }
       day.set(k, c);
@@ -243,14 +244,33 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
       t.ot += c.ot; t.idle += c.idle;
       t.eff += effortHoursFor(date, c.reg - c.idle, hoursCfg, hs);
     }
-    const sd = STD * nW;
+    /* v13.56 — giờ chuẩn TÍNH RIÊNG TỪNG NGƯỜI, TỚI THỜI ĐIỂM XEM, đúng công thức stdOf của Bảng công:
+       ngày chưa tới không tính; HÔM NAY chỉ tính khi người đó đã chấm giờ hôm nay; ngày lễ và ngày sau
+       khi nghỉ việc không tính. Trước đây lấy cứng 44 h × số tuần cho mọi người, nên:
+         – thứ 7 chưa chấm mà đã bị tính 4 h chuẩn (Bảng công 40/40 = 100%, ở đây ra 91%);
+         – chế độ "Tuần này" giữa tuần chia cho giờ chuẩn cả tuần, ai cũng hiện thiếu giờ.  */
+    const today = fmt(new Date());
+    const days = weeks.flatMap((w) => weekDays(w.monday));
+    const empOf = new Map(staff.map((e) => [e.id, e]));
+    const stdOf = (eid) => {
+      let v = 0;
+      for (const d of days) {
+        if (d > today || goneOnDay(empOf.get(eid), d)) continue;
+        if (d === today) { const c = day.get(`${eid}|${d}`); if (!c || c.any <= 0) continue; }
+        v += minHoursFor(d, hoursCfg, hs) || 0;
+      }
+      return v;
+    };
     const out = new Map();
     /* work = thời gian LÀM VIỆC thật: bỏ giờ vắng mặt và giờ trống việc. Dùng làm mẫu số cho
        "…% thời gian làm việc của họ" — mẫu số cũ gồm cả hai thứ đó nên người nghỉ phép bị hiện thấp oan. */
-    for (const [eid, t] of tot) out.set(eid, { ...t, sd, work: Math.max(0, t.t - t.lv - t.idle),
-      st: allocState(t.t, t.ot, t.eff, t.idle, sd, aLim), p: sd ? Math.round(((t.t - t.idle) / sd) * 100) : null });
+    for (const [eid, t] of tot) {
+      const sd = stdOf(eid);
+      out.set(eid, { ...t, sd, work: Math.max(0, t.t - t.lv - t.idle),
+        st: allocState(t.t, t.ot, t.eff, t.idle, sd, aLim), p: sd ? Math.round(((t.t - t.idle) / sd) * 100) : null });
+    }
     return out;
-  }, [detail, weeks, hoursCfg, holidays, STD, nW, aLim]);
+  }, [detail, weeks, hoursCfg, holidays, aLim, staff]);
 
   if (loading) return <p className="px-4 py-8 text-sm text-slate-500">Đang tải giờ đã chấm…</p>;
   if (!doneWeeks.length && !nowW) return <p className="px-4 py-8 text-sm text-slate-500">Chưa có tuần nào đã qua có giờ gửi trong khoảng năm đang xem.</p>;
@@ -392,7 +412,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
                   <div className={`absolute right-0 z-30 w-[250px] rounded-md border border-slate-700 p-2 text-[11.5px] shadow-xl ${up ? "bottom-full mb-0.5" : "top-full mt-0.5"}`}
                     style={{ background: C.grp }}>
                     <div className="mb-1 text-[10.5px] uppercase tracking-wider text-slate-500">
-                      {rangeTxt} · chuẩn {f0(r2(L ? L.sd : STD * nW))} h
+                      {rangeTxt} · chuẩn{running ? " tới hôm nay" : ""} {f0(r2(L ? L.sd : 0))} h
                     </div>
                     {rows.length ? rows.map(([k, h]) => (
                       <div key={k || "_"} className="flex gap-2 py-[1px]">
