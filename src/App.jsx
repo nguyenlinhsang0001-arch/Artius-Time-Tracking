@@ -1,6 +1,15 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.53
+   ARTIUS — Quản lý giờ công theo dự án · v13.54
+   Mới ở v13.54 — Bỏ hết thông báo xoay quanh việc mở / khoá chấm công:
+     · Bảng công: chú thích rê chuột của ổ khoá và nút "Khoá quá hạn"; các dòng giải thích trong hộp
+       "Mở khoá tuần … ?" (chỉ còn câu hỏi + nút); báo lỗi riêng của thao tác mở / khoá.
+     · Thiết lập › Khoá chấm công quá hạn: hai đoạn giải thích, thông báo khi đổi số tuần.
+     · Chấm công nhân viên: dải "đã quá hạn chấm công" / "quản lý đang mở tuần này cho bạn";
+       thông báo "Đã mở khoá cả tuần" khi quản lý bấm Mở khoá tuần này.
+     Giữ hộp hỏi lại khi mở khoá, vì mở khoá gỡ dấu đã gửi — bấm nhầm thì người đó phải gửi lại.
+     Giữ "Đã gửi … Các ngày này đã khoá." và hộp "Gửi giờ công N ngày?" (B5, D1 Sang đã chọn giữ).
+
    Mới ở v13.53 — Bảng công, ổ khoá mở tuần:
      · Người được mở khoá bấm "Gửi giờ công" xong là ổ khoá TỰ HẾT SÁNG. Dấu mở trong cfg.pastOpen
        cũng được gỡ ngầm (chạy ở máy Admin khi mở Bảng công / có giờ mới đổ về, vì nhân viên không

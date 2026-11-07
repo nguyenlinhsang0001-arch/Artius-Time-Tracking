@@ -674,9 +674,8 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     if (!admin && submitMode === "submit") { try { localStorage.removeItem(draftKeyOf(monday)); } catch { /* bỏ qua */ } }
     if (submitMode) setReloadKey((k) => k + 1);   // nạp lại để màn hình khớp đúng bản vừa ghi
     const sentLabel = newly.sort().map(dayName).join(", ");
-    if (!silent) flash(
+    if (!silent && submitMode !== "unsubmit") flash(   // v13.54: mở khoá cả tuần không báo
       submitMode === "submit" ? (newly.length === 0 ? "Không có ngày nào mới để đánh dấu." : admin ? `Đã đánh dấu đã gửi: ${sentLabel}.` : `Đã gửi ${sentLabel}. Các ngày này đã khoá.`)
-        : submitMode === "unsubmit" ? "Đã mở khoá cả tuần — nhân sự sửa lại được, giờ tuần này tạm chưa tính cho tới khi gửi lại."
         : "Đã lưu thay đổi."
     );
     return true;
@@ -1234,21 +1233,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       </div>
 
 
-      {/* v8.6 — tuần đã quá hạn chấm công (khoá sau N tuần) / đang được mở chấm bù
-          v13.31: gửi xong cả tuần thì ẩn hẳn — lời nhắc "nhớ bấm Gửi giờ công" không còn việc gì để làm */}
-      {!admin && (pastDays.length > 0 || openUntil) && !(sentDays.length > 0 && toSend.length === 0) && (
-        <div className={`flex items-start gap-2.5 rounded-xl border p-3 text-sm ${openUntil ? "border-teal-900 bg-teal-950/60 text-teal-100" : "border-slate-700 bg-slate-900 text-slate-300"}`}>
-          {openUntil ? <Unlock size={17} className="mt-0.5 shrink-0 text-teal-400" /> : <Lock size={17} className="mt-0.5 shrink-0 text-slate-400" />}
-          <div>
-            {openUntil
-              ? (pastOpenEver(openUntil)
-                ? <>Quản lý đang mở tuần này cho bạn nhập bù. Nhập xong nhớ bấm <b>Gửi giờ công</b>.</>
-                : <>Quản lý đang mở chấm bù tuần này cho bạn tới hết ngày <b>{dLabel(openUntil)}</b>. Nhập xong nhớ bấm Gửi giờ công.</>)
-              : <>{pastDays.length === 7 ? "Tuần này" : `${pastDays.map(dayName).join(", ")}`} đã quá hạn chấm công — chỉ nhập / sửa được {pastWeeks(cfg)} tuần gần nhất.
-                  {" "}Cần chấm bù thì nhờ quản lý mở.</>}
-          </div>
-        </div>
-      )}
+      {/* v13.54 — bỏ dải báo "đã quá hạn chấm công" / "quản lý đang mở tuần này cho bạn". */}
 
       {/* v13.50 (A3) — bỏ dải "Vai trò … chưa được gán tác vụ nào". */}
 
