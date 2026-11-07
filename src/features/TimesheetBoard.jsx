@@ -293,6 +293,28 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
   const laterIso = (a, b) => (!a || (b && b > a) ? b : a);
   const [mNudged, setMNudged] = useState(() => new Map());      // v6.4: empId -> Map(thứ Hai tuần -> giờ đã nhắc), các tuần của tháng đang xem
   const [unlockFor, setUnlockFor] = useState(null);             // empId đang chờ xác nhận mở khoá tuần
+  /* v13.53 — người được mở khoá đã bấm "Gửi giờ công" (tuần đó có lại ngày đã gửi) thì tự gỡ dấu mở
+     trong cfg.pastOpen: ổ khoá hết sáng, và tuần quá hạn đóng lại như cũ. Nhân viên không ghi được
+     thiết lập nên việc dọn chạy ở máy Admin, mỗi khi mở Bảng công hoặc có giờ mới đổ về.
+     Chưa tải được tháng nào thì coi như chưa gửi, không gỡ — thà để sáng thêm còn hơn đóng nhầm. */
+  const pruning = useRef(false);
+  useEffect(() => {
+    if (!pastLockSave || pruning.current) return undefined;
+    const ents = Object.entries(cfg.pastOpen || {}).flatMap(([id, m]) => Object.keys(m || {}).map((w) => [id, w]));
+    if (!ents.length) return undefined;
+    let alive = true;
+    (async () => {
+      const ok = await ensureMonths([...new Set(ents.flatMap(([, w]) => weekDays(w).map(ymOf)))]);
+      if (!alive || !ok) return;
+      const done = ents.filter(([id, w]) => weekDays(w).some((d) => daySent(id, d)));
+      if (!done.length) return;
+      pruning.current = true;
+      const next = cleanPastOpen(cfg, fmt(new Date()), (c) => { for (const [id, w] of done) if (c[id]) delete c[id][w]; });
+      await pastLockSave({ ...cfg, pastOpen: next });
+      pruning.current = false;
+    })();
+    return () => { alive = false; };
+  }, [cfg, dataTick, pastLockSave]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [helpOpen, setHelpOpen] = useState(false);   // v13.11: bảng chú thích màu
   const helpRef = useRef(null);
   useEffect(() => {
@@ -848,7 +870,9 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
                        Dấu này cũng chính là thứ cho người đó vượt mốc "Khoá quá hạn". */
                     const hasSent = weekDays(monday).some((d) => daySent(e.id, d));
                     const cut = pastCut(cfg), locked = !!(cut && monday < cut);
-                    const openNow = !!pastOpenUntil(cfg, e.id, monday);
+                    /* v13.53 — người đó bấm "Gửi giờ công" (có ngày đã gửi lại) là ổ khoá hết sáng ngay;
+                       dấu trong cfg.pastOpen được dọn ngầm ở hiệu ứng bên dưới. */
+                    const openNow = !!pastOpenUntil(cfg, e.id, monday) && !hasSent;
                     const canMark = !!pastLockSave && !isResigned(e);
                     if (!hasSent && !openNow && !(locked && canMark)) return <span className="inline-block w-9" />;
                     return (
@@ -1202,7 +1226,6 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
             onCancel={() => setUnlockFor(null)}
             onConfirm={async ({ unlock, open, close }) => {
               const id = unlockFor; setUnlockFor(null);
-              const nm = emp?.name || "";
               let okU = true, okB = true;
               if (unlock && hasSent) okU = await unlockWeekTs(id, monday);
               /* v13.51 — mở là mở hẳn (mốc PAST_OPEN_FOREVER), không hỏi hạn; "Khoá lại" gỡ mốc đó đi. */
@@ -1213,10 +1236,8 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
                 });
                 okB = (await pastLockSave({ ...cfg, pastOpen: next })) !== false;
               }
-              const ok = okU && okB;
-              const wk = `tuần ${dLabel(monday)} – ${dLabel(fmt(addDays(parseD(monday), 6)))}`;
-              flash(ok ? (close ? `Đã khoá lại ${wk} của ${nm}.` : `Đã mở khoá ${wk} cho ${nm}.`)
-                : `Chưa thực hiện được — ${LAST_STORAGE_ERROR || "mất kết nối"}`, ok ? "ok" : "err");
+              /* v13.53 — bỏ thông báo "Đã mở khoá…" / "Đã khoá lại…": ổ khoá đổi màu là đủ thấy. Lỗi thì vẫn báo. */
+              if (!(okU && okB)) flash(`Chưa thực hiện được — ${LAST_STORAGE_ERROR || "mất kết nối"}`, "err");
             }} />
         );
       })()}
@@ -1340,7 +1361,7 @@ export function PastLockPanel({ cfg, saveCfg, flash }) {
                   <div key={`${o.id}|${o.w}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm">
                     <span className="min-w-0 flex-1 text-slate-200">{nm(o.id)} <span className="text-slate-500">· tuần {wkLabel(o.w)}</span></span>
                     <span className={`text-xs ${live ? "text-teal-400" : "text-slate-500"}`}>{live ? (pastOpenEver(o.u) ? "đang mở" : `mở tới hết ${dLabel(o.u)}`) : "đã hết hạn"}</span>
-                    <button onClick={async () => { if (await writeOpen((c) => { if (c[o.id]) delete c[o.id][o.w]; })) flash("Đã khoá lại tuần này."); }} disabled={busy}
+                    <button onClick={() => writeOpen((c) => { if (c[o.id]) delete c[o.id][o.w]; })} disabled={busy}
                       title="Khoá lại ngay" className={`ro-hide ${iconBtn} h-8 w-8 hover:border-rose-800 hover:text-rose-400`}><X size={14} /></button>
                   </div>
                 );

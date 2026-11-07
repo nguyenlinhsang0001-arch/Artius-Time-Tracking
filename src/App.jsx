@@ -1,6 +1,13 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.52
+   ARTIUS — Quản lý giờ công theo dự án · v13.53
+   Mới ở v13.53 — Bảng công, ổ khoá mở tuần:
+     · Người được mở khoá bấm "Gửi giờ công" xong là ổ khoá TỰ HẾT SÁNG. Dấu mở trong cfg.pastOpen
+       cũng được gỡ ngầm (chạy ở máy Admin khi mở Bảng công / có giờ mới đổ về, vì nhân viên không
+       ghi được thiết lập), nên tuần quá hạn đóng lại như cũ — không còn để ngỏ vô thời hạn.
+     · Bỏ thông báo "Đã mở khoá tuần …" và "Đã khoá lại tuần …" (cả ở Bảng công lẫn danh sách trong
+       Thiết lập). Lỗi ghi thì vẫn báo.
+
    Mới ở v13.52 — Bảng công, cột "Mở khoá / sửa", hai điểm tiếp theo của v13.51:
      · Mở khoá tuần nào thì ổ khoá dòng đó SÁNG XANH và GIỮ NGUYÊN cho tới khi bấm khoá lại —
        kể cả tuần bình thường chưa quá hạn. Nhìn dòng sáng là biết người đó XIN SỬA, không phải
