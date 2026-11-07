@@ -1,6 +1,12 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.56
+   ARTIUS — Quản lý giờ công theo dự án · v13.57
+   Mới ở v13.57 — Tab Kế hoạch:
+     · Ba mục con xếp lại: So với thực tế · Nhập liệu · Theo dự án. Mở tab Kế hoạch là vào thẳng
+       "So với thực tế" (mục đầu).
+     · "So với thực tế" mặc định Khoảng = Tuần này, Đơn vị = Người. Tuần hiện tại nằm ngoài khung năm
+       của lưới thì tự lùi về "Tuần trước".
+
    Mới ở v13.56 — Kế hoạch › So với thực tế: "tải tuần …%" nay tính đúng như Bảng công.
      Trước đây giờ chuẩn lấy cứng 44 h × số tuần cho mọi người, nên lệch với Bảng công (vd Đỗ Chí Thành
      40/40 = 100% bên Bảng công nhưng ra 91% ở đây vì bị tính cả 4 h thứ 7 chưa tới). Nay giờ chuẩn tính

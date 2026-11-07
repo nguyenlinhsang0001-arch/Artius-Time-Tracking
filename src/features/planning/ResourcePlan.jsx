@@ -24,7 +24,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
   /* v13.37 — lưới trải NHIỀU NĂM liền nhau, cuộn ngang qua tháng 12 là sang năm sau luôn,
      không còn ô chọn "cặp năm". Cửa sổ cố định: năm trước → ba năm sau. */
   const start = thisYear - 1;
-  const [mode, setMode] = useState("in");
+  const [mode, setMode] = useState("ac");   // v13.57: mở tab Kế hoạch là vào thẳng "So với thực tế" (mục đầu tiên)
   const [viewW, setViewW] = useState(null);   // cột tuần đang ở mép trái, để hiện mốc thời gian
   const [openCal, setOpenCal] = useState(false);   // v13.44: ô lịch bấm được, chọn thẳng tháng
   const [plan, setPlan] = useState({});
@@ -311,13 +311,13 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
     <div className="space-y-3 md:space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex rounded-xl border border-slate-800 bg-slate-900 p-1">
+          {/* v13.57 — thứ tự: So với thực tế · Nhập liệu · Theo dự án */}
+          <button onClick={() => setMode("ac")} aria-pressed={mode === "ac"}
+            className={`${CTRL} rounded-lg px-6 text-sm font-medium ${mode === "ac" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>So với thực tế</button>
           <button onClick={() => setMode("in")} aria-pressed={mode === "in"}
             className={`${CTRL} rounded-lg px-6 text-sm font-medium ${mode === "in" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Nhập liệu</button>
           <button onClick={() => setMode("pj")} aria-pressed={mode === "pj"}
             className={`${CTRL} rounded-lg px-6 text-sm font-medium ${mode === "pj" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>Theo dự án</button>
-          {/* v13.1 — kế hoạch so với giờ đã gửi */}
-          <button onClick={() => setMode("ac")} aria-pressed={mode === "ac"}
-            className={`${CTRL} rounded-lg px-6 text-sm font-medium ${mode === "ac" ? "bg-teal-950 text-teal-300" : "text-slate-400 hover:text-slate-200"}`}>So với thực tế</button>
         </div>
         {!readOnly && (saving ? <span className="text-xs text-teal-400">Đang lưu…</span>
           : saveErr ? <span className="text-xs text-rose-400" title={saveErr}>Chưa lưu được — bấm Lưu để thử lại</span>

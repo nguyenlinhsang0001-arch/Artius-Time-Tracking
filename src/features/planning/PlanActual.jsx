@@ -52,13 +52,13 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
   holidays = [], aLim = allocLimits(null) }) {
   useThemeTick();
   const C = isLight() ? TONE.light : TONE.dark;
-  const [range, setRange] = useState("last");   /* last | 4 | all */
+  const [range, setRange] = useState("now");    /* now | last | 4 | all — v13.57: mặc định "Tuần này" */
   const [base, setBase] = useState("");         /* "" = lưới hiện tại, còn lại = nhãn bản chốt */
   const [snaps, setSnaps] = useState([]);       /* [{ label, a: id năm start, b: id năm start+1, at }] */
   const [snapPlan, setSnapPlan] = useState(null);
   const [sel, setSel] = useState(null);
   const [hov, setHov] = useState(null);
-  const [unit, setUnit] = useState("h");        /* h = giờ | p = người */
+  const [unit, setUnit] = useState("p");        /* h = giờ | p = người — v13.57: mặc định "Người" */
   const [tog, setTog] = useState({});           /* "pid|rid" -> mở / đóng do người dùng bấm */
   const [openCom, setOpenCom] = useState(false);   /* v13.42: bóc giờ việc chung / vắng */
   const [fSt, setFSt] = useState("all");           /* v13.42: lọc theo kết luận */
@@ -155,6 +155,8 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
   }, [doneWeeks, range, nowW]);
   const running = range === "now";   /* đang xem tuần chưa xong */
   useEffect(() => { if (!doneWeeks.length && nowW && range !== "now") setRange("now"); }, [doneWeeks.length, nowW, range]);
+  /* v13.57 — mặc định là "Tuần này"; tuần hiện tại nằm ngoài khung năm của lưới thì lùi về "Tuần trước" */
+  useEffect(() => { if (range === "now" && !nowW && doneWeeks.length) setRange("last"); }, [range, nowW, doneWeeks.length]);
   const nW = weeks.length || 1;
   const wLabel = (w) => { const d = new Date(w.monday); return `T${d.getMonth() + 1}·${Math.min(4, Math.ceil(d.getDate() / 7))}`; };
   const rangeTxt = weeks.length ? (weeks.length === 1 ? `tuần ${wLabel(weeks[0])} (${fmt(new Date(weeks[0].monday)).slice(8, 10)}/${fmt(new Date(weeks[0].monday)).slice(5, 7)} – ${fmt(addDays(new Date(weeks[0].monday), 6)).slice(8, 10)}/${fmt(addDays(new Date(weeks[0].monday), 6)).slice(5, 7)})`
