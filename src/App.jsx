@@ -1,6 +1,11 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.63
+   ARTIUS — Quản lý giờ công theo dự án · v13.64
+   Mới ở v13.64 — script khôi phục không còn để lại lỗi trùng id bản chốt (không đổi gì trong app):
+     · Bản chốt nạp lại KHÔNG kèm id cũ; database tự cấp id như khi bấm "Chốt bản". Trước đây ghi id có
+       sẵn nên bộ đếm bigserial không nhích, khôi phục xong bấm "Chốt bản" là lỗi trùng khoá và phải chạy
+       tay một câu setval. App tìm bản chốt theo nhãn nên đổi id không ảnh hưởng.
+     · Chế độ mặc định: bản chốt đã có (cùng năm · nhãn · thời điểm chốt) thì bỏ qua — chạy lại không nhân đôi.
    Mới ở v13.63 — script khôi phục chạy được mà không cần cài gì (không đổi gì trong app):
      · tools/artius-restore.mjs viết lại không import thư viện nào, gọi thẳng REST API của Supabase
        bằng fetch có sẵn của Node 18. Bản v13.62 import @supabase/supabase-js nên chỉ chạy được trong

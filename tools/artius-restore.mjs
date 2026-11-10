@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* ============================================================
-   ARTIUS TIME — khôi phục từ file sao lưu (v13.63)
+   ARTIUS TIME — khôi phục từ file sao lưu (v13.64)
 
    KHÔNG cần cài gì. Chỉ cần Node 18 trở lên. Script gọi thẳng REST API của Supabase
    bằng fetch có sẵn trong Node, không import thư viện nào — nên chạy được ngay trong
@@ -173,9 +173,25 @@ if (planRows.length) {
   for (const part of chunks(planRows)) must("ghi lưới kế hoạch", await upsert("artius_plan", part, "year,project_id,role_id"));
   say(`  Kế hoạch    ${planRows.length} dòng đã ghi`);
 }
+/* v13.64 — bản chốt KHÔNG ghi kèm id. Cột id là bigserial: ghi id có sẵn thì bộ đếm của database
+   không nhích lên, lần bấm "Chốt bản" sau đụng id đã có và báo lỗi trùng khoá. Để database tự cấp id
+   như khi chốt trong app. Không mất gì: app tìm bản chốt theo NHÃN, không lưu id ở đâu cả.
+   Bản chốt không bao giờ bị sửa sau khi chốt, nên "ghi đè" = bỏ qua bản đã có (cùng năm · nhãn ·
+   thời điểm chốt), chỉ chèn bản còn thiếu — chạy lại bao nhiêu lần cũng không nhân đôi. */
 if (snapRows.length) {
-  for (const part of chunks(snapRows)) must("ghi bản chốt", await upsert("artius_plan_snapshot", part, "id"));
-  say(`  Bản chốt    ${snapRows.length} đã ghi`);
+  const keyOf = (r) => `${r.year}|${r.label ?? ""}|${Date.parse(r.taken_at)}`;
+  const have = new Set();
+  if (!WIPE) {
+    const r = must("đọc bản chốt đang có", await api("artius_plan_snapshot?select=year,label,taken_at"));
+    for (const x of JSON.parse(r.text || "[]")) have.add(keyOf(x));
+  }
+  const todo = snapRows.filter((r) => !have.has(keyOf(r)))
+    .sort((a, b) => Date.parse(a.taken_at) - Date.parse(b.taken_at))   /* giữ thứ tự cũ: bản chốt trước được id nhỏ hơn */
+    .map(({ year, label, data, taken_at }) => ({ year, label, data, taken_at }));
+  for (const part of chunks(todo))
+    must("ghi bản chốt", await api("artius_plan_snapshot", {
+      method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify(part) }));
+  say(`  Bản chốt    ${todo.length} đã ghi${snapRows.length - todo.length ? ` · ${snapRows.length - todo.length} đã có sẵn, bỏ qua` : ""}`);
 }
 
 /* ---------- đối chiếu lại ---------- */
@@ -187,18 +203,6 @@ say(`    artius_ts             ${after.ts}${mark(after.ts, tsRows.length)}`);
 say(`    artius_plan           ${after.plan}${mark(after.plan, planRows.length)}`);
 say(`    artius_plan_snapshot  ${after.snap}${mark(after.snap, snapRows.length)}`);
 say("");
-
-/* Cột id của artius_plan_snapshot là bigserial. Nạp lại bằng id có sẵn KHÔNG đẩy bộ đếm lên,
-   nên lần "Chốt bản" tiếp theo có thể đụng id đã tồn tại. Sau --wipe phải kéo bộ đếm lên tay. */
-if (WIPE && snapRows.length) {
-  say("  CÒN MỘT BƯỚC: mở Supabase → SQL Editor, chạy đúng câu này một lần:");
-  say("");
-  say("    select setval(pg_get_serial_sequence('artius_plan_snapshot','id'),");
-  say("                  (select coalesce(max(id), 1) from artius_plan_snapshot));");
-  say("");
-  say("  Không chạy thì lần bấm \"Chốt bản\" sau sẽ báo lỗi trùng id.");
-  say("");
-}
 
 say("  Xong. Mở app, tải lại trang, kiểm tra vài bảng công và lưới kế hoạch.");
 say("");

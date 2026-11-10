@@ -71,16 +71,7 @@ node tools/artius-restore.mjs ARTIUS_saoluu_2026-11-10.json --yes --wipe
 
 Script tự in lại số dòng sau khi ghi để đối chiếu với file. Sau đó mở app, tải lại trang, kiểm tra vài bảng công và lưới kế hoạch.
 
-**Sau `--wipe` còn một bước.** Cột `id` của `artius_plan_snapshot` là `bigserial`; nạp lại bằng id có sẵn không
-đẩy bộ đếm của nó lên, nên lần bấm **Chốt bản** tiếp theo sẽ báo lỗi trùng id. Script in ra câu SQL cần chạy,
-dán vào Supabase → SQL Editor một lần:
-
-```sql
-select setval(pg_get_serial_sequence('artius_plan_snapshot','id'),
-              (select coalesce(max(id), 1) from artius_plan_snapshot));
-```
-
-Chế độ mặc định (không `--wipe`) không cần bước này.
+Bản chốt được nạp lại **không kèm id cũ**: database tự cấp id mới, nên bấm "Chốt bản" ngay sau khi khôi phục vẫn chạy bình thường. App tìm bản chốt theo nhãn, nên id đổi cũng không ảnh hưởng gì. Bản chốt đã có sẵn trên server (trùng năm · nhãn · thời điểm chốt) thì bỏ qua, không nhân đôi.
 
 ## 5. Thử khôi phục — bắt buộc một lần
 
