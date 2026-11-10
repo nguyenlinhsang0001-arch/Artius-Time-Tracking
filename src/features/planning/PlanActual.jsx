@@ -303,6 +303,44 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
   const isOpen = (o, r) => { const k = `${o.pid}|${r.id}`; if (k in tog) return tog[k];
     const a = o.kh[r.id] || 0, b = o.tt[r.id] || 0; return Math.abs(b - a) > Math.max(0.15, a * 0.15); };
   const flip = (o, r) => setTog((t) => ({ ...t, [`${o.pid}|${r.id}`]: !isOpen(o, r) }));
+  /* v13.60 — thẻ rê chuột của một người: trong khoảng đang xem họ đổ giờ vào những dự án nào và mỗi dự án
+     chiếm bao nhiêu phần thời gian làm việc của họ. Dùng chung cho người ĐÃ chấm vào dự án và khối Bổ sung.
+     Mẫu số = L.work (đã trừ vắng mặt và trống việc), đúng mẫu số của dòng "…% thời gian làm việc của họ". */
+  const loadCard = (L, up, hlPid) => {
+    const rows = L ? [...L.by].sort((x, y) => y[1] - x[1]) : [];
+    const base = L && L.work > 0.005 ? L.work : 0;
+    return (
+      <div className={`absolute right-0 z-30 w-[274px] rounded-md border border-slate-700 p-2 text-[11.5px] shadow-xl ${up ? "bottom-full mb-0.5" : "top-full mt-0.5"}`}
+        style={{ background: C.grp }}>
+        <div className="mb-1 text-[10.5px] uppercase tracking-wider text-slate-500">
+          {rangeTxt} · chuẩn{running ? " tới hôm nay" : ""} {f0(r2(L ? L.sd : 0))} h
+        </div>
+        {rows.length ? rows.map(([k, h]) => {
+          const on = !!hlPid && k === hlPid;          /* dự án đang mở được tô để thấy ngay nó chiếm bao nhiêu */
+          const col = on ? C.over : k ? undefined : C.mix;
+          return (
+            <div key={k || "_"} className="flex items-center gap-2 py-[1px]">
+              <span className="truncate" style={{ color: col }}>{k ? pname(k) : "việc chung / vắng"}</span>
+              <span className="ml-auto shrink-0 font-mono text-slate-300" style={on ? { color: C.over } : undefined}>{f0(r2(h))} h</span>
+              {/* việc chung / vắng không quy ra % vì mẫu số đã bỏ giờ vắng mặt và trống việc */}
+              <span className="w-[34px] shrink-0 text-right font-mono" style={{ color: on ? C.over : C.plan }}>
+                {base && k ? `${Math.round((h / base) * 100)}%` : "—"}</span>
+            </div>
+          );
+        }) : <div className="text-slate-500">Chưa gửi giờ nào trong khoảng này.</div>}
+        {L && <div className="mt-1 flex gap-2 border-t pt-1 font-mono text-slate-200" style={{ borderColor: C.line }}>
+          <span className="font-sans text-slate-500">Tổng</span>
+          <span className="ml-auto">{f0(r2(L.t))} h</span>
+        </div>}
+        {L && (L.ot > 0.005 || L.eff > 0.005 || L.idle > 0.005) && (
+          <div className="text-[11px] text-slate-500">
+            {[L.ot > 0.005 ? `OT ${f0(r2(L.ot))} h` : "", L.eff > 0.005 ? `cố gắng ${f0(r2(L.eff))} h` : "", L.idle > 0.005 ? `trống việc ${f0(r2(L.idle))} h` : ""].filter(Boolean).join(" · ")}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   /* danh sách người của một vai trò trong dự án đang chọn */
   const rolePeople = (o, r) => {
     const a = o.kh[r.id] || 0, b = o.tt[r.id] || 0, planH = a * HPP * nW;
@@ -319,8 +357,13 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
     return (
       <div className="py-1.5 pl-5 pr-1 text-[12px]" style={{ background: C.grp }}>
         {inP.length ? <>
-          {inP.map(([id, h]) => { const L = load.get(id); return (
-            <div key={id} className="py-0.5">
+          {inP.map(([id, h], ii) => { const L = load.get(id);
+            /* v13.60 — rê chuột lên một người để xem họ còn đang ở những dự án nào, mỗi dự án chiếm bao nhiêu %.
+               Hai người cuối thì lật thẻ lên trên cho khỏi rơi ra ngoài đáy khung. */
+            const key = `in|${o.pid}|${r.id}|${id}`, up = inP.length > 2 && ii >= inP.length - 2;
+            return (
+            <div key={id} className="relative py-0.5"
+              onMouseEnter={() => setHovP(key)} onMouseLeave={() => setHovP((hv) => (hv === key ? "" : hv))}>
               <div className="grid grid-cols-[minmax(0,1fr)_58px_110px] items-center gap-2">
                 <span className="truncate text-slate-200">{nameOf.get(id)}{(o.drp.get(id) || 0) > 0.005 && <span className="text-slate-500"> *</span>}</span>
                 <span className="text-right font-mono text-slate-300">{f0(r2(h))} h</span>
@@ -336,6 +379,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
                 {L && L.p != null && <> · <span style={{ color: L.st === "hi" ? C.red : L.st === "lo" ? C.mix : undefined }}>
                   tải {nW > 1 ? "kỳ này" : "tuần"} {L.p}%{L.st === "hi" ? " — quá tải" : ""}</span></>}
               </div>
+              {hovP === key && loadCard(L, up, o.pid)}
             </div>); })}
         </> : <div className="mb-1" style={{ color: C.under }}>Không ai thuộc vai trò {r.name || r.id} chấm giờ vào dự án này.</div>}
         {sup.length > 0 && <>
@@ -350,7 +394,6 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
             const key = `${supKey}|${e.id}`;
             /* hai người cuối thì lật thẻ lên trên, khỏi rơi ra ngoài đáy khung */
             const up = sup.length > 2 && si >= sup.length - 2;
-            const rows = L ? [...L.by].sort((x, y) => y[1] - x[1]) : [];
             return (
               <div key={e.id} className="relative py-0.5"
                 onMouseEnter={() => setHovP(key)} onMouseLeave={() => setHovP((h) => (h === key ? "" : h))}>
@@ -360,29 +403,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
                     {ALLOC_ST[L.st][0]}{L.p != null ? ` · ${L.p}%` : ""}</span>
                     : <span className="ml-auto shrink-0 rounded-full border border-slate-700 px-1.5 text-[10px] leading-[15px] text-slate-500">chưa gửi giờ</span>}
                 </div>
-                {hovP === key && (
-                  <div className={`absolute right-0 z-30 w-[250px] rounded-md border border-slate-700 p-2 text-[11.5px] shadow-xl ${up ? "bottom-full mb-0.5" : "top-full mt-0.5"}`}
-                    style={{ background: C.grp }}>
-                    <div className="mb-1 text-[10.5px] uppercase tracking-wider text-slate-500">
-                      {rangeTxt} · chuẩn{running ? " tới hôm nay" : ""} {f0(r2(L ? L.sd : 0))} h
-                    </div>
-                    {rows.length ? rows.map(([k, h]) => (
-                      <div key={k || "_"} className="flex gap-2 py-[1px]">
-                        <span className="truncate" style={{ color: k ? undefined : C.mix }}>{k ? pname(k) : "việc chung / vắng"}</span>
-                        <span className="ml-auto shrink-0 font-mono text-slate-300">{f0(r2(h))} h</span>
-                      </div>
-                    )) : <div className="text-slate-500">Chưa gửi giờ nào trong khoảng này.</div>}
-                    {L && <div className="mt-1 flex gap-2 border-t pt-1 font-mono text-slate-200" style={{ borderColor: C.line }}>
-                      <span className="font-sans text-slate-500">Tổng</span>
-                      <span className="ml-auto">{f0(r2(L.t))} h</span>
-                    </div>}
-                    {L && (L.ot > 0.005 || L.eff > 0.005 || L.idle > 0.005) && (
-                      <div className="text-[11px] text-slate-500">
-                        {[L.ot > 0.005 ? `OT ${f0(r2(L.ot))} h` : "", L.eff > 0.005 ? `cố gắng ${f0(r2(L.eff))} h` : "", L.idle > 0.005 ? `trống việc ${f0(r2(L.idle))} h` : ""].filter(Boolean).join(" · ")}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {hovP === key && loadCard(L, up, o.pid)}
               </div>
             );
           })}
