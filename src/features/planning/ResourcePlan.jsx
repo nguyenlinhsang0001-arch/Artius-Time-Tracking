@@ -1,5 +1,5 @@
 /* ARTIUS TIME v12 — Tab "Kế hoạch": khung chung, các chế độ Nhập liệu (Toàn bộ | Từng dự án), Theo dự án, So với thực tế (v13.1).
-   v12.34 — bỏ chế độ Tổng quan: thiếu / dư người chỉ xem ở Dashboard › Tổng quan nguồn lực (PlanOverview.jsx giữ lại, không dùng).
+   v12.34 — bỏ chế độ Tổng quan: thiếu / dư người chỉ xem ở Dashboard › Tổng quan nguồn lực (PlanOverview.jsx đã xoá ở v13.65).
    Admin nhập và lưu; BOD và trưởng phòng chỉ xem. Dữ liệu nằm ở bảng riêng (xem planStore.js). */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarRange, Camera, Download, Loader2, Merge, Redo2, RotateCcw, Save, Search, Undo2, X } from "lucide-react";
@@ -8,7 +8,7 @@ import { dbTs, dbTsSent, ensureMonths, useDataTick, weekDone } from "../../core/
 import { ROLES, isResigned } from "../../core/domain.jsx";
 import { CTRL, Panel, btnGhost, btnPrimary } from "../../core/ui.jsx";
 import { allocLimits } from "../../shared/alloc.jsx";
-import { PER_YEAR, diffCells, foldMerged, joinYears, normalizeYear, planLimits, prunePlan, realWeeksOfYears, slotIndexOf, splitYears, weeksOfYears } from "./planCalc.js";
+import { PER_YEAR, PLAN_YEARS, diffCells, foldMerged, joinYears, normalizeYear, planLimits, prunePlan, realWeeksOfYears, slotIndexOf, splitYears, weeksOfYears } from "./planCalc.js";
 import { PlanActual } from "./PlanActual.jsx";
 import { PlanGrid } from "./PlanGrid.jsx";
 import { PlanProjects } from "./PlanProjects.jsx";
@@ -76,7 +76,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
   const savedAt = useRef("");
 
   const avail = Number(cfg.planning?.availability) > 0 ? Number(cfg.planning.availability) : DEFAULT_AVAIL;
-  const YEARS = 4;                      // số năm trên lưới
+  const YEARS = PLAN_YEARS;             // số năm trên lưới — dùng chung với So với thực tế
   const years = useMemo(() => Array.from({ length: YEARS }, (_, k) => start + k), [start]);
   /* v13.37 — nhiều năm liền nhau trên MỘT lưới cuộn ngang, chỉ số tuần nối tiếp 0 … YEARS*48-1;
      khi lưu thì tách lại, Supabase vẫn lưu từng năm một. */

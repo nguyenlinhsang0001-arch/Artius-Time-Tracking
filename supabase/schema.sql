@@ -1,3 +1,5 @@
+-- v13.65 — THỨ TỰ CHẠY BẮT BUỘC khi dựng database mới: xem supabase/README.md.
+--   File này KHÔNG tự đủ: trigger chặn ghi bảng công và hai hàm tổng hợp nằm ở các file chạy sau.
 -- ARTIUS — Quản lý giờ công v7.3
 -- Chạy trong Supabase → SQL Editor. Chạy lại nhiều lần được, không xoá dữ liệu.
 -- Nâng cấp từ bất kỳ bản v1.7 → v3.0: chạy nguyên file này MỘT LẦN, ngay trước khi deploy bản v3.1.
@@ -289,73 +291,10 @@ $$;
 --      · (v2.5) không thêm / sửa / xoá giờ ở giai đoạn chưa có giờ dự kiến của dự án
 --    Ngày chưa gửi thì nhân sự nhập và gửi bình thường.
 --    Hàm này cũng ghi updated_at theo giờ của server, để màn hình quản lý hỏi "có gì mới từ lúc X" cho chính xác.
-create or replace function public.artius_ts_guard()
-returns trigger language plpgsql security definer set search_path = public as $$
-declare
-  o  jsonb;
-  n  jsonb;
-  os jsonb;
-  cf jsonb;
-  dk text;
-  pid text;
-begin
-  -- v7.3: trưởng phòng sửa bảng công nhân viên cùng phòng như quản lý (mở khoá, sửa ngày đã gửi…)
-  if auth.uid() is not null and not public.artius_is_admin()
-     and not (case when tg_op = 'DELETE' then old.emp_id else new.emp_id end) = any (public.artius_managed_emps()) then
-    /* v3.4 — App ghi bằng upsert (INSERT … ON CONFLICT DO UPDATE). Postgres chạy trigger BEFORE INSERT trước khi biết
-       dòng đã tồn tại, nên ở bước INSERT phải lấy bản đang có trên server làm "bản cũ"; nếu coi là rỗng thì giờ sẵn có
-       ở ngày chưa tới / dự án đã đóng / giai đoạn chưa mở bị hiểu nhầm là vừa thêm và bị chặn sai. */
-    o  := case when tg_op = 'INSERT'
-               then coalesce((select t.value::jsonb from public.artius_ts t where t.emp_id = new.emp_id and t.ym = new.ym), '{}'::jsonb)
-               else old.value::jsonb end;
-    os := case when jsonb_typeof(o -> 'sent') = 'object' then o -> 'sent' else '{}'::jsonb end;
-    if tg_op = 'DELETE' then
-      if os <> '{}'::jsonb then
-        raise exception 'Bảng công có ngày đã gửi, chỉ quản lý mới xoá được.' using errcode = '42501';
-      end if;
-      n := '{}'::jsonb;
-    else
-      n := new.value::jsonb;
-    end if;
-    for dk in select jsonb_object_keys(os) loop
-      if not (coalesce(case when jsonb_typeof(n -> 'sent') = 'object' then n -> 'sent' end, '{}'::jsonb) ? dk) then
-        raise exception 'Ngày % đã gửi và đang khoá. Chỉ quản lý mới mở khoá được.', dk using errcode = '42501';
-      end if;
-      if public.artius_day_hours(o, dk) is distinct from public.artius_day_hours(n, dk) then
-        raise exception 'Ngày % đã gửi và đang khoá, không sửa giờ được. Nhờ quản lý mở khoá.', dk using errcode = '42501';
-      end if;
-    end loop;
-    -- dự án đã đóng: giờ của dự án đó trong dòng này phải giữ nguyên
-    for pid in
-      select pr ->> 'id'
-      from public.artius_config c,
-           jsonb_array_elements(case when jsonb_typeof(c.value::jsonb -> 'projects') = 'array' then c.value::jsonb -> 'projects' else '[]'::jsonb end) as pr
-      where c.id = 'main' and pr -> 'active' = 'false'::jsonb
-    loop
-      if public.artius_proj_hours(o, pid) is distinct from public.artius_proj_hours(n, pid) then
-        raise exception 'Dự án này đã đóng, không chấm công được nữa. Nhờ quản lý mở lại dự án.' using errcode = '42501';
-      end if;
-    end loop;
-    -- v2.3: ngày chưa tới chỉ được đăng ký vắng mặt, không chấm giờ làm việc
-    if tg_op <> 'DELETE' and public.artius_future_work(o, (now() at time zone 'Asia/Ho_Chi_Minh')::date)
-         is distinct from public.artius_future_work(n, (now() at time zone 'Asia/Ho_Chi_Minh')::date) then
-      raise exception 'Chưa tới ngày, chưa chấm giờ làm việc được. Vắng mặt thì vẫn đăng ký trước được.' using errcode = '42501';
-    end if;
-    -- v2.5: giai đoạn chưa có giờ dự kiến của dự án thì nhân sự không chấm vào được
-    select c.value::jsonb into cf from public.artius_config c where c.id = 'main';
-    if cf is not null and public.artius_unbudgeted_hours(o, cf) is distinct from public.artius_unbudgeted_hours(n, cf) then
-      raise exception 'Giai đoạn này của dự án đang đóng, chưa chấm công được. Nhờ quản lý mở giai đoạn.' using errcode = '42501';
-    end if;
-  end if;
-  if tg_op = 'DELETE' then return old; end if;
-  new.updated_at := now();
-  return new;
-end $$;
+-- artius_ts_guard() — KHÔNG định nghĩa ở đây nữa (v13.65, K09). Bản đang chạy nằm ở supabase/v8_6_khoa_qua_han.sql.
+-- Bản ở đó có thêm khoá quá hạn (artius_past_work), và file đó tự tạo lại trigger.
+-- Trước đây hàm có ở cả hai file; chạy lại file này là database quay về luật đời cũ mà không ai biết.
 
-drop trigger if exists artius_ts_guard on public.artius_ts;
-create trigger artius_ts_guard
-  before insert or update or delete on public.artius_ts
-  for each row execute function public.artius_ts_guard();
 
 create index if not exists artius_ts_updated_at on public.artius_ts (updated_at);
 
@@ -435,25 +374,9 @@ create policy "artius_ts_delete" on public.artius_ts
 -- 9. v2.1 — Tổng giờ theo dự án × giai đoạn trên TOÀN BỘ bảng công.
 --    App chỉ tải sẵn 6 tháng gần nhất, nên con số "từ trước tới nay" (tab Dự án, tab Thiết lập → Giai đoạn) hỏi hàm này.
 --    sent_hours = giờ của ngày đã gửi; all_hours = mọi giờ đang lưu. Chỉ tài khoản quản lý nhận được số liệu.
-create or replace function public.artius_usage()
-returns table (project_id text, phase_id text, sent_hours numeric, all_hours numeric)
-language sql stable security definer set search_path = public as $$
-  select coalesce(rw ->> 'projectId', '') as project_id,
-         coalesce(nullif(rw ->> 'phaseId', ''), 'P2') as phase_id,
-         sum(case when coalesce(case when jsonb_typeof(v.j -> 'sent') = 'object' then v.j -> 'sent' end, '{}'::jsonb) ? d.key
-                  then (d.value #>> '{}')::numeric else 0 end) as sent_hours,
-         sum((d.value #>> '{}')::numeric) as all_hours
-  from public.artius_ts t
-       cross join lateral (select t.value::jsonb as j) as v
-       cross join lateral jsonb_array_elements(case when jsonb_typeof(v.j -> 'rows') = 'array' then v.j -> 'rows' else '[]'::jsonb end) as rw
-       cross join lateral jsonb_each(case when jsonb_typeof(rw -> 'days') = 'object' then rw -> 'days' else '{}'::jsonb end) as d
-  where public.artius_view_all()   -- v7.3: Admin và BOD
-    and jsonb_typeof(d.value) = 'number'
-    and (d.value #>> '{}')::numeric > 0
-  group by 1, 2;
-$$;
-revoke all on function public.artius_usage() from public, anon;
-grant execute on function public.artius_usage() to authenticated, service_role;
+-- artius_usage() — KHÔNG định nghĩa ở đây nữa (v13.65, K09). Bản đang chạy nằm ở supabase/v12_25_truongphong_dashboard.sql.
+-- Bản ở đó cho cả Trưởng phòng xem (artius_view_agg) và tự cấp quyền gọi hàm.
+-- Trước đây hàm có ở cả hai file; chạy lại file này là database quay về luật đời cũ mà không ai biết.
 
 -- 10. v2.3 — Gỡ mã PIN quản lý của bản v1.6 khỏi thiết lập dùng chung.
 --     Thiết lập (artius_config) và bảng cũ (artius_kv) đều đọc được bởi MỌI tài khoản, nên PIN nằm đó là lộ cho nhân sự.
@@ -531,61 +454,9 @@ create policy "artius_push_log_admin_read" on public.artius_push_log
 --     n = ngày thường, s = Chủ nhật, h = ngày lễ (theo danh sách ngày lễ trong thiết lập). Dòng tăng ca cũ chưa có tác vụ: phần giữa rỗng.
 --     v6.5: tăng ca nhận cả mã khung giờ chung (otBands) và mã [OT] cũ (otLegacy) — trước đó "o" rỗng sau khi chuyển sang v6.3.
 --     v5.6: thêm "et": {"<empId>": {"<taskId>|<otFor>": giờ}} — giờ của từng người theo từng tác vụ (otFor chỉ có ở dòng tăng ca).
-create or replace function public.artius_phase_detail()
-returns jsonb
-language sql stable security definer set search_path = public as $$
-  with x as (
-    select coalesce(rw ->> 'projectId', '') || '|' || coalesce(nullif(rw ->> 'phaseId', ''), 'P2') as k,
-           t.emp_id,
-           coalesce(rw ->> 'taskId', '') as task_id,
-           coalesce(rw ->> 'otFor', '') as ot_for,
-           d.key::date as day,
-           (d.value #>> '{}')::numeric as h
-    from public.artius_ts t
-         cross join lateral (select t.value::jsonb as j) as v
-         cross join lateral jsonb_array_elements(case when jsonb_typeof(v.j -> 'rows') = 'array' then v.j -> 'rows' else '[]'::jsonb end) as rw
-         cross join lateral jsonb_each(case when jsonb_typeof(rw -> 'days') = 'object' then rw -> 'days' else '{}'::jsonb end) as d
-    where public.artius_view_all()   -- v7.3: Admin và BOD
-      and coalesce(rw ->> 'projectId', '') not in ('', '__none__')
-      and d.key ~ '^\d{4}-\d{2}-\d{2}$'
-      and jsonb_typeof(d.value) = 'number'
-      and (d.value #>> '{}')::numeric > 0
-      and coalesce(case when jsonb_typeof(v.j -> 'sent') = 'object' then v.j -> 'sent' end, '{}'::jsonb) ? d.key
-  ),
-  w as (select k, jsonb_object_agg(wk, h) as o from (select k, to_char(date_trunc('week', day), 'YYYY-MM-DD') as wk, sum(h) as h from x group by 1, 2) a group by k),
-  e as (select k, jsonb_object_agg(emp_id, h) as o from (select k, emp_id, sum(h) as h from x group by 1, 2) a group by k),
-  tk as (select k, jsonb_object_agg(task_id, h) as o from (select k, task_id, sum(h) as h from x group by 1, 2) a group by k),
-  et as (select k, jsonb_object_agg(emp_id, o) as o
-         from (select k, emp_id, jsonb_object_agg(tko, h) as o
-               from (select k, emp_id, task_id || '|' || ot_for as tko, sum(h) as h from x group by 1, 2, 3) a group by 1, 2) b
-         group by k),
-  r as (select k, min(day) as first, max(day) as last from x group by k),
-  cf as (select coalesce((select c.value::jsonb from public.artius_config c where c.id = 'main'), '{}'::jsonb) as j),
-  otid as (select tt ->> 'id' as id
-           from cf, jsonb_array_elements(case when jsonb_typeof(cf.j -> 'tasks') = 'array' then cf.j -> 'tasks' else '[]'::jsonb end) as tt
-           where coalesce(tt ->> 'name', '') ~* '^\s*\[\s*ot\s*\]'
-           -- v6.5: khung tăng ca chung (v6.3+) và mã hạng mục [OT] cũ đã chuyển sang khung
-           union
-           select ob ->> 'id' from cf, jsonb_array_elements(case when jsonb_typeof(cf.j -> 'otBands') = 'array' then cf.j -> 'otBands' else '[]'::jsonb end) as ob
-           union
-           select lk from cf, jsonb_object_keys(case when jsonb_typeof(cf.j -> 'otLegacy') = 'object' then cf.j -> 'otLegacy' else '{}'::jsonb end) as lk),
-  hol as (select coalesce(hd ->> 'date', '') as dt, coalesce((hd ->> 'yearly')::boolean, false) as yearly
-          from cf, jsonb_array_elements(case when jsonb_typeof(cf.j -> 'holidays') = 'array' then cf.j -> 'holidays' else '[]'::jsonb end) as hd),
-  ot as (select k, jsonb_object_agg(ok, h) as o
-         from (select k,
-                      task_id || '|' || ot_for || '|' ||
-                        case when exists (select 1 from hol where hol.dt = to_char(day, 'YYYY-MM-DD')
-                                                             or (hol.yearly and substr(hol.dt, 6) = to_char(day, 'MM-DD'))) then 'h'
-                             when extract(isodow from day) = 7 then 's' else 'n' end as ok,
-                      sum(h) as h
-               from x where task_id in (select id from otid) group by 1, 2) a
-         group by k)
-  select coalesce(jsonb_object_agg(r.k, jsonb_build_object('w', w.o, 'e', e.o, 't', tk.o, 'o', coalesce(ot.o, '{}'::jsonb), 'et', coalesce(et.o, '{}'::jsonb),
-                                                           'first', to_char(r.first, 'YYYY-MM-DD'), 'last', to_char(r.last, 'YYYY-MM-DD'))), '{}'::jsonb)
-  from r join w using (k) join e using (k) join tk using (k) left join ot using (k) left join et using (k);
-$$;
-revoke all on function public.artius_phase_detail() from public, anon;
-grant execute on function public.artius_phase_detail() to authenticated, service_role;
+-- artius_phase_detail() — KHÔNG định nghĩa ở đây nữa (v13.65, K09). Bản đang chạy nằm ở supabase/v12_25_truongphong_dashboard.sql.
+-- Bản ở đó cho cả Trưởng phòng xem (artius_view_agg) và tự cấp quyền gọi hàm.
+-- Trước đây hàm có ở cả hai file; chạy lại file này là database quay về luật đời cũ mà không ai biết.
 
 -- 15. v6.6 — Tác vụ đã xoá thì xoá luôn giờ công đã chấm vào nó (kể cả dòng tăng ca "cho tác vụ" đó). Chỉ quản lý gọi được.
 --     artius_purge_tasks(ids): gỡ mọi dòng có taskId hoặc otFor nằm trong ids, bỏ dấu "đã gửi" của ngày không còn giờ.

@@ -43,61 +43,14 @@ create index if not exists artius_plan_snapshot_year_idx
 --    Thay toàn bộ các dòng của năm bằng p_rows — gọn hơn gửi từng ô, và không để lại dòng rác
 --    khi một vai trò bị gỡ khỏi dự án.
 -- ------------------------------------------------------------
-create or replace function public.artius_plan_set(p_year int, p_rows jsonb)
-returns void language plpgsql security definer set search_path = public as $$
-begin
-  if auth.uid() is null or not public.artius_is_member() then
-    raise exception 'Chưa đăng nhập hoặc tài khoản đã bị khoá.' using errcode = '42501';
-  end if;
-  if not public.artius_is_admin() then
-    raise exception 'Chỉ Admin được sửa kế hoạch nguồn lực.' using errcode = '42501';
-  end if;
-  if p_year is null or p_year < 2000 or p_year > 2100 then
-    raise exception 'Năm không hợp lệ.' using errcode = '22023';
-  end if;
-  if jsonb_typeof(coalesce(p_rows, '[]'::jsonb)) <> 'array' then
-    raise exception 'Dữ liệu kế hoạch không hợp lệ.' using errcode = '22023';
-  end if;
-  if exists (
-    select 1 from jsonb_array_elements(coalesce(p_rows, '[]'::jsonb)) r
-    where jsonb_typeof(r) <> 'object'
-       or coalesce(r ->> 'project_id', '') = ''
-       or coalesce(r ->> 'role_id', '') = ''
-       or jsonb_typeof(coalesce(r -> 'weeks', '[]'::jsonb)) <> 'array'
-  ) then
-    raise exception 'Dữ liệu kế hoạch không hợp lệ.' using errcode = '22023';
-  end if;
-
-  delete from public.artius_plan where year = p_year;
-  if jsonb_array_length(coalesce(p_rows, '[]'::jsonb)) = 0 then return; end if;
-  insert into public.artius_plan (year, project_id, role_id, weeks, updated_at)
-  select p_year, r ->> 'project_id', r ->> 'role_id', coalesce(r -> 'weeks', '[]'::jsonb), now()
-    from jsonb_array_elements(p_rows) as r
-  on conflict (year, project_id, role_id)
-    do update set weeks = excluded.weeks, updated_at = now();
-end $$;
+-- artius_plan_set() — KHÔNG định nghĩa ở đây nữa (v13.65, K09). Bản đang chạy nằm ở supabase/v12_19_bod_ke_hoach.sql
+-- (cho cả BOD ghi), file đó tự cấp quyền gọi hàm. Chạy file đó NGAY SAU file này.
 
 -- ------------------------------------------------------------
 -- 4. Chốt một bản kế hoạch.
 -- ------------------------------------------------------------
-create or replace function public.artius_plan_snapshot_add(p_year int, p_label text, p_data jsonb)
-returns bigint language plpgsql security definer set search_path = public as $$
-declare new_id bigint;
-begin
-  if auth.uid() is null or not public.artius_is_member() then
-    raise exception 'Chưa đăng nhập hoặc tài khoản đã bị khoá.' using errcode = '42501';
-  end if;
-  if not public.artius_is_admin() then
-    raise exception 'Chỉ Admin được chốt bản kế hoạch.' using errcode = '42501';
-  end if;
-  if jsonb_typeof(coalesce(p_data, '{}'::jsonb)) <> 'object' then
-    raise exception 'Dữ liệu kế hoạch không hợp lệ.' using errcode = '22023';
-  end if;
-  insert into public.artius_plan_snapshot (year, label, data)
-  values (p_year, nullif(trim(coalesce(p_label, '')), ''), coalesce(p_data, '{}'::jsonb))
-  returning id into new_id;
-  return new_id;
-end $$;
+-- artius_plan_snapshot_add() — KHÔNG định nghĩa ở đây nữa (v13.65, K09). Bản đang chạy nằm ở supabase/v12_19_bod_ke_hoach.sql
+-- (cho cả BOD ghi), file đó tự cấp quyền gọi hàm. Chạy file đó NGAY SAU file này.
 
 -- ------------------------------------------------------------
 -- 5. Quyền
@@ -123,7 +76,3 @@ revoke all on public.artius_plan_snapshot from public, anon;
 grant select on public.artius_plan           to authenticated;
 grant select on public.artius_plan_snapshot  to authenticated;
 
-revoke all on function public.artius_plan_set(int, jsonb)                       from public, anon;
-revoke all on function public.artius_plan_snapshot_add(int, text, jsonb)        from public, anon;
-grant execute on function public.artius_plan_set(int, jsonb)                to authenticated, service_role;
-grant execute on function public.artius_plan_snapshot_add(int, text, jsonb) to authenticated, service_role;

@@ -1,6 +1,6 @@
 {
- "version": "v13.64",
- "prevVersion": "v13.63",
+ "version": "v13.65",
+ "prevVersion": "v13.64",
  "graph": {
   "nodes": {
    "hub": "ARTIUS TIME",
@@ -587,21 +587,6 @@
     "definer": false,
     "file": "supabase/schema.sql"
    },
-   "artius_ts_guard": {
-    "args": "",
-    "definer": true,
-    "file": "supabase/v8_6_khoa_qua_han.sql"
-   },
-   "artius_usage": {
-    "args": "",
-    "definer": true,
-    "file": "supabase/v12_25_truongphong_dashboard.sql"
-   },
-   "artius_phase_detail": {
-    "args": "",
-    "definer": true,
-    "file": "supabase/v12_25_truongphong_dashboard.sql"
-   },
    "artius_purge_tasks": {
     "args": "ids text[]",
     "definer": true,
@@ -615,6 +600,11 @@
    "artius_past_work": {
     "args": "bucket jsonb, cut date, opened jsonb, today date",
     "definer": false,
+    "file": "supabase/v8_6_khoa_qua_han.sql"
+   },
+   "artius_ts_guard": {
+    "args": "",
+    "definer": true,
     "file": "supabase/v8_6_khoa_qua_han.sql"
    },
    "artius_support_set": {
@@ -643,6 +633,16 @@
     "file": "supabase/v12_19_bod_ke_hoach.sql"
    },
    "artius_view_agg": {
+    "args": "",
+    "definer": true,
+    "file": "supabase/v12_25_truongphong_dashboard.sql"
+   },
+   "artius_usage": {
+    "args": "",
+    "definer": true,
+    "file": "supabase/v12_25_truongphong_dashboard.sql"
+   },
+   "artius_phase_detail": {
     "args": "",
     "definer": true,
     "file": "supabase/v12_25_truongphong_dashboard.sql"
@@ -675,33 +675,9 @@
    "tasks"
   ],
   "find": {
-   "K6:src/features/Employees.jsx:password": {
-    "sev": "hi",
-    "t": "Nhân sự & tài khoản xuất \"password\" ra Excel"
-   },
    "K5b:artius_accounts": {
     "sev": "md",
     "t": "Bảng artius_accounts lưu password"
-   },
-   "K9:artius_ts_guard": {
-    "sev": "md",
-    "t": "Hàm artius_ts_guard() được viết ở 2 file SQL"
-   },
-   "K9:artius_usage": {
-    "sev": "md",
-    "t": "Hàm artius_usage() được viết ở 2 file SQL"
-   },
-   "K9:artius_phase_detail": {
-    "sev": "md",
-    "t": "Hàm artius_phase_detail() được viết ở 2 file SQL"
-   },
-   "K9:artius_plan_set": {
-    "sev": "md",
-    "t": "Hàm artius_plan_set() được viết ở 2 file SQL"
-   },
-   "K9:artius_plan_snapshot_add": {
-    "sev": "md",
-    "t": "Hàm artius_plan_snapshot_add() được viết ở 2 file SQL"
    },
    "K12:otRates": {
     "sev": "md",
@@ -730,18 +706,6 @@
    "K13:artius_ts": {
     "sev": "lo",
     "t": "Bảng artius_ts được ghi từ 6 nơi"
-   },
-   "K17:src/features/planning/PlanOverview.jsx": {
-    "sev": "lo",
-    "t": "File src/features/planning/PlanOverview.jsx không được dùng"
-   },
-   "K17:main.jsx": {
-    "sev": "lo",
-    "t": "File main.jsx không được dùng"
-   },
-   "K17:auth.js": {
-    "sev": "lo",
-    "t": "File auth.js không được dùng"
    }
   }
  },

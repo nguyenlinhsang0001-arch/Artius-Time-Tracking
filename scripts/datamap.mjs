@@ -571,9 +571,16 @@ function main() {
     if (!/\b(XLSX|loadXlsx|xlsx|utils\.(json_to_sheet|aoa_to_sheet)|buildOtXlsx)\b/.test(M.code)) continue;
     const sensCols = [...db.tables.values()].flatMap((t) => [...t.cols.keys()].filter((c) => SENS.test(c)));
     for (const c of uniq(sensCols)) {
-      // ưu tiên chỗ trường được đặt làm giá trị của một cột: { "Tên cột": x.password }
+      /* v13.65 — chỉ báo khi trường thật sự được đặt làm GIÁ TRỊ MỘT CỘT của file xuất:
+           { "Tên cột": x.password }            (json_to_sheet)
+           [ …, x.password, … ]                  (aoa_to_sheet, chỉ khi file có dùng aoa_to_sheet)
+         Trước đây không khớp mẫu nào thì vẫn lấy chỗ nhắc tới đầu tiên trong file, nên file nào vừa
+         xuất Excel vừa xử lý mật khẩu vì việc khác (lưu tài khoản, nút chép tài khoản) đều bị báo oan. */
       const all = [...M.code.matchAll(new RegExp(`(?<![\\w$])${c}(?![\\w$])`, "g"))];
-      const m = all.find((x) => /["']\s*:\s*[\w$.?]*$/.test(M.code.slice(Math.max(0, x.index - 60), x.index))) || all[0];
+      const before = (x) => M.code.slice(Math.max(0, x.index - 60), x.index);
+      const aoa = /utils\.aoa_to_sheet/.test(M.code);
+      const m = all.find((x) => /["']\s*:\s*[\w$.?]*$/.test(before(x)))
+        || (aoa ? all.find((x) => /[[,]\s*[\w$.?]*$/.test(before(x))) : null);
       if (m) find("K6", "hi", `${label(unitOfFile(M.file) || "")} xuất "${c}" ra Excel`, `File ${M.file} vừa tạo file Excel vừa dùng trường ${c}. Một file Excel gửi nhầm là lộ dữ liệu này.`, `Bỏ cột ${c} khỏi file xuất.`, [unitOfFile(M.file), N.find((n) => n.id === "s_excel")?.id, ...[...db.tables.values()].filter((t) => t.cols.has(c)).map((t) => tableNode(t.name))].filter(Boolean), [{ f: M.file, l: lineAt(M.src, m.index) }], `${M.file}:${c}`);
     }
   }

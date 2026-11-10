@@ -379,16 +379,19 @@ export function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = n
     catch (err) { flash(err.message, "err"); }
   };
 
-  /* Xuất danh sách tài khoản (theo bộ lọc đang chọn) ra Excel để phát cho nhân viên */
+  /* Xuất danh sách tài khoản (theo bộ lọc đang chọn) ra Excel.
+     v13.65 (K01) — KHÔNG còn cột "Mật khẩu". Một file Excel gửi nhầm là lộ mật khẩu của cả công ty, mà file
+     thì đi qua mail, Zalo, ổ chung… không thu hồi được. Phát mật khẩu cho từng người: nút sao chép tài khoản
+     ở từng dòng (copyText bên trên) vẫn giữ nguyên — mỗi lần chỉ lộ đúng một tài khoản, gửi đúng một người. */
   const exportAccounts = async () => {
     const XLSX = await loadXlsx();
     const rows = visible.filter((e) => accByEmp.has(e.id)).map((e) => {
       const a = accByEmp.get(e.id);
-      return { "Mã NV": e.code || "", "Họ và tên": e.name, "Phòng ban": e.dept, "Vai trò": roleTitle(e.role), "Tên đăng nhập": a.username, "Mật khẩu": a.password, "Trạng thái": a.disabled ? "Đã khoá" : "Đang dùng" };
+      return { "Mã NV": e.code || "", "Họ và tên": e.name, "Phòng ban": e.dept, "Vai trò": roleTitle(e.role), "Tên đăng nhập": a.username, "Trạng thái": a.disabled ? "Đã khoá" : "Đang dùng" };
     });
     if (!rows.length) return flash("Không có tài khoản nào trong danh sách đang lọc.", "err");
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = [{ wch: 10 }, { wch: 28 }, { wch: 22 }, { wch: 28 }, { wch: 20 }, { wch: 16 }, { wch: 12 }];
+    ws["!cols"] = [{ wch: 10 }, { wch: 28 }, { wch: 22 }, { wch: 28 }, { wch: 20 }, { wch: 12 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Tài khoản");
     XLSX.writeFile(wb, `ARTIUS_tai-khoan_${fmt(new Date())}.xlsx`);

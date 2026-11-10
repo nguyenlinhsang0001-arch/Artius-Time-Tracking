@@ -1,6 +1,19 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.64
+   ARTIUS — Quản lý giờ công theo dự án · v13.65
+   Mới ở v13.65 — Vòng 1 của lộ trình: bốn việc rẻ, không chạm dữ liệu.
+     · K01 — Nhân sự › xuất Excel tài khoản không còn cột "Mật khẩu". Phát mật khẩu cho từng người bằng
+       nút chép tài khoản ở từng dòng (giữ nguyên). datamap: quy tắc K6 chỉ báo khi mật khẩu thật sự là
+       giá trị một cột của file xuất — trước đây file nào vừa xuất Excel vừa xử lý mật khẩu đều bị báo oan.
+     · R14 — Kế hoạch › So với thực tế nạp bản chốt đủ PLAN_YEARS (4) năm của lưới, không còn cứng 2 năm.
+       Lưới bắt đầu 2025 thì từ 01/2027 chọn "So với: bản chốt" ra kế hoạch bằng 0. PLAN_YEARS nay là hằng số
+       chung trong planCalc.js, ResourcePlan và PlanActual cùng dùng.
+     · K03–K07 — mỗi hàm SQL chỉ còn ở MỘT file. Bỏ bản cũ của artius_ts_guard, artius_usage,
+       artius_phase_detail khỏi schema.sql và của artius_plan_set, artius_plan_snapshot_add khỏi
+       v12_ke_hoach.sql. Chạy lại schema.sql không còn làm mất khoá quá hạn. Thứ tự dựng database mới:
+       supabase/README.md. KHÔNG cần chạy lại SQL nào trên Supabase.
+     · K15–K17 — xoá features/planning/PlanOverview.jsx và hai bản cũ main.jsx, auth.js ở gốc repo
+       (bản đang dùng là src/main.jsx, src/auth.js). JS của bản deploy không đổi một byte.
    Mới ở v13.64 — script khôi phục không còn để lại lỗi trùng id bản chốt (không đổi gì trong app):
      · Bản chốt nạp lại KHÔNG kèm id cũ; database tự cấp id như khi bấm "Chốt bản". Trước đây ghi id có
        sẵn nên bộ đếm bigserial không nhích, khôi phục xong bấm "Chốt bản" là lỗi trùng khoá và phải chạy

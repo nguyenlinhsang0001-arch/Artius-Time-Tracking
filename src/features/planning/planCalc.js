@@ -12,6 +12,9 @@ import { NO_PROJECT, goneOnDay, isLeaveTask, isResigned } from "../../core/domai
    Chỉ số cột i chạy 0…47 trong một năm; lưới hai năm liền nhau nối tiếp 0…95. */
 export const SLOTS = 4;
 export const PER_YEAR = 12 * SLOTS;
+/* v13.65 — số năm liền nhau trên lưới kế hoạch. Trước đây ResourcePlan giữ riêng hằng số 4, còn
+   So với thực tế cứng 2 năm, nên từ năm thứ 3 của lưới, chọn "So với: bản chốt" ra kế hoạch bằng 0. */
+export const PLAN_YEARS = 4;
 const slotOfMonday = (d) => Math.min(SLOTS, Math.ceil(d.getDate() / 7));
 export const weeksOfYear = (year) => {
   const out = [];

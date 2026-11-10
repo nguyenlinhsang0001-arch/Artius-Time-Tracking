@@ -16,7 +16,7 @@ import { addDays, effortHoursFor, fmt, makeHolidayIndex, minHoursFor, mondayOf, 
 import { NO_PROJECT, goneOnDay, isIdleTask, isLeaveTask, isOtId } from "../../core/domain.jsx";
 import { isLight } from "../../core/theme.jsx";
 import { ALLOC_ST, allocLimits, allocState } from "../../shared/alloc.jsx";
-import { PA_GROUPS, PA_ORDER, cellOf, comparePlan, foldMerged, joinYears, normalizeYear, planLimits, slotIndexOf } from "./planCalc.js";
+import { PA_GROUPS, PA_ORDER, PLAN_YEARS, cellOf, comparePlan, foldMerged, joinYears, normalizeYear, planLimits, slotIndexOf } from "./planCalc.js";
 import { listSnapshots, loadSnapshot } from "./planStore.js";
 
 const f0 = (n) => String(+Number(n).toFixed(2)).replace(".", ",");
@@ -54,7 +54,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
   const C = isLight() ? TONE.light : TONE.dark;
   const [range, setRange] = useState("now");    /* now | last | 4 | all — v13.57: mặc định "Tuần này" */
   const [base, setBase] = useState("");         /* "" = lưới hiện tại, còn lại = nhãn bản chốt */
-  const [snaps, setSnaps] = useState([]);       /* [{ label, a: id năm start, b: id năm start+1, at }] */
+  const [snaps, setSnaps] = useState([]);       /* [{ label, ids: { <năm>: id }, at }] — đủ PLAN_YEARS năm của lưới */
   const [snapPlan, setSnapPlan] = useState(null);
   const [sel, setSel] = useState(null);
   const [hov, setHov] = useState(null);
@@ -88,27 +88,37 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
     return undefined;
   };
 
-  /* bản chốt: mỗi lần chốt ghi một bản cho mỗi năm, cùng nhãn — ghép lại thành một bản hai năm */
+  /* bản chốt: mỗi lần chốt ghi một bản cho mỗi năm, cùng nhãn — ghép lại thành một bản đủ mọi năm của lưới.
+     v13.65 (R14) — trước đây chỉ ghép năm start và start + 1. Lưới bắt đầu từ 2025 thì từ 01/2027,
+     chọn "So với: bản chốt" ra kế hoạch bằng 0 cho mọi tuần, và mọi dự án đều thành "ngoài kế hoạch". */
+  const years = useMemo(() => Array.from({ length: PLAN_YEARS }, (_, k) => start + k), [start]);
   useEffect(() => {
     let alive = true;
-    Promise.all([listSnapshots(start), listSnapshots(start + 1)]).then(([a, b]) => {
+    Promise.all(years.map(listSnapshots)).then((lists) => {
       if (!alive) return;
       const m = new Map();
-      for (const s of a) m.set(s.label, { label: s.label, a: s.id, at: s.taken_at });
-      for (const s of b) { const o = m.get(s.label) || { label: s.label, at: s.taken_at }; o.b = s.id; m.set(s.label, o); }
+      lists.forEach((list, k) => {
+        for (const s of list) {
+          const o = m.get(s.label) || { label: s.label, ids: {}, at: s.taken_at };
+          o.ids[years[k]] = s.id;
+          if (String(s.taken_at) > String(o.at)) o.at = s.taken_at;
+          m.set(s.label, o);
+        }
+      });
       setSnaps([...m.values()].sort((x, y) => String(y.at).localeCompare(String(x.at))));
     }).catch(() => {});
     return () => { alive = false; };
-  }, [start]);
+  }, [years]);
   useEffect(() => {
     if (!base) { setSnapPlan(null); return undefined; }
     const s = snaps.find((x) => x.label === base); if (!s) return undefined;
     let alive = true;
-    Promise.all([s.a ? loadSnapshot(s.a) : {}, s.b ? loadSnapshot(s.b) : {}]).then(([a, b]) => {
-      if (alive) setSnapPlan(foldMerged(joinYears([normalizeYear(a, start), normalizeYear(b, start + 1)]), prole).plan);
+    /* năm nào bản chốt không có thì coi là lưới trống của năm đó — đúng như lúc chốt */
+    Promise.all(years.map((y) => (s.ids[y] ? loadSnapshot(s.ids[y]) : {}))).then((parts) => {
+      if (alive) setSnapPlan(foldMerged(joinYears(parts.map((pp, k) => normalizeYear(pp, years[k]))), prole).plan);
     }).catch(() => alive && setSnapPlan({}));
     return () => { alive = false; };
-  }, [base, snaps, start, prole]);
+  }, [base, snaps, years, prole]);
   const P = base ? snapPlan || {} : plan;
 
   /* ---------- giờ đã gửi, gom theo tuần thật ---------- */
