@@ -144,7 +144,9 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   // Chỉ hiện hạng mục thuộc bộ phận của nhân sự — bớt danh sách dài và tránh chấm nhầm việc của bộ phận khác
   /* v13.6 — tác vụ Teamleader (task.tl): chỉ người có vai trò cấp Teamleader thấy (role.tl; chưa tích thì mã bắt đầu TL) */
   const tlOk = useMemo(() => { const r = (cfg.roles || []).find((x) => x.id === emp?.role); return !!r && (typeof r.tl === "boolean" ? r.tl : /^TL/i.test(r.id)); }, [cfg.roles, emp?.role]);
-  const myTasks = useMemo(() => tasksForDept(cfg.tasks, emp?.dept, emp?.role).filter((t) => (!t.mgr || mgrOk) && (!t.tl || tlOk)), [cfg.tasks, emp?.dept, emp?.role, mgrOk, tlOk]);
+  /* v13.66 (R11) — tác vụ NGỪNG DÙNG không còn trong mọi danh sách chọn (dòng mới, gợi ý, "tăng ca cho", điện thoại:
+     tất cả đều lấy từ myTasks). Dòng cũ đã chấm vào nó vẫn hiện đủ tên và giờ — xem option "(ngừng dùng)" bên dưới. */
+  const myTasks = useMemo(() => tasksForDept(cfg.tasks, emp?.dept, emp?.role).filter((t) => !t.inactive && (!t.mgr || mgrOk) && (!t.tl || tlOk)), [cfg.tasks, emp?.dept, emp?.role, mgrOk, tlOk]);
   /* tác vụ theo cấp (quản lý, teamleader): chọn được ở cả dự án lẫn "Khác" */
   const mgrIds = useMemo(() => new Set(cfg.tasks.filter((t) => t.mgr || t.tl).map((t) => t.id)), [cfg.tasks]);
   /* v2.9 — "Khác" (projectId = NO_PROJECT, không có giai đoạn) gồm tác vụ chung của công ty (không gắn vai trò) và vắng mặt.
@@ -1028,7 +1030,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
         )}
         {/* dòng cũ trỏ tới hạng mục không còn trong danh sách vẫn giữ được, không bị đổi ngầm */}
         {r.taskId && !listed.some((t) => t.id === r.taskId) && (
-          <option value={r.taskId}>{taskName(r.taskId)}{!cfg.tasks.some((t) => t.id === r.taskId) ? "" : commonIds.has(r.taskId) ? " (tác vụ chung — dữ liệu cũ)" : " (ngoài bộ phận)"}</option>
+          <option value={r.taskId}>{taskName(r.taskId)}{!cfg.tasks.some((t) => t.id === r.taskId) ? "" : cfg.tasks.some((t) => t.id === r.taskId && t.inactive) ? " (ngừng dùng)" : commonIds.has(r.taskId) ? " (tác vụ chung — dữ liệu cũ)" : " (ngoài bộ phận)"}</option>
         )}
       </>
     );

@@ -1,6 +1,16 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.65
+   ARTIUS — Quản lý giờ công theo dự án · v13.66
+   Mới ở v13.66 — Vòng 2 của lộ trình (R11): app không còn đường nào xoá mất giờ công.
+     · Tác vụ ĐÃ CÓ GIỜ: thùng rác thành NGỪNG DÙNG (cờ task.inactive) — biến khỏi mọi danh sách chọn ở Chấm công
+       (dòng mới, gợi ý, "tăng ca cho", điện thoại), giữ tên + giờ trong bảng công, báo cáo, Excel; nút "Dùng lại".
+       Tác vụ CHƯA CÓ GIỜ thì xoá như cũ. Trước đây xoá = artius_purge_tasks gỡ sạch giờ, không khôi phục được.
+     · Giờ được đếm trên SERVER, đủ mọi tháng (data.serverHours). Trước đây hộp xác nhận đếm trên máy (6 tháng)
+       trong khi server xoá giờ của mọi tháng. Đếm lỗi thì không mở hộp nào.
+     · Xoá vai trò: tác vụ chỉ thuộc vai trò đó chuyển ngừng dùng thay vì bị xoá cùng giờ của chúng.
+     · Bỏ nút "Xoá hẳn giờ của các tác vụ đã xoá" và khối nhắc đi kèm. Hàm SQL artius_purge_tasks vẫn còn trong
+       database nhưng app không gọi nữa — không cần chạy SQL nào.
+     · Dự án ĐÃ CÓ GIỜ: không xoá được, hộp xác nhận đề nghị Đóng dự án. Chưa có giờ thì xoá như cũ.
    Mới ở v13.65 — Vòng 1 của lộ trình: bốn việc rẻ, không chạm dữ liệu.
      · K01 — Nhân sự › xuất Excel tài khoản không còn cột "Mật khẩu". Phát mật khẩu cho từng người bằng
        nút chép tài khoản ở từng dòng (giữ nguyên). datamap: quy tắc K6 chỉ báo khi mật khẩu thật sự là

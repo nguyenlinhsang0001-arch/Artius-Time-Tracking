@@ -2,10 +2,11 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
-  Plus, Trash2, ChevronDown, Lock, Pencil, Check, X, Unlock,
+  Plus, Trash2, ChevronDown, Lock, Pencil, Check, X, Unlock, Loader2,
 } from "lucide-react";
 import { dLabel, fmt } from "../core/date.jsx";
 import { DB, sentRows, useDataTick, useUsage } from "../core/db.jsx";
+import { serverHours } from "../data.js";
 import { DEFAULT_PHASE, NO_PROJECT, PHASES, budgetTotal, cleanBudgets, empHasProj, fmtH, isLeaveTask, isResigned, norm, projBudgets, projPhaseIsOpen, roleTitle, supportList, tone, uid, useIsMobile } from "../core/domain.jsx";
 import { ConfirmDialog, Panel, btnGhost, btnPrimary, iconBtn, inputCls } from "../core/ui.jsx";
 import { moveInList, sortByProjOrder, useProjOrder, useRowDrag } from "../shared/rowDrag.jsx";
@@ -189,12 +190,30 @@ export function Projects({ cfg, saveCfg, flash, onSupport = null, supportRo = fa
     const moved = moveInList(projList.map((x) => x.id), from, to, after);
     setProjOrder(moved);
   });
-  const [pendingDel, setPendingDel] = useState(null); // dự án chờ xác nhận xoá
-  const del = (id) => setPendingDel(cfg.projects.find((p) => p.id === id) || null);
+  /* v13.66 (R11) — dự án ĐÃ CÓ GIỜ (đếm trên server, mọi tháng) thì không xoá được nữa, chỉ ĐÓNG.
+     Xoá thì giờ không mất nhưng thành "(dự án đã xoá)" trong mọi báo cáo, mất tên, mất giờ dự kiến để đối chiếu,
+     và lưới kế hoạch của dự án thành dòng mồ côi. Đóng thì giữ được hết, mở lại được. Chưa có giờ thì xoá như cũ.
+     Đếm lỗi thì không mở hộp nào. */
+  const [pendingDel, setPendingDel] = useState(null); // { p, h } — dự án chờ xác nhận, h = giờ trên server
+  const [checking, setChecking] = useState(null);
+  const del = async (id) => {
+    const p = cfg.projects.find((x) => x.id === id); if (!p) return;
+    setChecking(id);
+    let h;
+    try { h = await serverHours({ project: id }); }
+    catch (e) { flash(`Chưa kiểm tra được giờ đã chấm — ${e.message}. Thử lại sau.`, "err"); return; }
+    finally { setChecking(null); }
+    setPendingDel({ p, h });
+  };
   const confirmDel = async () => {
-    const p = pendingDel; setPendingDel(null);
-    if (!p) return;
-    await saveCfg({ ...cfg, projects: cfg.projects.filter((x) => x.id !== p.id) });
+    const d = pendingDel; setPendingDel(null);
+    if (!d) return;
+    if (d.h > 0) {
+      if (d.p.active) await saveCfg({ ...cfg, projects: cfg.projects.map((x) => (x.id === d.p.id ? { ...x, active: false } : x)) });
+      flash(`Đã đóng dự án ${d.p.name}. Giờ đã chấm giữ nguyên, mở lại được bất cứ lúc nào.`);
+      return;
+    }
+    await saveCfg({ ...cfg, projects: cfg.projects.filter((x) => x.id !== d.p.id) });
     flash("Đã xoá dự án.");
   };
 
@@ -270,7 +289,7 @@ export function Projects({ cfg, saveCfg, flash, onSupport = null, supportRo = fa
                               <button onClick={() => setEditId(null)} className={iconBtn}><X size={15} /></button></>
                           ) : (
                             <><button onClick={() => startEdit(p)} className={iconBtn}><Pencil size={14} /></button>
-                              <button onClick={() => del(p.id)} className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={14} /></button></>
+                              <button onClick={() => del(p.id)} disabled={checking === p.id} className={`${iconBtn} hover:border-rose-800 hover:text-rose-400 disabled:opacity-50`}>{checking === p.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}</button></>
                           )}
                         </div>
                       </td>
@@ -310,7 +329,7 @@ export function Projects({ cfg, saveCfg, flash, onSupport = null, supportRo = fa
                         </div>
                         <div className="flex shrink-0 gap-1.5">
                           <button onClick={() => startEdit(p)} className={iconBtn}><Pencil size={14} /></button>
-                          <button onClick={() => del(p.id)} className={`${iconBtn} hover:border-rose-800 hover:text-rose-400`}><Trash2 size={14} /></button>
+                          <button onClick={() => del(p.id)} disabled={checking === p.id} className={`${iconBtn} hover:border-rose-800 hover:text-rose-400 disabled:opacity-50`}>{checking === p.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}</button>
                         </div>
                       </div>
                       <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2">
@@ -331,9 +350,11 @@ export function Projects({ cfg, saveCfg, flash, onSupport = null, supportRo = fa
 
       <ConfirmDialog
         open={!!pendingDel}
-        title={`Xoá dự án ${pendingDel?.name || ""}?`}
-        desc="Giờ công đã chấm cho dự án này vẫn nằm trong dữ liệu nhưng báo cáo sẽ hiển thị là (dự án đã xoá). Nếu chỉ muốn ngừng chấm công, hãy chuyển sang trạng thái Đã đóng."
-        confirmLabel="Xoá dự án"
+        title={pendingDel?.h > 0 ? `Dự án ${pendingDel?.p.name || ""} đã có giờ công` : `Xoá dự án ${pendingDel?.p.name || ""}?`}
+        desc={pendingDel?.h > 0
+          ? `Đã có ${fmtH(pendingDel.h)} h chấm vào dự án này (mọi tháng), nên không xoá được — xoá thì mọi báo cáo chỉ còn ghi "(dự án đã xoá)", mất tên và giờ dự kiến để đối chiếu. ${pendingDel.p.active ? "Đóng dự án: nhân sự không chấm được nữa, giờ đã chấm giữ nguyên, mở lại được bất cứ lúc nào." : "Dự án đang ở trạng thái Đã đóng — giữ nguyên như vậy là đủ."}`
+          : "Chưa có giờ nào chấm vào dự án này (đã kiểm tra mọi tháng trên server). Xoá hẳn khỏi danh sách."}
+        confirmLabel={pendingDel?.h > 0 ? (pendingDel.p.active ? "Đóng dự án" : "Đã hiểu") : "Xoá dự án"}
         onConfirm={confirmDel}
         onCancel={() => setPendingDel(null)}
       />

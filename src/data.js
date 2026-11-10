@@ -72,6 +72,22 @@ export async function fetchTs({ empId, empIds, yms, stamps } = {}) {
   return out;
 }
 
+/* v13.66 (R11) — tổng giờ đã chấm trên SERVER, đủ MỌI tháng, để quyết định có được xoá hẳn một tác vụ /
+   dự án hay không: có giờ thì không xoá, chỉ ngừng dùng / đóng. Trước đây hộp xác nhận đếm trên bộ nhớ của
+   máy (chỉ 6 tháng tải sẵn) trong khi server xoá giờ của mọi tháng — con số báo ra nhỏ hơn số giờ thật bị mất.
+   tasks: id tác vụ, tính cả dòng tăng ca "cho tác vụ" đó (otFor). project: id dự án. Tính cả giờ chưa gửi.
+   Chỉ đúng khi người gọi đọc được mọi bảng công (Admin) — tab Tác vụ và nút xoá dự án chỉ Admin dùng. */
+export async function serverHours({ tasks = [], project = "" } = {}) {
+  const ts = await fetchTs();
+  const set = new Set(tasks);
+  let h = 0;
+  for (const b of Object.values(ts)) for (const r of Array.isArray(b?.rows) ? b.rows : []) {
+    const hit = (set.size > 0 && (set.has(r.taskId) || (r.otFor && set.has(r.otFor)))) || (!!project && r.projectId === project);
+    if (hit) for (const v of Object.values(r.days || {})) h += Number(v) || 0;
+  }
+  return h;
+}
+
 /* v2.2 — Hỏi nhẹ: chỉ lấy (nhân sự, tháng, mốc thời gian) của các dòng đổi sau mốc since, KHÔNG kèm nội dung.
    Mỗi lần hỏi chỉ vài chục byte; app so mốc với bản đang giữ rồi mới tải nội dung dòng thật sự đổi. */
 export async function fetchTsStamps(since = "") {
