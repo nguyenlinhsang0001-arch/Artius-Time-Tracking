@@ -1,6 +1,13 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.62
+   ARTIUS — Quản lý giờ công theo dự án · v13.63
+   Mới ở v13.63 — script khôi phục chạy được mà không cần cài gì (không đổi gì trong app):
+     · tools/artius-restore.mjs viết lại không import thư viện nào, gọi thẳng REST API của Supabase
+       bằng fetch có sẵn của Node 18. Bản v13.62 import @supabase/supabase-js nên chỉ chạy được trong
+       một bản clone đã npm install — máy chỉ có folder phiên bản thì script chết ngay dòng đầu.
+     · Báo rõ khi Node cũ hơn 18, khi thiếu key, và khi không nối được database (dừng trước khi ghi).
+     · Sau --wipe: in ra câu SQL setval cho bộ đếm id của artius_plan_snapshot — không chạy thì lần
+       "Chốt bản" sau báo lỗi trùng id.
    Mới ở v13.62 — Vòng 0 của lộ trình: đường lùi khi mất dữ liệu.
      · Thiết lập › Sao lưu: file sao lưu nay có ĐỦ bốn thứ không tạo lại được — thiết lập, bảng công,
        lưới kế hoạch (artius_plan) và các bản chốt (artius_plan_snapshot). Trước đây thiếu hẳn hai bảng

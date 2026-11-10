@@ -26,9 +26,13 @@ Khôi phục xong, tài khoản đăng nhập phải tạo lại nếu project S
 
 ## 2. Chuẩn bị máy (làm một lần)
 
-Cần Node 18 trở lên và đã `npm install` trong thư mục dự án.
+Chỉ cần **Node 18 trở lên**. Không cần `npm install`, không cần clone repo: script không dùng thư viện nào,
+nó gọi thẳng REST API của Supabase bằng `fetch` có sẵn trong Node. Chạy được ngay trong folder phiên bản
+trên `D:\Time-Tracking`.
 
-Tạo file `tools/.env`:
+Kiểm tra Node: mở PowerShell, gõ `node -v`. Chưa có thì tải ở nodejs.org (bản LTS).
+
+Tạo file `tools/.env` **cạnh file script**:
 
 ```
 SUPABASE_URL=https://xxxxxxxx.supabase.co
@@ -66,6 +70,17 @@ node tools/artius-restore.mjs ARTIUS_saoluu_2026-11-10.json --yes --wipe
 ```
 
 Script tự in lại số dòng sau khi ghi để đối chiếu với file. Sau đó mở app, tải lại trang, kiểm tra vài bảng công và lưới kế hoạch.
+
+**Sau `--wipe` còn một bước.** Cột `id` của `artius_plan_snapshot` là `bigserial`; nạp lại bằng id có sẵn không
+đẩy bộ đếm của nó lên, nên lần bấm **Chốt bản** tiếp theo sẽ báo lỗi trùng id. Script in ra câu SQL cần chạy,
+dán vào Supabase → SQL Editor một lần:
+
+```sql
+select setval(pg_get_serial_sequence('artius_plan_snapshot','id'),
+              (select coalesce(max(id), 1) from artius_plan_snapshot));
+```
+
+Chế độ mặc định (không `--wipe`) không cần bước này.
 
 ## 5. Thử khôi phục — bắt buộc một lần
 
