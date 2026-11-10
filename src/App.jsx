@@ -1,6 +1,17 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.61
+   ARTIUS — Quản lý giờ công theo dự án · v13.62
+   Mới ở v13.62 — Vòng 0 của lộ trình: đường lùi khi mất dữ liệu.
+     · Thiết lập › Sao lưu: file sao lưu nay có ĐỦ bốn thứ không tạo lại được — thiết lập, bảng công,
+       lưới kế hoạch (artius_plan) và các bản chốt (artius_plan_snapshot). Trước đây thiếu hẳn hai bảng
+       kế hoạch, nên khôi phục xong là mất sạch lưới kế hoạch mà không báo gì.
+     · File ghi thêm số dòng đã xuất (bảng công · kế hoạch · bản chốt) và bản app lúc xuất; màn hình hiện
+       lại đúng ba con số đó để đối chiếu.
+     · Bỏ ô "dán nội dung file rồi bấm Khôi phục" trong Thiết lập: đó là một nút ghi đè toàn bộ thiết lập
+       và bảng công nằm ngay trong giao diện. Khôi phục chuyển ra script chạy trên máy,
+       tools/artius-restore.mjs, cần service_role key — xem tools/README.md.
+     · Script có chế độ xem trước (không ghi), chế độ ghi đè không xoá, và --wipe để về đúng thời điểm
+       của bản sao lưu; chạy xong tự in lại số dòng để đối chiếu với file.
    Mới ở v13.61 — công cụ sơ đồ cấu trúc (không đổi gì trong app):
      · npm run datamap: scripts/datamap.mjs quét supabase/*.sql + src/ + api/, đối chiếu bản thiết kế chuẩn
        docs/cau-truc.json, xuất docs/so-do/ARTIUS-TIME_so-do-cau-truc.html (không nằm trong bản deploy).

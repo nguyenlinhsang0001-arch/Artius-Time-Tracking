@@ -46,6 +46,24 @@ export const listSnapshots = async (year) => {
   if (error) throw error;
   return data || [];
 };
+/* v13.62 — SAO LƯU: đọc nguyên dạng mọi dòng của hai bảng kế hoạch, không gom theo năm và không
+   cắt bớt như listSnapshots (giới hạn 24 bản). Script khôi phục ghi thẳng lại đúng các dòng này. */
+export const dumpPlanTables = async () => {
+  const page = async (table, cols, order) => {
+    const out = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase.from(table).select(cols).order(order).range(from, from + 999);
+      if (error) throw error;
+      out.push(...(data || []));
+      if (!data || data.length < 1000) return out;
+    }
+  };
+  return {
+    plan: await page("artius_plan", "year, project_id, role_id, weeks, updated_at", "year"),
+    snapshots: await page("artius_plan_snapshot", "id, year, label, data, taken_at", "taken_at"),
+  };
+};
+
 export const loadSnapshot = async (id) => {
   const { data, error } = await supabase.from("artius_plan_snapshot").select("data").eq("id", id).single();
   if (error) throw error;

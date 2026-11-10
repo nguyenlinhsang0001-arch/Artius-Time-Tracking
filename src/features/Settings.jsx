@@ -7,9 +7,10 @@ import { fetchConfig, saveConfig, fetchTs } from "../data.js";
 import { syncPush, sendTestPush, fetchPushStatus } from "../push.js";
 import { currentUser } from "../auth.js";
 import { DEFAULT_HOURS, VN_FIXED_HOLIDAYS, dFull, dLabel, fmt, pad, weeklyTarget } from "../core/date.jsx";
-import { DB, LAST_STORAGE_ERROR, STORAGE_OK, TS_PREFIX, allLoaded, commitConfig, commitTs, errText, loadDB, useDataTick, useUsage, wipeTs } from "../core/db.jsx";
+import { DB, LAST_STORAGE_ERROR, STORAGE_OK, allLoaded, errText, loadDB, useDataTick, useUsage, wipeTs } from "../core/db.jsx";
 import { DEFAULT_PHASE, DEFAULT_PHASES, LEAVE_TASKS, NO_PROJECT, OT_MIG_NOTE, empNameTag, fmtH, isLeaveTask, isResigned, otBandIdFor, otBandKey, otSpan, phaseColor, tone, toneT, uid } from "../core/domain.jsx";
-import { CTRL, ConfirmDialog, DateField, Panel, btnDanger, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
+import { APP_VERSION, CTRL, ConfirmDialog, DateField, Panel, btnDanger, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
+import { dumpPlanTables, errMsg } from "./planning/planStore.js";
 import { allocLimits } from "../shared/alloc.jsx";
 import { Dashboard } from "./dashboard/Dashboard.jsx";
 
@@ -62,82 +63,73 @@ export function StorageDoctor({ cfg, admin = false }) {
   );
 }
 
-/* ============================ SAO LƯU & KHÔI PHỤC ============================
-   Bộ nhớ lưu trữ của môi trường này có lúc đứt giữa chừng. Xuất được toàn bộ dữ liệu
-   ra một file JSON nghĩa là dù storage hỏng hay bị xoá thì vẫn dựng lại được. */
-export function BackupPanel({ cfg, saveCfg, flash, setCfgFromRestore }) {
+/* ============================ SAO LƯU ============================
+   v13.62 — File sao lưu phải NẠP LẠI ĐƯỢC, không phải báo cáo để đọc: nó chứa nguyên dạng cả bốn
+   thứ không tạo lại được — thiết lập, bảng công, lưới kế hoạch và các bản chốt. Trước v13.62 file
+   thiếu hẳn hai bảng kế hoạch (artius_plan, artius_plan_snapshot), nên khôi phục xong là mất kế hoạch.
+
+   Khôi phục KHÔNG nằm trong app nữa. Nó chạy bằng script trên máy (tools/artius-restore.mjs), cần
+   service_role key — nên không ai bấm nhầm, và app không còn đường nào ghi đè toàn bộ dữ liệu. */
+export function BackupPanel({ flash }) {
   const [busy, setBusy] = useState(false);
-  const [text, setText] = useState("");
-  const [confirmRestore, setConfirmRestore] = useState(null);
+  const [last, setLast] = useState(null);
 
   const exportAll = async () => {
-    // tải lại bản mới nhất từ server để file sao lưu có cả phần mọi người vừa nhập sau lúc mình mở app
     setBusy(true);
-    let fresh = null;
-    try { fresh = await loadDB(true, true); } catch { /* báo lỗi bên dưới */ }   // v2.1: sao lưu phải có đủ mọi tháng
+    let fresh = null, pl = null, planErr = "";
+    /* tải lại bản mới nhất từ server, đủ MỌI tháng — bản trong bộ nhớ chỉ có 6 tháng gần nhất */
+    try { fresh = await loadDB(true, true); } catch { /* báo lỗi bên dưới */ }
+    /* chưa chạy file SQL kế hoạch thì vẫn xuất phần còn lại, nhưng phải nói rõ là thiếu */
+    if (fresh) { try { pl = await dumpPlanTables(); } catch (e) { planErr = errMsg(e); } }
     setBusy(false);
     if (!fresh) return flash(`Chưa xuất được — ${LAST_STORAGE_ERROR || "không tải được dữ liệu"}`, "err");
     const ts = { ...fresh.ts };
-    const dump = { app: "artius-timesheet", v: 1, at: new Date().toISOString(), config: fresh.config, timesheets: ts };
+    const counts = { timesheets: Object.keys(ts).length, plan: pl?.plan.length || 0, snapshots: pl?.snapshots.length || 0 };
+    const dump = {
+      app: "artius-timesheet", v: 2, appVersion: APP_VERSION, at: new Date().toISOString(),
+      counts, config: fresh.config, timesheets: ts, plan: pl?.plan || [], snapshots: pl?.snapshots || [],
+    };
     const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = `ARTIUS_saoluu_${fmt(new Date())}.json`; a.click();
     URL.revokeObjectURL(url);
-    flash(`Đã xuất ${Object.keys(ts).length} bảng công và toàn bộ thiết lập.`);
-  };
-
-  const parseDump = () => {
-    try {
-      const d = JSON.parse(text);
-      if (d?.app !== "artius-timesheet" || !d.config) throw new Error("sai định dạng");
-      return d;
-    } catch { flash("Nội dung không phải file sao lưu hợp lệ.", "err"); return null; }
-  };
-
-  const doRestore = async () => {
-    const d = confirmRestore; setConfirmRestore(null);
-    if (!d) return;
-    setBusy(true);
-    const ts = d.timesheets || {};
-    // khoá cũ có dạng "artius:ts:<empId>:<ym>", bản mới lưu gọn là "<empId>:<ym>"
-    const clean = {};
-    for (const [k, v] of Object.entries(ts)) clean[k.startsWith(TS_PREFIX) ? k.slice(TS_PREFIX.length) : k] = v;
-    const ok = !!(await commitConfig(d.config)) && (await commitTs(clean));
-    setCfgFromRestore?.(d.config);
-    setBusy(false); setText("");
-    flash(ok ? `Đã khôi phục thiết lập và ${Object.keys(clean).length} bảng công.` : "Khôi phục chưa xong — lưu trữ đang lỗi.", ok ? "ok" : "err");
+    setLast({ ...counts, at: new Date(), planErr });
+    return flash(planErr ? `Đã xuất nhưng THIẾU lưới kế hoạch — ${planErr}` : `Đã xuất ${counts.timesheets} bảng công, ${counts.plan} dòng kế hoạch, ${counts.snapshots} bản chốt.`,
+      planErr ? "err" : "ok");
   };
 
   return (
-    <Panel title="Sao lưu & khôi phục">
+    <Panel title="Sao lưu">
       <p className="text-sm text-slate-400">
-        Xuất toàn bộ thiết lập và bảng công ra một file JSON để giữ ngoài hệ thống. Nên làm định kỳ, nhất là cuối mỗi tháng trước khi chốt công.
+        Xuất nguyên dạng thiết lập, bảng công, lưới kế hoạch và các bản chốt ra một file JSON giữ ngoài hệ thống.
+        Chạy trước mỗi lần nâng cấp, và cuối mỗi tháng trước khi chốt công.
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <button onClick={exportAll} disabled={busy} className={`${btnPrimary} disabled:opacity-40`}>
           {busy ? <Loader2 className="animate-spin" size={15} /> : <Download size={15} />} Xuất file sao lưu
         </button>
       </div>
-
-      <div className="mt-5 border-t border-slate-800 pt-4">
-        <label className="mb-1 block text-xs text-slate-500">Khôi phục — dán nội dung file sao lưu vào đây</label>
-        <textarea rows={4} value={text} onChange={(e) => setText(e.target.value)}
-          placeholder='{"app":"artius-timesheet", ...}'
-          className="w-full resize-none rounded-md border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-100 placeholder-slate-700 focus:border-teal-500 focus:outline-none" />
-        <button onClick={() => { const d = parseDump(); if (d) setConfirmRestore(d); }} disabled={busy || !text.trim()}
-          className={`mt-2 ${btnGhost} disabled:opacity-40`}><RotateCcw size={14} /> Khôi phục từ nội dung trên</button>
-        <p className="mt-2 text-xs text-slate-500">Khôi phục ghi đè thiết lập hiện tại và các bảng công có trong file. Bảng công không nằm trong file thì giữ nguyên.</p>
+      {last && (
+        <div className="mt-3 rounded-md border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs">
+          <div className="text-slate-500">Lần xuất gần nhất {last.at.toLocaleTimeString("vi-VN")}</div>
+          <div className="mt-1 grid gap-x-6 gap-y-0.5 sm:grid-cols-3">
+            <div className="text-slate-300">Bảng công <span className="font-mono text-slate-100">{last.timesheets}</span></div>
+            <div className="text-slate-300">Dòng kế hoạch <span className="font-mono text-slate-100">{last.plan}</span></div>
+            <div className="text-slate-300">Bản chốt <span className="font-mono text-slate-100">{last.snapshots}</span></div>
+          </div>
+          {last.planErr && <div className="mt-1 text-amber-400">Thiếu lưới kế hoạch trong file này.</div>}
+        </div>
+      )}
+      <div className="mt-5 border-t border-slate-800 pt-4 text-xs text-slate-500">
+        <div className="text-slate-400">Khôi phục</div>
+        <p className="mt-1">
+          Khôi phục không làm trong app, để không có nút nào ghi đè được toàn bộ dữ liệu.
+          Chạy trên máy: <span className="font-mono text-slate-300">node tools/artius-restore.mjs &lt;file&gt; --yes</span> — cần service_role key.
+          Hướng dẫn trong <span className="font-mono text-slate-300">tools/README.md</span>.
+        </p>
+        <p className="mt-1">Một bản sao lưu chưa thử khôi phục thì chưa coi là có sao lưu. Thử một lần vào project Supabase trống.</p>
       </div>
-
-      <ConfirmDialog
-        open={!!confirmRestore}
-        title="Khôi phục dữ liệu từ file sao lưu?"
-        desc="Thiết lập hiện tại gồm nhân sự, dự án, tác vụ, ngày lễ sẽ bị ghi đè bằng nội dung trong file. Nên xuất một bản sao lưu của dữ liệu hiện tại trước khi làm."
-        confirmLabel="Khôi phục"
-        onConfirm={doRestore}
-        onCancel={() => setConfirmRestore(null)}
-      />
     </Panel>
   );
 }
@@ -776,7 +768,7 @@ export function SettingsTab({ cfg, saveCfg, flash }) {
         </div>
       </Panel>
 
-      <BackupPanel cfg={cfg} saveCfg={saveCfg} flash={flash} setCfgFromRestore={saveCfg} />
+      <BackupPanel flash={flash} />
       <StorageDoctor cfg={cfg} admin />
 
       <ConfirmDialog
