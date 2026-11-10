@@ -1,6 +1,14 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.59
+   ARTIUS — Quản lý giờ công theo dự án · v13.61
+   Mới ở v13.61 — công cụ sơ đồ cấu trúc (không đổi gì trong app):
+     · npm run datamap: scripts/datamap.mjs quét supabase/*.sql + src/ + api/, đối chiếu bản thiết kế chuẩn
+       docs/cau-truc.json, xuất docs/so-do/ARTIUS-TIME_so-do-cau-truc.html (không nằm trong bản deploy).
+     · Tự kiểm tra: hàm / bảng không tồn tại, bảng chưa bật RLS, trình duyệt ghi bảng mà database không cho,
+       dữ liệu nhạy cảm (lương, mật khẩu) ở nơi mọi tài khoản đọc được hoặc xuất ra Excel, hàm quyền cao
+       không kiểm tra người gọi, khối mới chưa khai báo, khai báo đã lỗi thời, nhiều nơi cùng ghi một khối,
+       hàm SQL viết ở nhiều file, file code không còn dùng.
+     · docs/cau-truc.lock.json giữ ảnh chụp cấu trúc để tab "Thay đổi" so với bản trước.
    Mới ở v13.59 — Kế hoạch, sửa các điểm sai từ đợt rà soát công thức (mục 2, 3, 4, 5, 6, 7):
      · (2) Thực tế quy ra người = giờ ÷ GIỜ CHUẨN CỦA CHÍNH TUẦN ĐÓ (trừ ngày lễ), thay cho chia cứng 44 h.
        Tuần có lễ không còn bị thấp giả ~18% mỗi ngày lễ. Nhãn ghi "1 người = 36 giờ (tuần có ngày lễ)".
