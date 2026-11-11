@@ -122,7 +122,6 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
   const P = base ? snapPlan || {} : plan;
 
   /* ---------- giờ đã gửi, gom theo tuần thật ---------- */
-  const roleOf = useMemo(() => new Map(staff.map((e) => [e.id, e.role || ""])), [staff]);
   const nameOf = useMemo(() => new Map(staff.map((e) => [e.id, e.name || e.id])), [staff]);
   const projIds = useMemo(() => new Set(projects.map((p) => p.id)), [projects]);
   const liveIds = useMemo(() => new Set(projects.filter((p) => p.active && !hidden.has(p.id)).map((p) => p.id)), [projects, hidden]);
@@ -354,7 +353,9 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
   /* danh sách người của một vai trò trong dự án đang chọn */
   const rolePeople = (o, r) => {
     const a = o.kh[r.id] || 0, b = o.tt[r.id] || 0, planH = a * HPP * nW;
-    const inP = [...o.ppl].filter(([id]) => roleOf.get(id) === r.id).sort((x, y) => y[1] - x[1]);
+    /* v13.72 (R7) — người và số giờ theo vai trò LÚC CHẤM (comparePlan gom sẵn ở o.rp); người đổi vai trò giữa khoảng
+       hiện ở cả hai hàng, mỗi hàng đúng phần giờ của vai trò đó. */
+    const inP = [...(o.rp?.[r.id] || new Map())].sort((x, y) => y[1] - x[1]);
     const mxH = Math.max(planH, 1, ...inP.map((x) => x[1]));
     const tot = (id) => [...(data.per.get(id) || new Map()).values()].reduce((s2, v) => s2 + v, 0);
     /* v13.44 — BỔ SUNG: ai cùng vai trò có thể kéo thêm vào dự án này. Xếp người RẢNH NHẤT lên trước

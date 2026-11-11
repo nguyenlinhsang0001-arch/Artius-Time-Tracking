@@ -29,7 +29,7 @@ export function ThemeToggle() {
   );
 }
 
-export const APP_VERSION = "v13.71";
+export const APP_VERSION = "v13.72";
 /* v4.1 — Cài app (PWA). Bắt sự kiện "beforeinstallprompt" ngay lúc nạp module (trước khi React vẽ) để không lỡ.
    Chrome/Edge (máy tính, Android): bấm "Cài app" hiện hộp cài của trình duyệt.
    iPhone/iPad: Safari không có hộp cài — hiện hướng dẫn "Chia sẻ → Thêm vào MH chính".

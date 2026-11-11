@@ -1,6 +1,6 @@
 {
- "version": "v13.71",
- "prevVersion": "v13.70",
+ "version": "v13.72",
+ "prevVersion": "v13.71",
  "graph": {
   "nodes": {
    "hub": "ARTIUS TIME",
@@ -855,15 +855,12 @@
    "d_ot|d_load|calc",
    "d_ot|d_otx|calc",
    "d_server|d_budget|calc",
-   "d_server|db_config|read",
-   "d_server|db_ts|read",
-   "d_server|holidays|read",
-   "d_server|otBands|read",
-   "d_server|tasks|read",
    "d_std|d_cmp|calc",
    "d_std|d_load|calc",
    "d_std|d_week|calc",
    "db_accounts|employees|ref",
+   "db_hours|d_server|read",
+   "db_hours|d_server|write",
    "db_hours|db_config|read",
    "db_hours|db_ts|read",
    "db_hours|employees|read",
@@ -906,9 +903,9 @@
    "g_purge|otBands|read",
    "g_purge|tasks|read",
    "g_purge|ts_rows|rule",
+   "g_rls|d_server|rule",
    "g_rls|db_accounts|rule",
    "g_rls|db_config|rule",
-   "g_rls|db_hours|rule",
    "g_rls|db_meta|rule",
    "g_rls|db_plan|rule",
    "g_rls|db_push|rule",
@@ -927,9 +924,9 @@
    "hours|d_std|calc",
    "hours|db_config|store",
    "hours|g_guard|rule",
+   "hub|d_server|store",
    "hub|db_accounts|store",
    "hub|db_config|store",
-   "hub|db_hours|store",
    "hub|db_meta|store",
    "hub|db_plan|store",
    "hub|db_push|store",
@@ -1450,16 +1447,6 @@
     "definer": true,
     "file": "supabase/v12_25_truongphong_dashboard.sql"
    },
-   "artius_usage": {
-    "args": "",
-    "definer": true,
-    "file": "supabase/v12_25_truongphong_dashboard.sql"
-   },
-   "artius_phase_detail": {
-    "args": "",
-    "definer": true,
-    "file": "supabase/v12_25_truongphong_dashboard.sql"
-   },
    "artius_role_on": {
     "args": "emp jsonb, d date",
     "definer": false,
@@ -1489,6 +1476,36 @@
     "args": "",
     "definer": true,
     "file": "supabase/v13_69_bang_gio.sql"
+   },
+   "artius_usage_json": {
+    "args": "",
+    "definer": false,
+    "file": "supabase/v13_71_tong_hop_bang_phang.sql"
+   },
+   "artius_phase_detail_json": {
+    "args": "",
+    "definer": false,
+    "file": "supabase/v13_71_tong_hop_bang_phang.sql"
+   },
+   "artius_usage_flat": {
+    "args": "",
+    "definer": false,
+    "file": "supabase/v13_71_tong_hop_bang_phang.sql"
+   },
+   "artius_phase_detail_flat": {
+    "args": "",
+    "definer": false,
+    "file": "supabase/v13_71_tong_hop_bang_phang.sql"
+   },
+   "artius_usage": {
+    "args": "",
+    "definer": true,
+    "file": "supabase/v13_71_tong_hop_bang_phang.sql"
+   },
+   "artius_phase_detail": {
+    "args": "",
+    "definer": true,
+    "file": "supabase/v13_71_tong_hop_bang_phang.sql"
    }
   },
   "cfg": [
@@ -1549,6 +1566,14 @@
    "K13:artius_ts": {
     "sev": "lo",
     "t": "Bảng artius_ts được ghi từ 5 nơi"
+   },
+   "K14:artius_usage_json": {
+    "sev": "lo",
+    "t": "Hàm artius_usage_json() không ai gọi"
+   },
+   "K14:artius_phase_detail_json": {
+    "sev": "lo",
+    "t": "Hàm artius_phase_detail_json() không ai gọi"
    }
   }
  }

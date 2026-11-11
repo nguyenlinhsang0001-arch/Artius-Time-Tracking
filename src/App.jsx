@@ -1,6 +1,13 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.71
+   ARTIUS — Quản lý giờ công theo dự án · v13.72
+   Mới ở v13.72 — Vòng 4, bước 2 (R7): So với thực tế xếp giờ theo vai trò TẠI NGÀY CHẤM.
+     · planCalc.comparePlan (màn So với thực tế + sheet Excel) dùng domain.roleOn(e, ngày) thay vì vai trò hiện tại.
+       Đổi vai trò cho ai đó thì giờ quá khứ của họ ở lại đúng hàng vai trò cũ, không bị dời sang vai trò mới.
+     · Danh sách người trong từng vai trò của dự án lấy theo vai trò lúc chấm (o.rp) — người đổi vai trò giữa khoảng
+       hiện ở cả hai hàng, mỗi hàng đúng phần giờ của vai trò đó.
+     · Gộp vai trò (Kế hoạch) áp cả vào lịch sử vai trò.
+     · Chưa ai có lịch sử vai trò → mọi con số hiện tại KHÔNG đổi (đã so với bản cũ).
    Mới ở v13.71 — Vòng 4, bước 1: hai hàm tổng hợp giờ đọc bảng giờ phẳng (supabase/v13_71_tong_hop_bang_phang.sql).
      · artius_usage (tab Dự án, Thiết lập › Giai đoạn) và artius_phase_detail (Dashboard › Tiến độ dự án) không còn bung
        JSON của mọi bảng công mỗi lần gọi — cộng thẳng trên artius_hours. Kết quả trả về y hệt, app không sửa phần gọi.

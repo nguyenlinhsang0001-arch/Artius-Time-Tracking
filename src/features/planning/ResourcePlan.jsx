@@ -138,7 +138,12 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
   }, [merge]);
   /* v12.17 — người được bỏ khỏi kế hoạch ở tab Nhân sự (noPlan, vd thử việc): không tính quân số, giờ thực tế, cũng không làm tuần bị "chưa đủ giờ" */
   const staff = useMemo(() => (cfg.employees || []).filter((e) => !isResigned(e) && !e.noPlan), [cfg.employees]);
-  const planStaff = useMemo(() => staff.map((e) => (e.role && merge[e.role] ? { ...e, role: merge[e.role] } : e)), [staff, merge]);
+  /* v13.72 — gộp vai trò áp cả vào lịch sử vai trò, để giờ quá khứ (roleOn) cũng rơi vào vai trò đã gộp */
+  const planStaff = useMemo(() => staff.map((e) => {
+    const m = (r) => (r && merge[r]) || r;
+    const hist = Array.isArray(e.roleHistory) && e.roleHistory.some((h) => merge[h.role]) ? e.roleHistory.map((h) => ({ ...h, role: m(h.role) })) : e.roleHistory;
+    return (e.role && merge[e.role]) || hist !== e.roleHistory ? { ...e, role: m(e.role), ...(hist ? { roleHistory: hist } : {}) } : e;
+  }), [staff, merge]);
   const { head, cap } = useMemo(() => {
     const h = new Map();
     for (const e of planStaff) if (e.role) h.set(e.role, (h.get(e.role) || 0) + 1);

@@ -4,7 +4,7 @@
    Lưới lưu dạng: plan = { [mã dự án]: { [mã vai trò]: number[52] } }
    Vai trò nào không có số nào khác 0 thì không lưu, để khỏi phình dữ liệu. */
 import { addDays, fmt, makeHolidayIndex, minHoursFor, mondayOf, weekDays, weeklyTarget } from "../../core/date.jsx";
-import { NO_PROJECT, offOnDay, isLeaveTask, isResigned } from "../../core/domain.jsx";
+import { NO_PROJECT, offOnDay, isLeaveTask, isResigned, roleOn } from "../../core/domain.jsx";
 
 /* ---------- Cột tuần ----------
    Mỗi tháng đúng 4 cột tuần (T<tháng> · 1…4), mỗi năm 48 cột, không có ngoại lệ tuần 5 — giống cách đọc file Excel kế hoạch.
@@ -191,16 +191,16 @@ export const prunePlan = (plan) => {
 };
 
 /* ---------- Giờ thực tế quy ra số người ----------
-   Vai trò lấy theo VAI TRÒ CỦA NGƯỜI chấm (nhân sự chỉ có một vai trò), vì dòng chấm công không mang vai trò.
+   Vai trò lấy theo vai trò của NGƯỜI chấm TẠI NGÀY CHẤM (v13.72, roleOn — lịch sử vai trò), vì dòng chấm công không mang vai trò.
    Giờ vắng mặt và giờ không thuộc dự án nào bị loại — đây là giờ đổ vào dự án.
    Quy đổi: số người = giờ ÷ giờ chuẩn một tuần (lấy từ Thiết lập). */
 export const actualByCell = (detail = [], employees = [], hoursCfg) => {
-  const roleBy = new Map(employees.map((e) => [e.id, e.role || ""]));
+  const empBy = new Map(employees.map((e) => [e.id, e]));
   const target = weeklyTarget(hoursCfg) || 44;
   const m = new Map();   // "pid|rid|monday" -> giờ
   for (const d of detail) {
     if (!d.projectId || isLeaveTask(d.taskId)) continue;
-    const rid = roleBy.get(d.empId); if (!rid) continue;
+    const e = empBy.get(d.empId); const rid = e ? roleOn(e, d.date) : ""; if (!rid) continue;
     const monday = fmt(mondayOf(new Date(d.date)));
     const k = `${d.projectId}|${rid}|${monday}`;
     m.set(k, (m.get(k) || 0) + d.hours);
@@ -310,7 +310,10 @@ export function comparePlan({ plan: P, projects, roles, weeks, sent = [], draft 
   const full = weeklyTarget(hoursCfg) || 44;
   const projIds = new Set(projects.map((p) => p.id));
   const liveIds = new Set(projects.filter((p) => p.active && !hidden.has(p.id)).map((p) => p.id));
-  const roleOf = new Map(staff.map((e) => [e.id, e.role || ""]));
+  /* v13.72 (R7) — giờ xếp vào vai trò của người chấm TẠI NGÀY CHẤM (roleOn), không phải vai trò hiện tại:
+     đổi vai trò cho ai đó thì giờ quá khứ của họ không bị dời sang hàng vai trò mới. Chưa có lịch sử = vai trò hiện tại. */
+  const empOf = new Map(staff.map((e) => [e.id, e]));
+  const roleAt = (id, d) => { const e = empOf.get(id); return e ? roleOn(e, d) : ""; };
   const stdOn = (d) => minHoursFor(d, hoursCfg, hs) || 0;
   const nW = weeks.length || 1;
 
@@ -332,14 +335,14 @@ export function comparePlan({ plan: P, projects, roles, weeks, sent = [], draft 
     if (dr && !wk[k].run) return;
     if (!wk[k].days.has(d.date)) return;
     const h = Number(d.hours) || 0; if (!h) return;
-    bucket[k].push({ empId: d.empId, pid: d.projectId, task: d.taskId, h, dr });
+    bucket[k].push({ empId: d.empId, date: d.date, pid: d.projectId, task: d.taskId, h, dr });
     seen[k].add(`${d.empId}|${d.date}`);
   };
   for (const d of sent) put(d, false);
   for (const d of draft) put(d, true);
 
   const rows = new Map();
-  const get = (pid) => { if (!rows.has(pid)) rows.set(pid, { pid, kh: {}, tt: {}, ppl: new Map(), dr: 0, drp: new Map(), wk: weeks.map(() => ({ kh: 0, tt: 0 })) }); return rows.get(pid); };
+  const get = (pid) => { if (!rows.has(pid)) rows.set(pid, { pid, kh: {}, tt: {}, ppl: new Map(), rp: {}, dr: 0, drp: new Map(), wk: weeks.map(() => ({ kh: 0, tt: 0 })) }); return rows.get(pid); };
   let common = 0, total = 0, drft = 0;
   const per = new Map();
   const add = (e, k, h) => { if (!per.has(e)) per.set(e, new Map()); const m = per.get(e); m.set(k, (m.get(k) || 0) + h); };
@@ -355,10 +358,11 @@ export function comparePlan({ plan: P, projects, roles, weeks, sent = [], draft 
       total += x.h; if (x.dr) drft += x.h;
       if (!x.pid || x.pid === NO_PROJECT || !projIds.has(x.pid) || isLeaveTask(x.task)) { common += x.h; add(x.empId, "", x.h); continue; }
       add(x.empId, x.pid, x.h);
-      const rid = roleOf.get(x.empId); if (!rid) continue;
+      const rid = roleAt(x.empId, x.date); if (!rid) continue;
       const o = get(x.pid);
       o.tt[rid] = (o.tt[rid] || 0) + x.h / D / nW; o.wk[k].tt += x.h / D;
       o.ppl.set(x.empId, (o.ppl.get(x.empId) || 0) + x.h);
+      (o.rp[rid] ||= new Map()).set(x.empId, (o.rp[rid].get(x.empId) || 0) + x.h);   // v13.72: người × vai trò lúc chấm
       if (x.dr) { o.dr += x.h; o.drp.set(x.empId, (o.drp.get(x.empId) || 0) + x.h); }
     }
   });
