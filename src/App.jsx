@@ -1,6 +1,9 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.69
+   ARTIUS — Quản lý giờ công theo dự án · v13.70
+   Mới ở v13.70 — gỡ khung "Xoá dữ liệu chấm công" ở Thiết lập (gõ XOA là xoá hết giờ công của mọi người).
+     · Bỏ luôn db.wipeTs và data.deleteAllTs — không còn chỗ nào gọi. Từ giờ app thật sự không có đường nào xoá hết giờ công.
+     · Làm sạch để dựng project mới: tools/artius-restore.mjs --wipe trên máy (cần service_role key).
    Mới ở v13.69 — Vòng 3, bước 3/3 (R3): bảng giờ phẳng artius_hours (supabase/v13_69_bang_gio.sql).
      · Mỗi dòng một ô giờ: emp_id · ngay · ym · row_no · project_id · phase_id · task_id · ot_for · vai_tro · gio · da_gui.
        vai_tro = vai trò ĐÚNG NGÀY ĐÓ theo roleHistory (artius_role_on, cùng luật domain.roleOn).

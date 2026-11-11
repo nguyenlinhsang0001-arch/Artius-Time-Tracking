@@ -1,6 +1,6 @@
 /* ARTIUS TIME v11 — tách từ App.jsx, nội dung giữ nguyên. */
 import React, { useState, useEffect } from "react";
-import { fetchConfig, saveConfig, fetchTs, fetchTsChanges, fetchTsStamps, saveTs, deleteAllTs, fetchUsage, fetchPhaseDetail } from "../data.js";
+import { fetchConfig, saveConfig, fetchTs, fetchTsChanges, fetchTsStamps, saveTs, fetchUsage, fetchPhaseDetail } from "../data.js";
 import { mergeConfig } from "../merge.js";
 import { supabase } from "../storage.js";
 import { DEFAULT_HOURS, fmt, makeHolidayIndex, minHoursFor, pad, weekDays, ymOf } from "./date.jsx";
@@ -182,12 +182,6 @@ export const refreshTs = async (empId, yms) => {
     if (r.value[k]) DB.ts[k] = r.value[k]; else delete DB.ts[k];
   }
   return true;
-};
-export const wipeTs = async () => {
-  if (!DB) DB = emptyDB();
-  const ok = (await call(() => deleteAllTs(), "set")).ok;
-  if (ok) DB.ts = {};
-  return ok;
 };
 
 /* v8.5 — Xoá hẳn toàn bộ bảng công (mọi tháng) của một nhân sự trên server, rồi bỏ khỏi bộ nhớ. Không hoàn tác được. */

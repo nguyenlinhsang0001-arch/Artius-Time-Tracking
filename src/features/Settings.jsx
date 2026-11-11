@@ -7,9 +7,9 @@ import { fetchConfig, saveConfig, fetchTs, rebuildHours } from "../data.js";
 import { syncPush, sendTestPush, fetchPushStatus } from "../push.js";
 import { currentUser } from "../auth.js";
 import { DEFAULT_HOURS, VN_FIXED_HOLIDAYS, dFull, dLabel, fmt, pad, weeklyTarget } from "../core/date.jsx";
-import { DB, LAST_STORAGE_ERROR, STORAGE_OK, allLoaded, errText, loadDB, useDataTick, useUsage, wipeTs } from "../core/db.jsx";
+import { DB, LAST_STORAGE_ERROR, STORAGE_OK, allLoaded, errText, loadDB, useDataTick, useUsage } from "../core/db.jsx";
 import { DEFAULT_PHASE, DEFAULT_PHASES, LEAVE_TASKS, NO_PROJECT, OT_MIG_NOTE, empNameTag, fmtH, isLeaveTask, isResigned, otBandIdFor, otBandKey, otSpan, phaseColor, tone, toneT, uid } from "../core/domain.jsx";
-import { APP_VERSION, CTRL, ConfirmDialog, DateField, Panel, btnDanger, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
+import { APP_VERSION, CTRL, ConfirmDialog, DateField, Panel, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
 import { dumpPlanTables, errMsg } from "./planning/planStore.js";
 import { allocLimits } from "../shared/alloc.jsx";
 import { Dashboard } from "./dashboard/Dashboard.jsx";
@@ -634,7 +634,6 @@ export function AllocLimitPanel({ cfg, saveCfg, flash }) {
 /* v13.42 — Ngưỡng kết luận cho màn Kế hoạch › So với thực tế, trước đây gắn cứng trong mã */
 export function SettingsTab({ cfg, saveCfg, flash }) {
   const [day, setDay] = useState(cfg.deadlineDay || 5);
-  const [confirm, setConfirm] = useState("");
   const [h, setH] = useState({ ...DEFAULT_HOURS, ...(cfg.hours || {}) });
   const [holDate, setHolDate] = useState(fmt(new Date()));
   const [holName, setHolName] = useState("");
@@ -680,12 +679,6 @@ export function SettingsTab({ cfg, saveCfg, flash }) {
     if (!x) return;
     await saveCfg({ ...cfg, holidays: holidays.filter((y) => !(y.date === x.date && y.name === x.name)) });
     flash("Đã xoá ngày lễ.");
-  };
-
-  const wipe = async () => {
-    if (confirm !== "XOA") return flash('Gõ đúng chữ "XOA" để xác nhận.', "err");
-    const ok = await wipeTs();
-    flash(ok ? "Đã xoá toàn bộ dữ liệu chấm công." : `Chưa xoá được — ${LAST_STORAGE_ERROR || "thử lại"}`, ok ? "ok" : "err"); if (ok) setConfirm("");
   };
 
   return (
@@ -795,14 +788,6 @@ export function SettingsTab({ cfg, saveCfg, flash }) {
         <p className="mt-3 text-xs text-slate-500">
           Nhân sự thấy cảnh báo vàng về bảng công tháng trước từ đầu tháng, chuyển đỏ “quá hạn” sau ngày {pad(day)}.
         </p>
-      </Panel>
-
-      <Panel title="Xoá dữ liệu chấm công">
-        <p className="text-sm text-slate-300">Xoá toàn bộ giờ công đã nhập của mọi nhân sự. Danh sách dự án, nhân sự và hạng mục được giữ lại. Không khôi phục được — xuất Excel trước khi xoá.</p>
-        <div className="mt-3 grid gap-2 md:flex md:items-center">
-          <input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Gõ XOA để xác nhận" className={`md:w-56 ${inputCls}`} />
-          <button onClick={wipe} className={btnDanger}><RotateCcw size={14} /> Xoá dữ liệu</button>
-        </div>
       </Panel>
 
       <BackupPanel flash={flash} />

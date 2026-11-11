@@ -180,9 +180,5 @@ export async function saveTs(map) {
   return true;
 }
 
-/* Xoá toàn bộ bảng công (chỉ tài khoản quản lý xoá được dòng của người khác). */
-export async function deleteAllTs() {
-  const { error } = await supabase.from(TS).delete().neq("emp_id", "");
-  if (error) throw fail("xoá bảng công", error);
-  return true;
-}
+/* v13.70 — deleteAllTs (xoá toàn bộ bảng công) đã gỡ: app không còn đường nào xoá hết giờ công.
+   Muốn làm sạch (dựng project mới) thì dùng tools/artius-restore.mjs --wipe trên máy, cần service_role key. */
