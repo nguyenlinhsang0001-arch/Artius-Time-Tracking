@@ -1,11 +1,12 @@
 {
- "version": "v13.68",
- "prevVersion": "v13.67",
+ "version": "v13.69",
+ "prevVersion": "v13.68",
  "graph": {
   "nodes": {
    "hub": "ARTIUS TIME",
    "db_config": "artius_config",
    "db_ts": "artius_ts",
+   "db_hours": "artius_hours",
    "db_accounts": "artius_accounts",
    "db_plan": "artius_plan",
    "db_snap": "artius_plan_snapshot",
@@ -75,6 +76,9 @@
    "d_std|d_load|calc",
    "d_std|d_week|calc",
    "db_accounts|employees|ref",
+   "db_hours|db_config|read",
+   "db_hours|db_ts|read",
+   "db_hours|employees|read",
    "db_push|employees|ref",
    "db_snap|d_cmp|calc",
    "db_ts|d_server|calc",
@@ -116,6 +120,7 @@
    "g_purge|ts_rows|rule",
    "g_rls|db_accounts|rule",
    "g_rls|db_config|rule",
+   "g_rls|db_hours|rule",
    "g_rls|db_meta|rule",
    "g_rls|db_plan|rule",
    "g_rls|db_push|rule",
@@ -136,6 +141,7 @@
    "hours|g_guard|rule",
    "hub|db_accounts|store",
    "hub|db_config|store",
+   "hub|db_hours|store",
    "hub|db_meta|store",
    "hub|db_plan|store",
    "hub|db_push|store",
@@ -172,6 +178,7 @@
    "s_app|d_server|read",
    "s_app|db_config|read",
    "s_app|db_config|write",
+   "s_app|db_hours|write",
    "s_app|db_push|read",
    "s_app|db_ts|read",
    "s_app|db_ts|write",
@@ -313,6 +320,7 @@
    "s_settings|d_server|read",
    "s_settings|db_config|read",
    "s_settings|db_config|write",
+   "s_settings|db_hours|write",
    "s_settings|db_push|read",
    "s_settings|db_ts|read",
    "s_settings|db_ts|write",
@@ -536,6 +544,27 @@
      "update": "chỉ server",
      "delete": "chỉ server"
     }
+   },
+   "artius_hours": {
+    "cols": [
+     "da_gui",
+     "emp_id",
+     "gio",
+     "ngay",
+     "ot_for",
+     "phase_id",
+     "project_id",
+     "row_no",
+     "task_id",
+     "vai_tro",
+     "ym"
+    ],
+    "access": {
+     "select": "Admin · BOD, trưởng phòng (người phòng mình), chính chủ",
+     "insert": "chỉ server",
+     "update": "chỉ server",
+     "delete": "chỉ server"
+    }
    }
   },
   "fns": {
@@ -643,6 +672,36 @@
     "args": "",
     "definer": true,
     "file": "supabase/v12_25_truongphong_dashboard.sql"
+   },
+   "artius_role_on": {
+    "args": "emp jsonb, d date",
+    "definer": false,
+    "file": "supabase/v13_69_bang_gio.sql"
+   },
+   "artius_flatten_ts": {
+    "args": "p_emp text, p_ym text, p_value text, p_emp_cfg jsonb",
+    "definer": true,
+    "file": "supabase/v13_69_bang_gio.sql"
+   },
+   "artius_emp_cfg": {
+    "args": "p_emp text",
+    "definer": true,
+    "file": "supabase/v13_69_bang_gio.sql"
+   },
+   "artius_ts_flatten_trg": {
+    "args": "",
+    "definer": true,
+    "file": "supabase/v13_69_bang_gio.sql"
+   },
+   "artius_config_roles_trg": {
+    "args": "",
+    "definer": true,
+    "file": "supabase/v13_69_bang_gio.sql"
+   },
+   "artius_hours_rebuild": {
+    "args": "",
+    "definer": true,
+    "file": "supabase/v13_69_bang_gio.sql"
    }
   },
   "cfg": [

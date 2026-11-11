@@ -1,6 +1,14 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.68
+   ARTIUS — Quản lý giờ công theo dự án · v13.69
+   Mới ở v13.69 — Vòng 3, bước 3/3 (R3): bảng giờ phẳng artius_hours (supabase/v13_69_bang_gio.sql).
+     · Mỗi dòng một ô giờ: emp_id · ngay · ym · row_no · project_id · phase_id · task_id · ot_for · vai_tro · gio · da_gui.
+       vai_tro = vai trò ĐÚNG NGÀY ĐÓ theo roleHistory (artius_role_on, cùng luật domain.roleOn).
+     · artius_ts vẫn là nguồn sự thật. Trigger bung lại (người, tháng) mỗi lần lưu/xoá bảng công; đổi vai trò ở Nhân sự
+       thì trigger trên artius_config cập nhật vai_tro của riêng người đó. Lỗi khi bung KHÔNG chặn việc lưu giờ.
+     · Đọc giống hệt quyền đọc bảng công; không ai ghi thẳng được. Gồm cả giờ chưa gửi (cột da_gui).
+     · Thiết lập › Sao lưu › "Dựng lại bảng giờ" (Admin): dựng lại toàn bộ, báo số dòng và so tổng giờ với bảng công.
+     · Chưa màn hình nào đọc bảng này — mọi con số trong app giữ nguyên.
    Mới ở v13.68 — Vòng 3, bước 2/3 (R7): vai trò theo thời gian.
      · employee.roleHistory = [{role, from}] (không bắt buộc). Thiếu = một mục "vai trò hiện tại, từ trước" —
        dữ liệu và con số của mọi người hiện có KHÔNG đổi. Màn hình vẫn tính theo vai trò hiện tại.

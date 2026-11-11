@@ -138,6 +138,15 @@ export async function fetchUsage() {
   return (data || []).map((r) => ({ projectId: r.project_id, phaseId: r.phase_id, sent: Number(r.sent_hours) || 0, all: Number(r.all_hours) || 0 }));
 }
 
+/* v13.69 (R3) — Dựng lại bảng giờ phẳng artius_hours từ toàn bộ bảng công (hàm artius_hours_rebuild, chỉ Admin).
+   Không đụng artius_ts. Trả về { rows, flat, source }: số dòng giờ, tổng giờ bảng phẳng, tổng giờ đếm thẳng từ bảng công. */
+export async function rebuildHours() {
+  const { data, error } = await supabase.rpc("artius_hours_rebuild");
+  if (error) throw fail("dựng lại bảng giờ", error);
+  const r = (Array.isArray(data) ? data[0] : data) || {};
+  return { rows: Number(r.so_dong) || 0, flat: Number(r.tong_gio_bang_phang) || 0, source: Number(r.tong_gio_bang_cong) || 0 };
+}
+
 /* v4.7 — Chi tiết từng giai đoạn (Dashboard quản lý): giờ đã gửi theo tuần / nhân sự / tác vụ của mọi cặp dự án × giai đoạn,
    do database tính trên TOÀN BỘ bảng công (hàm artius_phase_detail, chỉ quản lý gọi được).
    Trả về { "<projectId>|<phaseId>": { w: {"<thứ Hai>": giờ}, e: {"<empId>": giờ}, t: {"<taskId>": giờ}, first, last } }. */

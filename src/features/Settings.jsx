@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Download, Plus, Trash2, Save, Loader2, ListChecks, RotateCcw, Check, Copy, Flag, Eye, EyeOff, Bell, Send, Printer, QrCode,
 } from "lucide-react";
-import { fetchConfig, saveConfig, fetchTs } from "../data.js";
+import { fetchConfig, saveConfig, fetchTs, rebuildHours } from "../data.js";
 import { syncPush, sendTestPush, fetchPushStatus } from "../push.js";
 import { currentUser } from "../auth.js";
 import { DEFAULT_HOURS, VN_FIXED_HOLIDAYS, dFull, dLabel, fmt, pad, weeklyTarget } from "../core/date.jsx";
@@ -73,6 +73,24 @@ export function StorageDoctor({ cfg, admin = false }) {
 export function BackupPanel({ flash }) {
   const [busy, setBusy] = useState(false);
   const [last, setLast] = useState(null);
+  const [hb, setHb] = useState(null);   // v13.69 — kết quả "Dựng lại bảng giờ": { rows, flat, source, at } | { err }
+  const [hbBusy, setHbBusy] = useState(false);
+
+  /* v13.69 (R3) — bảng giờ phẳng artius_hours tự cập nhật mỗi lần lưu bảng công. Nút này chỉ để dựng lần đầu
+     sau khi chạy supabase/v13_69_bang_gio.sql, hoặc khi nghi bảng phẳng bị lệch. Không đụng giờ công gốc. */
+  const rebuild = async () => {
+    setHbBusy(true);
+    try {
+      const r = await rebuildHours();
+      setHb({ ...r, at: new Date() });
+      flash(Math.abs(r.flat - r.source) < 0.001 ? `Đã dựng lại bảng giờ: ${r.rows} dòng, ${fmtH(r.flat)} giờ — khớp bảng công.`
+        : `Bảng giờ LỆCH bảng công: ${fmtH(r.flat)} so với ${fmtH(r.source)} giờ.`, Math.abs(r.flat - r.source) < 0.001 ? "ok" : "err");
+    } catch (e) {
+      const m = errMsg(e);
+      setHb({ err: /artius_hours_rebuild|does not exist|not find|schema cache/i.test(m) ? "Chưa chạy file supabase/v13_69_bang_gio.sql trên Supabase." : m });
+    }
+    setHbBusy(false);
+  };
 
   const exportAll = async () => {
     setBusy(true);
@@ -121,6 +139,25 @@ export function BackupPanel({ flash }) {
           {last.planErr && <div className="mt-1 text-amber-400">Thiếu lưới kế hoạch trong file này.</div>}
         </div>
       )}
+      <div className="mt-5 border-t border-slate-800 pt-4 text-xs text-slate-500">
+        <div className="text-slate-400">Bảng giờ phẳng</div>
+        <p className="mt-1">
+          Bản "bung ra" của bảng công — mỗi dòng một ô giờ (người · ngày · dự án · giai đoạn · tác vụ · vai trò đúng ngày đó),
+          tự cập nhật mỗi lần lưu bảng công. Dựng lại không đụng giờ công gốc, chỉ cần khi mới cài hoặc nghi bị lệch.
+        </p>
+        <button onClick={rebuild} disabled={hbBusy} className={`mt-2 ${btnGhost} disabled:opacity-40`}>
+          {hbBusy ? <Loader2 className="animate-spin" size={14} /> : <RotateCcw size={14} />} Dựng lại bảng giờ
+        </button>
+        {hb?.err && <p className="mt-2 text-rose-300">{hb.err}</p>}
+        {hb && !hb.err && (
+          <p className="mt-2 text-slate-300">
+            {hb.at.toLocaleTimeString("vi-VN")} · <span className="font-mono text-slate-100">{hb.rows}</span> dòng ·
+            bảng phẳng <span className="font-mono text-slate-100">{fmtH(hb.flat)}</span> giờ ·
+            bảng công <span className="font-mono text-slate-100">{fmtH(hb.source)}</span> giờ ·{" "}
+            {Math.abs(hb.flat - hb.source) < 0.001 ? <span className="text-teal-400">khớp</span> : <span className="text-rose-400">LỆCH</span>}
+          </p>
+        )}
+      </div>
       <div className="mt-5 border-t border-slate-800 pt-4 text-xs text-slate-500">
         <div className="text-slate-400">Khôi phục</div>
         <p className="mt-1">
