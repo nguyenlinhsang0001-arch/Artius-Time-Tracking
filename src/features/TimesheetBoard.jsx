@@ -217,10 +217,10 @@ export const unlockWeekTs = async (empId, monday) => {
   const changes = {};
   for (const ym of yms) {
     const b = dbTs(empId, ym); if (!b) continue;
-    const sent = { ...(b.sent || {}) }, weeks = { ...(b.weeks || {}) };
+    const { weeks: _old, ...rest } = b;   // eslint-disable-line no-unused-vars -- v13.75 (R12): bỏ khoá weeks đời cũ khi ghi lại
+    const sent = { ...(b.sent || {}) };
     for (const d of wd) if (ymOf(d) === ym) delete sent[d];
-    delete weeks[monday];
-    changes[slot(empId, ym)] = { ...b, sent, weeks };
+    changes[slot(empId, ym)] = { ...rest, sent };
   }
   const ok = await commitTs(changes);
   bumpData();
@@ -234,7 +234,7 @@ export const tsRowKey = (r) => `${r.projectId}|${r.phaseId || DEFAULT_PHASE}|${r
 export const saveDayTs = async (empId, d, vals) => {
   const ym = ymOf(d);
   if (!(await refreshTs(empId, [ym]))) return false;
-  const b = dbTs(empId, ym) || { rows: [], weeks: {}, sent: {} };
+  const b = dbTs(empId, ym) || { rows: [], sent: {} };
   const rows = (b.rows || []).map((r) => {
     const k = tsRowKey(r);
     if (!(k in vals)) return r;

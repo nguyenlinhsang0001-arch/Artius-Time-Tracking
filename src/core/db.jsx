@@ -228,15 +228,15 @@ export const sentRows = (bucket) => {
 export const dbTsSent = (empId, ym) => { const b = dbTs(empId, ym); return b ? { ...b, rows: sentRows(b) } : null; };
 export const daySent = (empId, d) => !!dbTs(empId, ymOf(d))?.sent?.[d];
 /* Một tuần tính là "đã nộp" khi mọi ngày phải chấm công của tuần (ngày có giờ chuẩn > 0 và không phải ngày lễ)
-   đều đã gửi. Tuần gửi theo kiểu cũ (dấu weeks) vẫn được tính là đã nộp. */
+   đều đã gửi. v13.75 (R12): bỏ dấu tuần kiểu cũ (value.weeks, v1.9) — "đã nộp" chỉ còn MỘT nghĩa là dấu theo ngày (sent),
+   đúng cái database khoá (artius_ts_guard chỉ xét sent). Dữ liệu thật không còn dấu tuần nào (kiểm 11/11/2026). */
 export const weekDone = (empId, monday) => {
   const hs = makeHolidayIndex(DB?.config?.holidays);
   const hc = DB?.config?.hours || DEFAULT_HOURS;
   const wd = weekDays(monday);
   const today = fmt(new Date());   // v2.0: chỉ tính ngày đã tới (kể cả hôm nay), ngày tương lai chưa phải nộp
   const emp = DB?.config?.employees?.find((e) => e.id === empId);   // v13.67: ngày trước khi vào làm không phải nộp
-  if (wd.filter((d) => d <= today && minHoursFor(d, hc, hs) !== null && !notYetOnDay(emp, d)).every((d) => daySent(empId, d))) return true;
-  return [...new Set(wd.map(ymOf))].every((ym) => dbTs(empId, ym)?.weeks?.[monday]);
+  return wd.filter((d) => d <= today && minHoursFor(d, hc, hs) !== null && !notYetOnDay(emp, d)).every((d) => daySent(empId, d));
 };
 
 /* ---------- storage helpers ---------- */

@@ -1,6 +1,11 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.74
+   ARTIUS — Quản lý giờ công theo dự án · v13.75
+   Mới ở v13.75 — Vòng 5, mục 2 (R12): một cơ chế khoá.
+     · "Đã nộp" chỉ còn một nghĩa: mọi ngày phải chấm đã có dấu theo ngày (sent) — đúng cái database khoá.
+       Bỏ dấu tuần kiểu cũ (value.weeks, v1.9) ở db.weekDone, màn Chấm công và server nhắc nộp (api/_reminders.js).
+     · Không ghi khoá weeks khi lưu bảng công / mở khoá tuần nữa.
+     · Dữ liệu thật: 58 bảng công, 0 dấu tuần (chỉ weeks: {} rỗng) → mọi trạng thái giữ nguyên. Không cần chạy SQL.
    Mới ở v13.74 — Vòng 5, mục 1 (R10): tăng ca một định nghĩa.
      · Dòng tăng ca = mã tác vụ là mã MỘT KHUNG trong cfg.otBands. Bỏ dò theo tên "[OT]" và bảng đổi mã cũ cfg.otLegacy
        (app: domain.syncOtBands / isOtId / isOtTask; SQL: artius_phase_detail_flat). Hệ số chỉ còn ở khung + CN/lễ —

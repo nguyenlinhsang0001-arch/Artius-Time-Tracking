@@ -1,6 +1,6 @@
 {
- "version": "v13.74",
- "prevVersion": "v13.73",
+ "version": "v13.75",
+ "prevVersion": "v13.74",
  "graph": {
   "nodes": {
    "hub": "ARTIUS TIME",
@@ -1118,7 +1118,6 @@
    "s_settings|reminders|read",
    "s_settings|reminders|write",
    "s_settings|support|read",
-   "s_settings|tasks|read",
    "s_settings|thresholds|read",
    "s_settings|thresholds|write",
    "s_tasks|db_ts|read",
@@ -1480,16 +1479,6 @@
     "definer": false,
     "file": "supabase/v13_71_tong_hop_bang_phang.sql"
    },
-   "artius_usage_flat": {
-    "args": "",
-    "definer": false,
-    "file": "supabase/v13_71_tong_hop_bang_phang.sql"
-   },
-   "artius_phase_detail_flat": {
-    "args": "",
-    "definer": false,
-    "file": "supabase/v13_71_tong_hop_bang_phang.sql"
-   },
    "artius_usage": {
     "args": "",
     "definer": true,
@@ -1498,6 +1487,16 @@
    "artius_phase_detail": {
     "args": "",
     "definer": true,
+    "file": "supabase/v13_71_tong_hop_bang_phang.sql"
+   },
+   "artius_usage_flat": {
+    "args": "",
+    "definer": false,
+    "file": "supabase/v13_71_tong_hop_bang_phang.sql"
+   },
+   "artius_phase_detail_flat": {
+    "args": "",
+    "definer": false,
     "file": "supabase/v13_71_tong_hop_bang_phang.sql"
    }
   },
@@ -1512,8 +1511,6 @@
    "leaveTypes",
    "otBands",
    "otHolRate",
-   "otLegacy",
-   "otRates",
    "otSunRate",
    "pastLock",
    "pastOpen",
@@ -1531,10 +1528,6 @@
    "K5b:artius_accounts": {
     "sev": "md",
     "t": "Bảng artius_accounts lưu password"
-   },
-   "K12:otRates": {
-    "sev": "md",
-    "t": "cfg.otRates có đọc nhưng không thấy nơi nào ghi"
    },
    "K13:support": {
     "sev": "md",

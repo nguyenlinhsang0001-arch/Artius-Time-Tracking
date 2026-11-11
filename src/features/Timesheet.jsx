@@ -288,7 +288,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       setLoading(true);
       await ensureMonths([...yms, prevYm(yms[0])]);   // tuần cũ hơn 6 tháng: tải tháng đó trước (kể cả tháng trước để Chép tuần trước dùng)
       const loaded = {};
-      for (const ym of yms) loaded[ym] = dbTs(empId, ym) || { rows: [], weeks: {} };
+      for (const ym of yms) loaded[ym] = dbTs(empId, ym) || { rows: [], sent: {} };
       if (!alive) return;
       setBuckets(loaded);
       const map = new Map();
@@ -334,7 +334,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
      nạp lại màn hình. Đang nhập dở thì KHÔNG nạp lại, để khỏi mất giờ vừa gõ; lúc bấm Gửi app sẽ đọc lại bản mới nhất. */
   useEffect(() => {
     if (dirty || saving || loading) return;
-    const stale = yms.some((ym) => JSON.stringify(dbTs(empId, ym) || { rows: [], weeks: {} }) !== JSON.stringify(buckets[ym] || { rows: [], weeks: {} }));
+    const stale = yms.some((ym) => JSON.stringify(dbTs(empId, ym) || { rows: [], sent: {} }) !== JSON.stringify(buckets[ym] || { rows: [], sent: {} }));
     if (stale) setReloadKey((k) => k + 1);
   }, [dataTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -618,12 +618,12 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       return false;
     }
     const next = { ...buckets };
-    for (const ym of yms) next[ym] = dbTs(empId, ym) || { rows: [], weeks: {} };
+    for (const ym of yms) next[ym] = dbTs(empId, ym) || { rows: [], sent: {} };
     const failed = [];
     const newly = [];   // các ngày vừa được đánh dấu đã gửi ở lần ghi này
     const stamp = { at: new Date().toISOString(), by: admin ? "admin" : "emp" };
     for (const ym of yms) {
-      const bucket = next[ym] || { rows: [], weeks: {} };
+      const bucket = next[ym] || { rows: [], sent: {} };
       const sent = { ...(bucket.sent || {}) };
       const daysInYm = days.filter((d) => ymOf(d) === ym);
       /* Nhân sự chỉ ghi được ngày CHƯA gửi (tính theo bản vừa đọc lại từ server); ngày đã gửi giữ nguyên.
@@ -649,11 +649,10 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       }
       const cleaned = [...map.values()].filter((r) => Object.values(r.days).some((v) => v > 0));
       const tot = (d) => cleaned.reduce((a, r) => a + (r.days[d] || 0), 0);
-      const weeks = { ...(bucket.weeks || {}) };
       if (submitMode === "submit") for (const d of writable) if (!sent[d] && tot(d) > 0) { sent[d] = stamp; newly.push(d); }
-      if (submitMode === "unsubmit") { for (const d of daysInYm) delete sent[d]; delete weeks[monday]; }
+      if (submitMode === "unsubmit") for (const d of daysInYm) delete sent[d];
       if (admin) for (const d of daysInYm) if (sent[d] && tot(d) === 0) delete sent[d];   // ngày không còn giờ thì không giữ dấu đã gửi
-      next[ym] = { rows: cleaned, weeks, sent };
+      next[ym] = { rows: cleaned, sent };   // v13.75 (R12): không ghi khoá weeks (dấu tuần kiểu cũ) nữa
     }
     if (!admin && submitMode === "submit" && newly.length === 0) {
       // các ngày định gửi đã được gửi/khoá từ máy khác trong lúc đang nhập
@@ -903,7 +902,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   /* v1.9 — khoá cứng theo ngày: ngày đã gửi thì nhân sự không sửa được và không thêm giờ dự án khác vào ngày đó;
      quản lý luôn sửa được. Ngày chưa gửi vẫn nhập và gửi sau bình thường. */
   const sentDays = days.filter(isSent);
-  const submitted = days.filter((d) => minHoursFor(d, hoursCfg, holidaySet) !== null && !notYetOnDay(emp, d)).every(isSent) || yms.every((ym) => buckets[ym]?.weeks?.[monday]);
+  const submitted = days.filter((d) => minHoursFor(d, hoursCfg, holidaySet) !== null && !notYetOnDay(emp, d)).every(isSent);   // v13.75 (R12): chỉ còn dấu theo ngày
   const locked = !admin && days.every((d) => isSent(d) || pastLk(d));   // cả 7 ngày đã gửi (v8.6: hoặc đã quá hạn): không còn gì để nhập
   const rowLocked = (r) => !admin && (projClosed(r) || days.some((d) => (isSent(d) || pastLk(d)) && r.days[d] > 0));
   const pastDays = days.filter(pastLk);                                  // v8.6

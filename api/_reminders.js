@@ -6,8 +6,7 @@
      · ngày có giờ chuẩn > 0 theo cấu hình hours (T2–T6 / T7 / CN)
      · không phải ngày lễ (ngày lễ lặp hàng năm so theo MM-DD)
      · đã tới (<= hôm nay, giờ Việt Nam)
-   Ngày "đã gửi" = có dấu value.sent[YYYY-MM-DD]. Tuần gửi kiểu cũ (value.weeks[thứ Hai]) ở mọi tháng
-   của tuần đó thì cả tuần coi như đã gửi.
+   Ngày "đã gửi" = có dấu value.sent[YYYY-MM-DD]. (v13.75: bỏ dấu tuần kiểu cũ value.weeks — giống app.)
    ============================================================ */
 
 export const DEFAULT_HOURS = { weekday: 8, sat: 4, sun: 0 };
@@ -121,15 +120,10 @@ export function missingDays({ from, to, today, hours, holidays, buckets }) {
   const h = { ...DEFAULT_HOURS, ...(hours || {}) };
   const isHoliday = holidayIndex(holidays);
   const std = (s) => { const w = dow0(s); return Number(w === 6 ? h.sun : w === 5 ? h.sat : h.weekday) || 0; };
-  const legacyWeekDone = (monday) => {
-    const yms = [...new Set([0, 1, 2, 3, 4, 5, 6].map((i) => ymOf(addDays(monday, i))))];
-    return yms.every((ym) => buckets[ym]?.weeks?.[monday]);
-  };
   const out = [];
   for (let d = from; d <= to && d <= today; d = addDays(d, 1)) {
     if (isHoliday(d) || std(d) <= 0) continue;
     if (buckets[ymOf(d)]?.sent?.[d]) continue;
-    if (legacyWeekDone(mondayOf(d))) continue;
     out.push(d);
   }
   return out;
