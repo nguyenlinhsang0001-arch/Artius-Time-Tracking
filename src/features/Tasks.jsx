@@ -4,7 +4,8 @@ import {
   Plus, Trash2, Lock, Pencil, Check, X, GripVertical, Loader2, RotateCcw,
 } from "lucide-react";
 import { serverHours } from "../data.js";
-import { DEFAULT_DEPTS, DEPTS, DEPTS_SEE_ALL, LEAVE_PALETTE, fmtH, isIdleTask, isOtTask, leaveShort, norm, roleInfo, roleLabel, taskRoles, uid } from "../core/domain.jsx";
+import { DEFAULT_DEPTS, DEPTS, DEPTS_SEE_ALL, LEAVE_PALETTE, fmtH, isIdleTask, isOtTask, leaveShort, norm, renameRoleOf, changeRole, roleInfo, roleLabel, taskRoles, uid } from "../core/domain.jsx";
+import { fmt } from "../core/date.jsx";
 import { ConfirmDialog, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
 
 /* ============================ HẠNG MỤC ============================ */
@@ -197,7 +198,7 @@ export function Tasks({ cfg, saveCfg, flash }) {
         if (only(t)) return { ...t, inactive: true };
         return { ...t, roles: taskRoles(t).filter((x) => x !== r.id) };
       }),
-      employees: cfg.employees.map((e) => (e.role === r.id ? { ...e, role: "" } : e)),
+      employees: cfg.employees.map((e) => (e.role === r.id ? changeRole(e, "", fmt(new Date())) : e)),   // v13.68: ghi vào lịch sử vai trò
     });
     if (ok !== false) flash(n ? `Đã xoá vai trò. ${n} tác vụ của vai trò này chuyển sang ngừng dùng, giờ đã chấm giữ nguyên.` : "Đã xoá vai trò.");
   };
@@ -248,7 +249,7 @@ export function Tasks({ cfg, saveCfg, flash }) {
       ...cfg,
       roles: roles.map((r) => (r.id === old ? { ...r, id } : r)),
       tasks: cfg.tasks.map((t) => (taskRoles(t).includes(old) ? { ...t, roles: taskRoles(t).map((x) => (x === old ? id : x)) } : t)),
-      employees: cfg.employees.map((e) => (e.role === old ? { ...e, role: id } : e)),
+      employees: cfg.employees.map((e) => renameRoleOf(e, old, id)),   // v13.68: đổi cả mã trong lịch sử vai trò
     };
   };
   /* Enter: sai thì báo lỗi và ở lại ô đang sửa. Rời ô (blur): hợp lệ thì lưu, sai thì giữ giá trị cũ. */

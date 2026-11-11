@@ -292,6 +292,32 @@ export const goneOnDay = (e, d) => !!e?.resignedAt && d >= e.resignedAt;
    tính vào quân số, không bị nhắc nộp. Trước đây người vào giữa tháng bị coi là thiếu giờ cho mọi ngày từ đầu tháng. */
 export const notYetOnDay = (e, d) => !!e?.startedAt && d < e.startedAt;
 export const offOnDay = (e, d) => goneOnDay(e, d) || notYetOnDay(e, d);
+/* v13.68 (R7) — Vai trò theo thời gian. employee.roleHistory = [{ role, from }] theo from tăng dần; mục đầu luôn from "" = từ
+   trước mọi kỳ. employee.role LUÔN bằng role của mục cuối, nên mọi màn hình cũ (đọc e.role) chạy y như trước, không con số
+   nào đổi. Người chưa từng đổi vai trò KHÔNG có roleHistory — hiểu là [{ role: e.role, from: "" }], không cần chuyển dữ liệu.
+   Ngày hiệu lực không ở tương lai: không có gì tự cập nhật e.role khi tới ngày, nên đổi vai trò tương lai thì làm đúng ngày đó.
+   Dùng cho: bảng giờ công phẳng (R3) ghi vai trò ĐÚNG TẠI NGÀY CHẤM, và đơn giá lương theo vai trò về sau. */
+export const roleHistoryOf = (e) => (Array.isArray(e?.roleHistory) && e.roleHistory.length ? e.roleHistory : [{ role: e?.role || "", from: "" }]);
+export const roleOn = (e, d) => { let r = ""; for (const h of roleHistoryOf(e)) if (!h.from || h.from <= d) r = h.role; return r; };
+/* Chuẩn hoá rồi gắn lịch sử vào nhân sự: sắp theo ngày (cùng ngày thì mục sau thắng), gộp mục trùng vai trò liền kề, mục đầu
+   thành "từ trước", role = mục cuối. Chỉ còn một mục thì bỏ hẳn roleHistory — y như người chưa từng đổi. */
+export const withRoleHistory = (e, hist) => {
+  const byDate = new Map();
+  for (const h of [...hist].sort((a, b) => (a.from || "").localeCompare(b.from || ""))) byDate.set(h.from || "", h.role || "");
+  const out = [];
+  for (const [from, role] of [...byDate].sort((a, b) => a[0].localeCompare(b[0]))) if (!out.length || out[out.length - 1].role !== role) out.push({ role, from });
+  if (out.length) out[0] = { ...out[0], from: "" };
+  const { roleHistory, ...rest } = e;   // eslint-disable-line no-unused-vars
+  const role = out.length ? out[out.length - 1].role : e.role || "";
+  return out.length > 1 ? { ...rest, role, roleHistory: out } : { ...rest, role };
+};
+export const changeRole = (e, role, from) => withRoleHistory(e, [...roleHistoryOf(e), { role, from }]);
+/* đổi mã vai trò: đổi cả trong lịch sử, để giờ cũ không trỏ vào một mã không còn */
+export const renameRoleOf = (e, old, id) => {
+  const hist = roleHistoryOf(e);
+  if (e.role !== old && !hist.some((h) => h.role === old)) return e;
+  return withRoleHistory({ ...e, role: e.role === old ? id : e.role }, hist.map((h) => (h.role === old ? { ...h, role: id } : h)));
+};
 /* v8.6 — Khoá chấm công quá hạn: nhân viên chỉ sửa được N tuần gần nhất (cfg.pastLock.weeks, mặc định 2 = tuần này + tuần trước,
    tính từ thứ Hai; 0 = tắt). Ngày trước mốc bị khoá, kể cả giờ nháp chưa gửi. Quản lý mở tạm cho một người chấm bù một tuần:
    cfg.pastOpen = { "<empId>": { "<thứ Hai>": "<hạn YYYY-MM-DD>" } }. Database cũng chặn (artius_ts_guard · supabase/v8_6_khoa_qua_han.sql). */

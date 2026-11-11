@@ -1,6 +1,14 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.67
+   ARTIUS — Quản lý giờ công theo dự án · v13.68
+   Mới ở v13.68 — Vòng 3, bước 2/3 (R7): vai trò theo thời gian.
+     · employee.roleHistory = [{role, from}] (không bắt buộc). Thiếu = một mục "vai trò hiện tại, từ trước" —
+       dữ liệu và con số của mọi người hiện có KHÔNG đổi. Màn hình vẫn tính theo vai trò hiện tại.
+     · Nhân sự › sửa nhân sự: đổi vai trò thì hỏi "Vai trò mới từ ngày" (mặc định hôm nay, không cho ngày tương lai);
+       khung "Lịch sử vai trò" xem / sửa ngày / xoá từng mục.
+     · domain: roleHistoryOf, roleOn(e, ngày), withRoleHistory, changeRole, renameRoleOf. Xoá / đổi mã vai trò ở
+       Tác vụ cũng ghi vào lịch sử.
+     · Dùng cho bước 3 (R3, bảng giờ phẳng): mỗi giờ công sẽ mang vai trò đúng tại ngày đó.
    Mới ở v13.67 — Vòng 3, bước 1/3 (R6): ngày vào làm.
      · Nhân sự › sửa nhân sự có ô "Ngày vào làm" (employee.startedAt), không bắt buộc. Trống = như trước, coi như
        đã làm từ trước mọi kỳ — dữ liệu và con số của mọi người hiện có KHÔNG đổi.

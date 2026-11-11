@@ -1,6 +1,6 @@
 {
- "version": "v13.67",
- "prevVersion": "v13.66",
+ "version": "v13.68",
+ "prevVersion": "v13.67",
  "graph": {
   "nodes": {
    "hub": "ARTIUS TIME",
@@ -1009,6 +1009,7 @@
    "s_push|db_push|read",
    "s_push|db_push|write",
    "s_push|db_ts|read",
+   "s_push|employees|read",
    "s_push|holidays|read",
    "s_push|hours|read",
    "s_push|reminders|read",

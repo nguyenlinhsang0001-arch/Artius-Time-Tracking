@@ -7,7 +7,7 @@ import { fetchTsStamps } from "../data.js";
 import { accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "../auth.js";
 import { fmt, pad } from "../core/date.jsx";
 import { dbTsSent, empHoursAll, loadXlsx, purgeEmpTs, useDataTick } from "../core/db.jsx";
-import { DEPTS, LEAVE_TASKS, NO_PROJECT, OT_TASKS, ROLES, fmtH, isLeaveTask, isResigned, norm, roleInfo, roleLabel, roleTitle, supportList, taskText, uid, useIsMobile } from "../core/domain.jsx";
+import { DEPTS, fmtH, isLeaveTask, isResigned, LEAVE_TASKS, NO_PROJECT, norm, OT_TASKS, roleHistoryOf, roleInfo, roleLabel, ROLES, roleTitle, supportList, taskText, uid, useIsMobile, withRoleHistory } from "../core/domain.jsx";
 import { ConfirmDialog, DateField, btnBase, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
 import { SupportPanel } from "../shared/support.jsx";
 import { Dashboard } from "./dashboard/Dashboard.jsx";
@@ -192,7 +192,7 @@ export function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = n
     // sửa người đã có sẵn: KHÔNG tự gợi ý tên đăng nhập khi đổi họ tên, kẻo đổi tên một người chưa có tài khoản
     // lại vô tình điền tên đăng nhập và bị chặn vì thiếu mật khẩu
     setDlg({ kind: "emp", empId: e.id, accId: a?.id || null, hadAcc: !!a, autoUser: false,
-      f: { code: e.code || "", name: e.name, startedAt: e.startedAt || "", dept: e.dept, role: e.role || "", projects: Array.isArray(e.projects) ? e.projects : [], allProjects: !!e.allProjects, noPlan: !!e.noPlan, username: a?.username || "", password: a?.password || "", access: a ? accessOfAcc(a) : "emp" } });
+      f: { code: e.code || "", name: e.name, startedAt: e.startedAt || "", roleHistory: roleHistoryOf(e), roleFrom: fmt(new Date()), dept: e.dept, role: e.role || "", projects: Array.isArray(e.projects) ? e.projects : [], allProjects: !!e.allProjects, noPlan: !!e.noPlan, username: a?.username || "", password: a?.password || "", access: a ? accessOfAcc(a) : "emp" } });
   };
   const openAddAdmin = () => setDlg({ kind: "admin", empId: null, accId: null, hadAcc: false, autoUser: false, f: { username: "", password: genPassword(), access: "admin" } });
   const openEditAdmin = (a) => setDlg({ kind: "admin", empId: a.empId || null, accId: a.id, hadAcc: true, autoUser: false, f: { username: a.username, password: a.password, access: accessOfAcc(a) } });
@@ -219,7 +219,17 @@ export function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = n
       const row = { code, name, dept: f.dept, role: f.role || "", projects: (f.projects || []).filter((pid) => cfg.projects.some((p) => p.id === pid)), allProjects: !!f.allProjects, noPlan: !!f.noPlan };   // v6.9 · v8.8 · v12.17
       /* v13.67 (R6) — ngày vào làm: để trống thì KHÔNG ghi khoá startedAt (và gỡ nếu trước đó có) — như trước v13.67 */
       const withStart = (e) => { const { startedAt, ...rest } = e; return f.startedAt ? { ...rest, startedAt: f.startedAt } : rest; };   // eslint-disable-line no-unused-vars
-      const ok = await saveCfg({ ...cfg, employees: dlg.empId ? cfg.employees.map((e) => (e.id === id ? withStart({ ...e, ...row }) : e)) : [...cfg.employees, withStart({ id, ...row })] });
+      /* v13.68 (R7) — lịch sử vai trò: áp các chỉnh sửa trong khung, rồi nếu vai trò chọn khác vai trò của mục cuối thì thêm
+         một mục mới từ ngày hiệu lực. Ngày nào cũng không được ở tương lai. Nhân sự mới thì chưa có lịch sử. */
+      let hist = null;
+      if (dlg.empId) {
+        const today = fmt(new Date());
+        hist = [...(f.roleHistory || [])];
+        if ((f.role || "") !== (hist.length ? hist[hist.length - 1].role : "")) hist.push({ role: f.role || "", from: f.roleFrom || today });
+        if (hist.some((h) => h.from && h.from > today)) return flash("Ngày hiệu lực của vai trò không được ở tương lai — tới đúng ngày đó hãy đổi.", "err");
+      }
+      const finish = (e) => (hist ? withRoleHistory(withStart(e), hist) : withStart(e));
+      const ok = await saveCfg({ ...cfg, employees: dlg.empId ? cfg.employees.map((e) => (e.id === id ? finish({ ...e, ...row }) : e)) : [...cfg.employees, finish({ id, ...row })] });
       const accOk = ok !== false && (!wantsAcc || (await pushAccount(id, acc, f)));
       setBusy(false);
       if (ok === false) return;
@@ -726,6 +736,45 @@ export function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = n
                   {ROLES.filter((r) => r.dept === f.dept || r.id === f.role).map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
                 </select>
               </div>
+              {/* v13.68 (R7) — đổi vai trò: hỏi ngày hiệu lực, và lịch sử vai trò sửa / xoá được từng mục. Chỉ khi sửa nhân sự
+                  đã có; thêm người mới thì vai trò chọn là vai trò từ đầu. */}
+              {dlg.empId && (() => {
+                const hist = f.roleHistory || [];
+                const last = hist.length ? hist[hist.length - 1].role : "";
+                const changed = (f.role || "") !== last;
+                const label = (r) => (r ? `${r} · ${ROLES.find((x) => x.id === r)?.name || "(vai trò đã xoá)"}` : "Không phân vai trò");
+                const setHist = (h) => setF({ roleHistory: h, ...(h.length && h[h.length - 1].role !== last && !changed ? { role: h[h.length - 1].role } : {}) });
+                if (!changed && hist.length < 2) return null;
+                return (
+                  <div className="rounded-md border border-slate-800 bg-slate-950/50 px-2.5 py-2 text-[13px]">
+                    {changed && (
+                      <div className="mb-1.5 flex items-center gap-2">
+                        <span className="w-[118px] shrink-0 text-xs text-amber-400">Vai trò mới từ ngày</span>
+                        <DateField value={f.roleFrom} onChange={(v) => setF({ roleFrom: v })} className="w-[180px]" />
+                      </div>
+                    )}
+                    <div className="mb-1 text-xs text-slate-500">Lịch sử vai trò</div>
+                    {hist.map((h, i) => (
+                      <div key={`${h.role}|${h.from}|${i}`} className="flex items-center gap-2 py-0.5">
+                        <span className="min-w-0 flex-1 truncate text-slate-300">{label(h.role)}</span>
+                        {i === 0
+                          ? <span className="w-[180px] text-center text-xs text-slate-500">từ trước</span>
+                          : <DateField value={h.from} onChange={(v) => setHist(hist.map((x, k) => (k === i ? { ...x, from: v } : x)))} className="w-[180px]" />}
+                        {i === 0
+                          ? <span className="w-9" />
+                          : <button type="button" onClick={() => setHist(hist.filter((_, k) => k !== i))} className={iconBtn} title="Xoá mục này"><X size={14} /></button>}
+                      </div>
+                    ))}
+                    {changed && (
+                      <div className="flex items-center gap-2 py-0.5 text-teal-300">
+                        <span className="min-w-0 flex-1 truncate">{label(f.role)}</span>
+                        <span className="w-[180px] text-center text-xs">từ {f.roleFrom ? f.roleFrom.split("-").reverse().join("/") : "—"} · khi lưu</span>
+                        <span className="w-9" />
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               {/* v13.67 (R6) — ngày vào làm. Trống = như trước: coi như đã làm từ trước mọi kỳ. Có ngày thì những ngày trước đó
                   không tính giờ chuẩn, không bị coi thiếu giờ, không bị nhắc nộp, không tính quân số Kế hoạch. */}
               <div className="flex items-center gap-2">
