@@ -168,7 +168,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   // v4.9: khung giờ tăng ca (hạng mục [OT]) và các tác vụ dự án chọn được làm "Tăng ca cho tác vụ"
   const otBands = otBandTasks();   // v6.3: khung giờ chung từ Thiết lập → Tăng ca, mọi vai trò như nhau
   const otTargets = projTasks.filter((t) => !isOtTask(t));
-  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands, cfg.otLegacy]);
+  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands]);
   const projName = (id) => cfg.projects.find((p) => p.id === id)?.name || "(dự án đã xoá)";
   // Tên kèm mã, dùng ở chỗ cần nhận diện nhanh bằng mã số
   /* v13.48 — màn nhân viên gọi thẳng tên: "Khác" không nói lên đây là việc chung hay nghỉ phép */

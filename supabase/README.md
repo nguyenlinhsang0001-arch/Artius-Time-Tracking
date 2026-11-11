@@ -10,6 +10,8 @@ là mất khoá chấm công quá hạn.
 - v13.71: `v13_71_tong_hop_bang_phang.sql` — hai hàm tổng hợp giờ chuyển sang đọc `artius_hours`. File **tự so** cách cũ
   với cách mới trên dữ liệu thật: khớp thì thay và in "ĐÃ CHUYỂN"; lệch thì báo lỗi và **không thay gì**
   (khi đó bấm "Dựng lại bảng giờ" trong app rồi chạy lại).
+- v13.74: **chạy lại** `v13_71_tong_hop_bang_phang.sql` (đã sửa: tăng ca chỉ nhận theo khung `otBands`). Cổng y như trên;
+  trong lúc chạy hai hàm app gọi tạm dùng cách cũ, lệch thì ở lại cách cũ.
 
 ## Dựng database mới: chạy đúng thứ tự này
 

@@ -1,6 +1,13 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.73
+   ARTIUS — Quản lý giờ công theo dự án · v13.74
+   Mới ở v13.74 — Vòng 5, mục 1 (R10): tăng ca một định nghĩa.
+     · Dòng tăng ca = mã tác vụ là mã MỘT KHUNG trong cfg.otBands. Bỏ dò theo tên "[OT]" và bảng đổi mã cũ cfg.otLegacy
+       (app: domain.syncOtBands / isOtId / isOtTask; SQL: artius_phase_detail_flat). Hệ số chỉ còn ở khung + CN/lễ —
+       bỏ cfg.otRates đời cũ và hai tầng dò theo mã. Bỏ migrateOtCfg (chuyển [OT] → khung từ v6.3) và khung "gán giờ
+       tăng ca cũ" ở Thiết lập › Tăng ca. Tab Tác vụ vẫn chặn đặt tên "[OT] …" (domain.isOtName).
+     · Dữ liệu thật: 10 dòng tăng ca đều dùng mã khung, 0 dòng dùng đường cũ → mọi con số giữ nguyên.
+     · Cần chạy lại supabase/v13_71_tong_hop_bang_phang.sql (cổng tự so với cách cũ).
    Mới ở v13.73 — Vòng 4, bước 3 (R5): giờ chuẩn một định nghĩa (src/core/stdHours.js).
      · stdDay(người, ngày) = giờ chuẩn Thiết lập, trừ lễ, trừ trước ngày vào làm / từ ngày nghỉ.
        stdHours({ ngày…, upToToday, todayRule: "entered" | "never" | "always" }) cộng nhiều ngày.
@@ -993,7 +1000,7 @@ import { currentUser } from "./auth.js";
 import { signOut as authSignOut } from "./auth.js";
 import { DEFAULT_HOURS } from "./core/date.jsx";
 import { LAST_STORAGE_ERROR, NET_OK, STORAGE_OK, commitConfig, errText, loadDB, pullTs, resetDB, useNet, useStorageHealth } from "./core/db.jsx";
-import { DEFAULT_DEPTS, DEFAULT_LEAVE_TYPES, DEFAULT_PHASES, DEFAULT_ROLES, DEFAULT_TASKS, IDLE_PENDING, IDLE_TASK_ID, OT_PENDING, emptyConfig, isDeptTask, migrateOtCfg, setIdlePending, setOtMigNote, setOtPending, supportList, syncDepts, syncLeave, syncOtBands, syncPhases, syncRoles, withIdleTask } from "./core/domain.jsx";
+import { DEFAULT_DEPTS, DEFAULT_LEAVE_TYPES, DEFAULT_PHASES, DEFAULT_ROLES, DEFAULT_TASKS, DEFAULT_OT_BANDS, IDLE_PENDING, IDLE_TASK_ID, emptyConfig, isDeptTask, setIdlePending, supportList, syncDepts, syncLeave, syncOtBands, syncPhases, syncRoles, withIdleTask } from "./core/domain.jsx";
 import { useTheme } from "./core/theme.jsx";
 import { syncHolidays, APP_VERSION, BrandLogo, CTRL, ConfirmDialog, InstallButton, ThemeToggle, btnDanger, btnGhost, btnPrimary } from "./core/ui.jsx";
 import { EmployeeDashboard, EmployeeSettings } from "./features/EmployeeHome.jsx";
@@ -1079,8 +1086,9 @@ export function AppMain() {
       c.depts = Array.isArray(c.depts) && c.depts.length ? c.depts : [...DEFAULT_DEPTS];
       if (!c.depts.includes("Ban giám đốc")) c.depts = [...c.depts, "Ban giám đốc"];
       syncDepts(c.depts);
-      const needOtMig = !Array.isArray(c.otBands);   // v6.3: cấu hình cũ → khung tăng ca chung (quản lý mở app sẽ tự lưu)
-      const mig = migrateOtCfg(c); c = mig.cfg; setOtPending(needOtMig ? mig.moved : -1);
+      /* v13.74 (R10): bỏ công cụ chuyển hạng mục [OT] đời trước v6.3 sang khung (migrateOtCfg) — cấu hình đã chuyển từ lâu.
+         Cấu hình chưa có khung nào (cài mới) thì dùng 3 khung mặc định. */
+      if (!Array.isArray(c.otBands) || !c.otBands.length) c.otBands = DEFAULT_OT_BANDS();
       syncRoles(c.roles); syncOtBands(c);
       syncLeave(c.leaveTypes);
       c.phases = Array.isArray(c.phases) && c.phases.length ? c.phases : DEFAULT_PHASES.map((x) => ({ ...x }));
@@ -1164,16 +1172,11 @@ export function AppMain() {
     return true;
   }, [flash]);
 
-  /* v6.3 — quản lý mở bản mới lần đầu: lưu cấu hình đã chuyển sang khung tăng ca chung */
+  /* v7.2 — quản lý mở app mà cấu hình chưa có tác vụ Trống việc: lưu thêm. (v13.74: bỏ phần lưu chuyển đổi tăng ca v6.3) */
   useEffect(() => {
-    if (!cfg || !who?.admin || (OT_PENDING < 0 && !IDLE_PENDING)) return;
-    const n = OT_PENDING; setOtPending(-1); setIdlePending(false);
-    saveCfg(cfg).then((ok) => {
-      if (!ok) { setOtPending(n); setIdlePending(true); return; }
-      if (n < 0) return;   // v7.2: chỉ lưu thêm tác vụ Trống việc
-      setOtMigNote(n ? `Đã chuyển ${n} hạng mục [OT] theo vai trò sang ${cfg.otBands.length} khung tăng ca chung (khớp theo giờ). Giờ OT đã chấm giữ nguyên; các hạng mục [OT] cũ đã gỡ khỏi tab Tác vụ.` : "");
-      if (n) flash("Tăng ca đã chuyển thành cài đặt chung — xem Thiết lập → Tăng ca.");
-    });
+    if (!cfg || !who?.admin || !IDLE_PENDING) return;
+    setIdlePending(false);
+    saveCfg(cfg).then((ok) => { if (!ok) setIdlePending(true); });
   }, [cfg, who?.admin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   syncDepts(cfg?.depts);

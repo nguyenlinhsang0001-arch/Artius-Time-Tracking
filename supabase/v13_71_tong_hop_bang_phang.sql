@@ -1,4 +1,6 @@
 -- ARTIUS TIME v13.71 — Vòng 4, bước 1: hai hàm tổng hợp giờ đọc bảng giờ phẳng artius_hours.
+-- Sửa ở v13.74 (R10): artius_phase_detail_flat chỉ nhận tăng ca theo khung otBands (bỏ dò tên "[OT]" và otLegacy).
+--   Database đang chạy: chạy lại TOÀN BỘ file này một lần. Cổng ở mục 3 tự so với cách cũ — lệch thì không thay gì.
 --
 -- artius_usage()        → tab Dự án, Thiết lập › Giai đoạn (tổng giờ từ trước tới nay)
 -- artius_phase_detail() → Dashboard › Tiến độ dự án (theo tuần / người / tác vụ / tăng ca)
@@ -7,7 +9,7 @@
 --
 -- CỔNG AN TOÀN: file tự so kết quả cách cũ (bung JSON) với cách mới (bảng phẳng) trên dữ liệu thật.
 --   · Khớp  → thay hai hàm, in ra "ĐÃ CHUYỂN".
---   · Lệch  → DỪNG với lỗi "artius_hours lệch …" TRƯỚC khi thay — hai hàm app đang dùng giữ nguyên.
+--   · Lệch  → DỪNG với lỗi "artius_hours lệch …" — hai hàm app gọi ở lại cách cũ (mục 1b), số y như trước.
 --             Khi đó: Thiết lập › Sao lưu › "Dựng lại bảng giờ" rồi chạy lại file này.
 --
 -- Cách cũ được giữ dưới tên artius_usage_json / artius_phase_detail_json (không ai gọi được từ app) để so và để quay lại.
@@ -92,6 +94,20 @@ language sql stable set search_path = public as $$
   from r join w using (k) join e using (k) join tk using (k) left join ot using (k) left join et using (k);
 $$;
 
+-- ---------- 1b. Trong lúc thay: hai hàm app gọi tạm chạy cách cũ ----------
+-- Chạy lại file này trên database đã chuyển (vd v13.74) thì mục 2 sửa bản _flat TRƯỚC khi cổng ở mục 3 kịp so.
+-- Nên trước hết trỏ hai hàm app gọi về cách cũ: cổng lệch thì app vẫn chạy cách cũ (số y như trước), không dính bản mới chưa kiểm.
+create or replace function public.artius_usage()
+returns table (project_id text, phase_id text, sent_hours numeric, all_hours numeric)
+language sql stable security definer set search_path = public as $$
+  select * from public.artius_usage_json() where public.artius_view_agg();
+$$;
+create or replace function public.artius_phase_detail()
+returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when public.artius_view_agg() then public.artius_phase_detail_json() else '{}'::jsonb end;
+$$;
+
 -- ---------- 2. Cách mới (đọc artius_hours) ----------
 -- artius_hours chỉ chứa ô giờ > 0, ngày dạng YYYY-MM-DD, phase trống đã thành 'P2' — đúng các điều kiện của cách cũ.
 create or replace function public.artius_usage_flat()
@@ -125,14 +141,9 @@ language sql stable set search_path = public as $$
          group by k),
   r as (select k, min(day) as first, max(day) as last from x group by k),
   cf as (select coalesce((select c.value::jsonb from public.artius_config c where c.id = 'main'), '{}'::jsonb) as j),
-  otid as (select tt ->> 'id' as id
-           from cf, jsonb_array_elements(case when jsonb_typeof(cf.j -> 'tasks') = 'array' then cf.j -> 'tasks' else '[]'::jsonb end) as tt
-           where coalesce(tt ->> 'name', '') ~* '^\s*\[\s*ot\s*\]'
-           -- v6.5: khung tăng ca chung (v6.3+) và mã hạng mục [OT] cũ đã chuyển sang khung
-           union
-           select ob ->> 'id' from cf, jsonb_array_elements(case when jsonb_typeof(cf.j -> 'otBands') = 'array' then cf.j -> 'otBands' else '[]'::jsonb end) as ob
-           union
-           select lk from cf, jsonb_object_keys(case when jsonb_typeof(cf.j -> 'otLegacy') = 'object' then cf.j -> 'otLegacy' else '{}'::jsonb end) as lk),
+  -- v13.74 (R10): dòng tăng ca = mã một khung trong otBands, không còn dò tên "[OT]" hay bảng đổi mã cũ otLegacy.
+  -- Cổng ở mục 3 so với cách cũ (artius_phase_detail_json, vẫn dò đủ ba đường): còn dòng giờ nào dùng đường cũ thì sẽ lệch → dừng.
+  otid as (select ob ->> 'id' as id from cf, jsonb_array_elements(case when jsonb_typeof(cf.j -> 'otBands') = 'array' then cf.j -> 'otBands' else '[]'::jsonb end) as ob),
   hol as (select coalesce(hd ->> 'date', '') as dt, coalesce((hd ->> 'yearly')::boolean, false) as yearly
           from cf, jsonb_array_elements(case when jsonb_typeof(cf.j -> 'holidays') = 'array' then cf.j -> 'holidays' else '[]'::jsonb end) as hd),
   ot as (select k, jsonb_object_agg(ok, h) as o

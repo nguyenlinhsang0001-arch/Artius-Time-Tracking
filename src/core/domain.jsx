@@ -9,11 +9,7 @@ import { isLight } from "./theme.jsx";
    Khi ghi thì KHÔNG ghi lại cả khối như trước: thiết lập ghi vào dòng thiết lập, bảng công
    ghi đúng dòng (nhân sự, tháng) vừa sửa. Nhờ đó người này lưu không đè dữ liệu người kia.
    ------------------------------------------------------------------ */
-export let OT_PENDING = -1;      // v6.3: >= 0 = cấu hình vừa chuyển sang khung tăng ca chung, chưa lưu (số hạng mục [OT] đã gỡ)
-export let OT_MIG_NOTE = "";     // thông báo một lần ở Thiết lập → Tăng ca sau khi chuyển đổi
 /* v11 — tách file: biến chung chỉ được đổi qua hàm đặt giá trị, vì file khác chỉ ĐỌC được biến nhập vào. */
-export const setOtPending = (n) => { OT_PENDING = n; };
-export const setOtMigNote = (t) => { OT_MIG_NOTE = t; };
 export const uid = (p) => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 export const useIsMobile = () => {
@@ -84,30 +80,26 @@ export const taskVisibleTo = (t, dept, role) => {
 export const tasksForDept = (tasks = [], dept, role) => tasks.filter((t) => taskVisibleTo(t, dept, role));
 // nhãn hiển thị: có mã thì đưa mã lên trước cho dễ đối chiếu với bảng vai trò
 export const taskText = (t) => (t?.code ? `${t.code} · ${t.name}` : t?.name || "");
-/* v3.2 — hạng mục tăng ca: tên bắt đầu bằng "[OT]" thì tách riêng nhóm "Tăng ca" ở màn chấm công,
-   hiển thị bỏ chữ [OT] (VD "[OT] 17:30 - 21:00" → "17:30 – 21:00"). Không cần sửa dữ liệu. */
-export const isOtTask = (t) => /^\s*\[\s*ot\s*\]/i.test(t?.name || "");
-// v3.4: bản sống các id hạng mục Tăng ca — App chép từ cfg.tasks mỗi lần render (như ROLES), để mọi hàm tính giờ tra được
+/* v13.74 (R10) — TĂNG CA CÓ MỘT ĐỊNH NGHĨA DUY NHẤT: một dòng là tăng ca khi và chỉ khi mã tác vụ của nó là MÃ MỘT KHUNG
+   trong cfg.otBands = [{ id, from: "17:30", to: "21:00", rate }] (Thiết lập → Tăng ca, từ v6.3).
+   Bỏ hai đường cũ: dò theo tên tác vụ bắt đầu "[OT]" (trước v6.3) và bảng đổi mã cũ cfg.otLegacy — dữ liệu thật không còn
+   dòng giờ nào dùng hai đường đó (đã kiểm trên Supabase 11/11/2026), và file SQL v13_71 tự kiểm lại trước khi thay.
+   Mỗi khung thành một "hạng mục ảo" tên "[OT] 17:30 - 21:00" (như LEAVE_TASKS), để các hàm đọc giờ của khung (otSpan,
+   otBandKey…) chạy như cũ. Dòng tăng ca lưu taskId = mã khung (OTB_…), mã cố định kể cả khi đổi giờ của khung. */
+export const OT_NAME_RE = /^\s*\[\s*ot\s*\]/i;
+export const isOtName = (name) => OT_NAME_RE.test(name || "");   // chỉ để chặn đặt tên tác vụ kiểu "[OT] …" ở tab Tác vụ
+// v3.4: bản sống các id khung tăng ca — App chép từ cfg.otBands mỗi lần render (như ROLES), để mọi hàm tính giờ tra được
 export const OT_IDS = new Set();
-/* v6.3 — Tăng ca là CÀI ĐẶT CHUNG (Thiết lập → Tăng ca): cfg.otBands = [{ id, from: "17:30", to: "21:00", rate }].
-   Mỗi khung giờ thành một "hạng mục ảo" (như LEAVE_TASKS) tên "[OT] 17:30 - 21:00", nên mọi hàm cũ (isOtTask, otSpan,
-   otBandKey…) chạy như trước. Dòng tăng ca lưu taskId = mã khung (OTB_…), mã cố định kể cả khi đổi giờ của khung.
-   cfg.otLegacy = { <mã hạng mục [OT] cũ>: <mã khung> }: dòng chấm trước v6.3 giữ nguyên mã cũ trong dữ liệu
-   (database khoá ngày đã gửi theo mã), app đọc mã cũ như khung tương ứng. */
+export const isOtTask = (t) => !!t && (t.band === true || OT_IDS.has(t.id));
 export const OT_TASKS = [];
 export const otBandName = (b) => `[OT] ${b.from} - ${b.to}`;
 export const syncOtBands = (c) => {
   const bands = Array.isArray(c?.otBands) ? c.otBands : [];
-  const byId = new Map(bands.map((b) => [b.id, b]));
-  const list = bands.map((b) => ({ id: b.id, name: otBandName(b), roles: [], depts: [], group: "Tăng ca", band: true }));
-  const legacy = Object.entries(c?.otLegacy || {}).filter(([, bid]) => byId.has(bid))
-    .map(([old, bid]) => ({ id: old, name: otBandName(byId.get(bid)), roles: [], depts: [], group: "Tăng ca", legacy: true, bandId: bid }));
-  OT_TASKS.splice(0, OT_TASKS.length, ...list, ...legacy);
+  OT_TASKS.splice(0, OT_TASKS.length, ...bands.map((b) => ({ id: b.id, name: otBandName(b), roles: [], depts: [], group: "Tăng ca", band: true })));
   OT_IDS.clear();
   for (const t of OT_TASKS) OT_IDS.add(t.id);
-  for (const t of Array.isArray(c?.tasks) ? c.tasks : []) if (isOtTask(t)) OT_IDS.add(t.id);   // cấu hình chưa chuyển đổi
 };
-// các khung giờ chọn được (không gồm mã cũ)
+// các khung giờ chọn được
 export const otBandTasks = () => OT_TASKS.filter((t) => t.band);
 export const isOtId = (id) => OT_IDS.has(id);
 export const otText = (t) => (t?.name || "").replace(/^\s*\[\s*ot\s*\]\s*/i, "").replace(/\s+-\s+/g, " – ");
@@ -123,30 +115,13 @@ export const otSpan = (t) => {
 export const otMaxHours = (t) => otSpan(t)?.hours ?? 24;
 /* v5.1 — Khoá khung giờ: các hạng mục [OT] của nhiều vai trò cùng giờ (17:30 - 21:00…) là CÙNG một khung. */
 export const otBandKey = (t) => { const sp = otSpan(t); return sp ? `${sp.start}+${sp.hours}` : otText(t).replace(/\s+/g, "").toLowerCase(); };
-// Danh sách khung giờ không trùng, theo thứ tự xuất hiện: [{ key, label, task, ids }]
-export const otBandList = (tasks = []) => {
-  const m = new Map();
-  for (const t of tasks) {
-    if (!isOtTask(t)) continue;
-    const k = otBandKey(t);
-    if (!m.has(k)) m.set(k, { key: k, label: otText(t), task: t, ids: [] });
-    m.get(k).ids.push(t.id);
-  }
-  return [...m.values()];
-};
-/* Hệ số chi phí của khung giờ: cfg.otRates[taskId]; chưa đặt thì khung bắt đầu từ 17:00 tới trước 21:00 = 1.5, còn lại = 2 */
+/* Hệ số chi phí của khung giờ: lưu ngay trong khung (otBands[].rate, v6.3). Chưa đặt thì khung bắt đầu từ 17:00 tới trước
+   21:00 = 1.5, còn lại = 2. v13.74 (R10): bỏ cfg.otRates đời cũ (v4.9–v6.2) và hai tầng dò theo mã / theo tác vụ cùng khung. */
 export const otDefaultRate = (t) => { const sp = otSpan(t); return sp && sp.start >= 17 * 60 && sp.start < 21 * 60 ? 1.5 : 2; };
 export const otRateOf = (cfg, t) => {
-  const ok = (v) => v != null && v !== "" && Number(v) > 0;
   if (!t) return 2;
-  const bd = (cfg?.otBands || []).find((b) => b.id === (t.bandId || t.id));   // v6.3: hệ số lưu ngay trong khung giờ
-  if (bd) return ok(bd.rate) ? Number(bd.rate) : otDefaultRate(t);
-  const k = otBandKey(t), byKey = cfg?.otRates?.[k];   // v5.1: lưu theo khung giờ
-  if (ok(byKey)) return Number(byKey);
-  // v4.9 lưu theo mã hạng mục: lấy hệ số của chính hạng mục, không có thì của hạng mục cùng khung giờ (vai trò khác)
-  if (ok(cfg?.otRates?.[t.id])) return Number(cfg.otRates[t.id]);
-  const twin = (cfg?.tasks || []).find((x) => isOtTask(x) && ok(cfg?.otRates?.[x.id]) && otBandKey(x) === k);
-  return twin ? Number(cfg.otRates[twin.id]) : otDefaultRate(t);
+  const bd = (cfg?.otBands || []).find((b) => b.id === t.id);
+  return bd && bd.rate != null && bd.rate !== "" && Number(bd.rate) > 0 ? Number(bd.rate) : otDefaultRate(t);
 };
 /* Hệ số của một giờ tăng ca: ngày lễ / Chủ nhật có hệ số riêng (một hệ số cho cả ngày) thì dùng hệ số đó,
    để trống thì tính theo hệ số khung giờ. Ngày lễ rơi vào Chủ nhật: lấy hệ số ngày lễ. kind: "n" | "s" (CN) | "h" (lễ) */
@@ -161,22 +136,6 @@ export const otBandIdFor = (from, to) => { const sp = otSpan({ name: `[OT] ${fro
 export const DEFAULT_OT_BANDS = () => [["17:30", "21:00", 1.5], ["21:00", "0:00", 2], ["0:00", "8:00", 2]]
   .map(([from, to, rate]) => ({ id: otBandIdFor(from, to), from, to, rate }));
 export const otHM = (min) => `${Math.floor((min % 1440) / 60)}:${pad(min % 60)}`;
-/* Chuyển cấu hình cũ (hạng mục [OT] theo vai trò) sang khung giờ chung. Trả về { cfg, moved } — moved = số hạng mục [OT] đã gỡ.
-   Không đụng tới dữ liệu bảng công: mã hạng mục cũ ghi vào otLegacy. */
-export const migrateOtCfg = (c) => {
-  if (Array.isArray(c.otBands)) return { cfg: c, moved: 0 };
-  const olds = (c.tasks || []).filter(isOtTask);
-  const bands = [], legacy = {};
-  for (const t of [...olds].sort((a, b) => ((otSpan(a)?.start ?? 9999) + 1440 - 1020) % 1440 - ((otSpan(b)?.start ?? 9999) + 1440 - 1020) % 1440)) {
-    const sp = otSpan(t);
-    const from = sp ? otHM(sp.start) : "17:30", to = sp ? otHM(sp.start + sp.hours * 60) : "21:00";
-    const id = otBandIdFor(from, to);
-    if (!bands.some((b) => b.id === id)) bands.push({ id, from, to, rate: otRateOf(c, t) });
-    legacy[t.id] = id;
-  }
-  const out = { ...c, otBands: bands.length ? bands : DEFAULT_OT_BANDS(), otLegacy: legacy, tasks: (c.tasks || []).filter((t) => !isOtTask(t)) };
-  return { cfg: out, moved: olds.length };
-};
 // Bỏ dấu để gõ "khao sat" vẫn ra "Khảo sát". NFD không tách được đ nên phải thay tay.
 export const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d");
 // bảng màu lặp lại theo thứ tự dự án, dùng cho biểu đồ cột chồng theo dự án
@@ -251,7 +210,7 @@ export const emptyConfig = () => ({
   hours: { ...DEFAULT_HOURS }, holidays: [], roles: DEFAULT_ROLES.map((r) => ({ ...r })),
   leaveTypes: DEFAULT_LEAVE_TYPES.map((t) => ({ ...t })),
   depts: [...DEFAULT_DEPTS],
-  otBands: DEFAULT_OT_BANDS(), otLegacy: {},
+  otBands: DEFAULT_OT_BANDS(),
 });
 
 /* Vắng mặt giờ là tác vụ chọn được ngay trong ô Tác vụ, không còn panel riêng.

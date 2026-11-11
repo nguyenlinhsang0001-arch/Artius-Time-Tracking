@@ -172,7 +172,7 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
   // Dựng Map một lần thay vì .find() trong vòng lặp — trước đây là O(n²) khi xuất Excel
   const empMap = useMemo(() => new Map(cfg.employees.map((e) => [e.id, e])), [cfg.employees]);
   const projMapById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
-  const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands, cfg.otLegacy]);
+  const taskMap = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands]);
   const empName = (id) => empNameTag(empMap.get(id));   // v8.5: người đã nghỉ kèm "(Đã nghỉ)"
   const empDept = (id) => empMap.get(id)?.dept || "";
   const empTitle = (id) => roleTitle(empMap.get(id)?.role);

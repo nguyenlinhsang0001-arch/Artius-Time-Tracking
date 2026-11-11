@@ -31,7 +31,7 @@ export function HoursMatrix({ cfg, ym, flash, onPickEmp }) {
   const from = `${ym}-01`;
   const to = fmt(lastOfMonth(parseD(from)));
   const projById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
-  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands, cfg.otLegacy]);
+  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands]);
   const projLabel = (id) => { if (id === NO_PROJECT) return "Khác"; const x = projById.get(id); return x ? (x.code ? `[${x.code}] ${x.name}` : x.name) : "(dự án đã xoá)"; };
   const projShort = (id) => { if (id === NO_PROJECT) return "Khác"; const x = projById.get(id); return x ? (x.code ? `${x.code} ${x.name}` : x.name) : "(đã xoá)"; };
   const taskLabel = (id) => { const t = taskById.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
@@ -410,7 +410,7 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
   useEffect(() => { ensureMonths([prevYm(rangeYms[0]), ...rangeYms]).then(() => setLoadTick((t) => t + 1)); }, [rangeYms.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const projById = useMemo(() => new Map(cfg.projects.map((x) => [x.id, x])), [cfg.projects]);
-  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands, cfg.otLegacy]);
+  const taskById = useMemo(() => new Map([...cfg.tasks, ...LEAVE_TASKS, ...OT_TASKS].map((t) => [t.id, t])), [cfg.tasks, cfg.leaveTypes, cfg.otBands]);
   const tName = (id) => { const t = taskById.get(id); return t ? taskText(t) : "(tác vụ đã xoá)"; };
   const pName = (id) => { if (!id || id === NO_PROJECT) return "Việc chung"; const p = projById.get(id); return p ? (p.code ? `${p.code} · ${p.name}` : p.name) : "(dự án đã xoá)"; };
 

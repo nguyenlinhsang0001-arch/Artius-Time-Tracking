@@ -8,7 +8,7 @@ import { syncPush, sendTestPush, fetchPushStatus } from "../push.js";
 import { currentUser } from "../auth.js";
 import { DEFAULT_HOURS, VN_FIXED_HOLIDAYS, dFull, dLabel, fmt, pad, weeklyTarget } from "../core/date.jsx";
 import { DB, LAST_STORAGE_ERROR, STORAGE_OK, allLoaded, errText, loadDB, useDataTick, useUsage } from "../core/db.jsx";
-import { DEFAULT_PHASE, DEFAULT_PHASES, LEAVE_TASKS, NO_PROJECT, OT_MIG_NOTE, empNameTag, fmtH, isLeaveTask, isResigned, otBandIdFor, otBandKey, otSpan, phaseColor, tone, toneT, uid } from "../core/domain.jsx";
+import { DEFAULT_PHASE, DEFAULT_PHASES, LEAVE_TASKS, NO_PROJECT, empNameTag, fmtH, isLeaveTask, isResigned, otBandIdFor, otBandKey, otSpan, phaseColor, tone, toneT, uid } from "../core/domain.jsx";
 import { APP_VERSION, CTRL, ConfirmDialog, DateField, Panel, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
 import { dumpPlanTables, errMsg } from "./planning/planStore.js";
 import { allocLimits } from "../shared/alloc.jsx";
@@ -475,7 +475,7 @@ export function ReminderPanel({ cfg, saveCfg, flash }) {
 /* v6.3 — Tăng ca là cài đặt chung: các khung giờ (bắt đầu – kết thúc) + hệ số, áp cho mọi nhân sự / vai trò.
    Không còn hạng mục [OT] ở tab Tác vụ. Mã khung cố định nên đổi giờ của khung không làm mất giờ đã chấm.
    Khung đang có giờ chấm thì không xoá được. Chủ nhật / ngày lễ: một hệ số cho cả ngày (để trống = theo khung giờ).
-   Lưu: cfg.otBands = [{ id, from, to, rate }], cfg.otSunRate, cfg.otHolRate, cfg.otLegacy (mã [OT] cũ → khung). */
+   Lưu: cfg.otBands = [{ id, from, to, rate }], cfg.otSunRate, cfg.otHolRate. (v13.74: bỏ otLegacy — bảng đổi mã [OT] cũ.) */
 export const OT_TIME_RE = /^\s*(\d{1,2})\s*[:h.]\s*(\d{2})\s*$/;
 export const otParseTime = (x) => { const m = OT_TIME_RE.exec(x || ""); if (!m) return null; const h = +m[1], mi = +m[2]; return h <= 24 && mi < 60 && h * 60 + mi <= 1440 ? `${h % 24}:${pad(mi)}` : null; };
 export function OtRatePanel({ cfg, saveCfg, flash }) {
@@ -486,21 +486,15 @@ export function OtRatePanel({ cfg, saveCfg, flash }) {
     hol: cfg.otHolRate != null ? String(cfg.otHolRate) : "",
   });
   const [v, setV] = useState(init);
-  const [assign, setAssign] = useState({});
   useEffect(() => { setV(init()); }, [cfg.otBands, cfg.otSunRate, cfg.otHolRate]); // eslint-disable-line react-hooks/exhaustive-deps
   const num = (x) => { const n = Number(String(x).replace(",", ".")); return x === "" || !(n > 0) ? null : Math.min(10, n); };
 
-  /* giờ đã chấm theo khung (trong phần bảng công đang tải) + dòng tăng ca của hạng mục [OT] đã bị xoá trước v6.3 */
-  const legacy = cfg.otLegacy || {};
-  const known = new Set([...(cfg.tasks || []).map((t) => t.id), ...LEAVE_TASKS.map((t) => t.id), ...(cfg.otBands || []).map((b) => b.id), ...Object.keys(legacy)]);
-  const used = new Map(), orphans = new Map();
+  /* giờ đã chấm theo khung (trong phần bảng công đang tải) — khung đã có giờ thì không xoá được */
+  const used = new Map();
   for (const bucket of Object.values(DB?.ts || {})) {
     for (const r of Array.isArray(bucket?.rows) ? bucket.rows : []) {
       const h = Object.values(r.days || {}).reduce((a, x) => a + (Number(x) || 0), 0);
-      if (!h) continue;
-      const bid = legacy[r.taskId] || r.taskId;
-      if ((cfg.otBands || []).some((b) => b.id === bid)) used.set(bid, (used.get(bid) || 0) + h);
-      else if (r.otFor && !known.has(r.taskId)) orphans.set(r.taskId, (orphans.get(r.taskId) || 0) + h);
+      if (h && (cfg.otBands || []).some((b) => b.id === r.taskId)) used.set(r.taskId, (used.get(r.taskId) || 0) + h);
     }
   }
 
@@ -521,7 +515,7 @@ export function OtRatePanel({ cfg, saveCfg, flash }) {
       keys.add(key);
       if (num(b.rate) == null) return flash(`Nhập hệ số cho khung ${from} – ${to} (số lớn hơn 0).`, "err");
       let id = b.id || otBandIdFor(from, to);
-      if (!b.id && (out.some((x) => x.id === id) || (cfg.otBands || []).some((x) => x.id === id) || Object.keys(legacy).includes(id))) id = uid("OTB_");
+      if (!b.id && (out.some((x) => x.id === id) || (cfg.otBands || []).some((x) => x.id === id))) id = uid("OTB_");
       out.push({ id, from, to, rate: num(b.rate) });
     }
     for (const [k, l] of [["sun", "Chủ nhật"], ["hol", "ngày lễ"]]) if (v[k] !== "" && num(v[k]) == null) return flash(`Hệ số ${l} phải là số lớn hơn 0, hoặc để trống.`, "err");
@@ -530,16 +524,9 @@ export function OtRatePanel({ cfg, saveCfg, flash }) {
     const ok = await saveCfg({ ...cfg, otBands: out, otSunRate: num(v.sun), otHolRate: num(v.hol) });
     if (ok !== false) flash("Đã lưu tăng ca. Dashboard, Tiến độ dự án và Excel tính lại theo khung giờ / hệ số mới.");
   };
-  const doAssign = async (old) => {
-    const bid = assign[old] || cfg.otBands?.[0]?.id;
-    if (!bid) return;
-    const ok = await saveCfg({ ...cfg, otLegacy: { ...legacy, [old]: bid } });
-    if (ok !== false) flash("Đã gán giờ tăng ca cũ vào khung giờ.");
-  };
   const field = "font-mono text-center " + inputCls;
   return (
     <Panel title="Tăng ca — khung giờ & hệ số" sub="Áp dụng cho mọi nhân sự, mọi vai trò. Không cần tạo hạng mục [OT] ở tab Tác vụ.">
-      {OT_MIG_NOTE && <div className="mb-3 rounded-lg border border-sky-900 bg-sky-950/40 px-3 py-2 text-sm text-sky-200">{OT_MIG_NOTE}</div>}
       <div className="grid gap-5 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="min-w-0">
           <div className="mb-1 grid grid-cols-[2.25rem_minmax(0,1fr)_4rem_2.75rem] sm:grid-cols-[2.25rem_minmax(0,1fr)_5rem_3.5rem_2.75rem] items-center gap-2 text-xs text-slate-500">
@@ -576,21 +563,6 @@ export function OtRatePanel({ cfg, saveCfg, flash }) {
           <div className="mt-2 text-xs text-slate-500">Để trống thì ngày đó tính theo hệ số khung giờ.</div>
         </div>
       </div>
-      {orphans.size > 0 && (
-        <div className="mt-4 rounded-lg border border-amber-900/70 bg-amber-950/20 p-3">
-          <div className="text-sm text-amber-300">Có giờ tăng ca chấm vào hạng mục [OT] đã bị xoá — chọn khung giờ để gán lại</div>
-          {[...orphans.entries()].map(([old, h]) => (
-            <div key={old} className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="min-w-[9rem] text-sm text-slate-300">{fmtH(h)} h <span className="font-mono text-xs text-slate-600">({old})</span></span>
-              <select value={assign[old] || cfg.otBands?.[0]?.id || ""} onChange={(e) => setAssign((x) => ({ ...x, [old]: e.target.value }))}
-                className={`${CTRL} w-44 rounded-md border border-slate-700 bg-slate-900 px-2 text-sm text-teal-300`}>
-                {(cfg.otBands || []).map((b) => <option key={b.id} value={b.id}>{b.from} – {b.to}</option>)}
-              </select>
-              <button onClick={() => doAssign(old)} className={btnGhost}><Check size={14} /> Gán</button>
-            </div>
-          ))}
-        </div>
-      )}
       <div className="mt-3 flex items-center gap-3 border-t border-slate-800 pt-3">
         <span className="text-xs text-slate-500">Giờ quy đổi = giờ tăng ca × hệ số. Dashboard, Tiến độ dự án và Excel tính lại ngay sau khi lưu.</span>
         <button onClick={save} className={`ml-auto shrink-0 ${btnPrimary}`}><Save size={14} /> Lưu tăng ca</button>

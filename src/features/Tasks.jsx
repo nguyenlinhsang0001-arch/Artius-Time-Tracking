@@ -4,7 +4,7 @@ import {
   Plus, Trash2, Lock, Pencil, Check, X, GripVertical, Loader2, RotateCcw,
 } from "lucide-react";
 import { serverHours } from "../data.js";
-import { DEFAULT_DEPTS, DEPTS, DEPTS_SEE_ALL, LEAVE_PALETTE, fmtH, isIdleTask, isOtTask, leaveShort, norm, renameRoleOf, changeRole, roleInfo, roleLabel, taskRoles, uid } from "../core/domain.jsx";
+import { DEFAULT_DEPTS, DEPTS, DEPTS_SEE_ALL, LEAVE_PALETTE, fmtH, isIdleTask, isOtName, leaveShort, norm, renameRoleOf, changeRole, roleInfo, roleLabel, taskRoles, uid } from "../core/domain.jsx";
 import { fmt } from "../core/date.jsx";
 import { ConfirmDialog, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
 
@@ -108,7 +108,7 @@ export function Tasks({ cfg, saveCfg, flash }) {
   const add = async (key) => {
     const nm = (drafts[key] || "").trim();
     if (!nm) return;
-    if (isOtTask({ name: nm })) return flash("Tăng ca không còn là tác vụ — cài khung giờ và hệ số ở Thiết lập → Tăng ca.", "err");   // v6.3
+    if (isOtName(nm)) return flash("Tăng ca không còn là tác vụ — cài khung giờ và hệ số ở Thiết lập → Tăng ca.", "err");   // v6.3
     if (listOf(key).some((t) => t.name.toLowerCase() === nm.toLowerCase())) return flash("Ô này đã có tác vụ trùng tên.", "err");
     const ok = await saveCfg({ ...cfg, tasks: [...cfg.tasks, { id: uid("t"), name: nm, ...patchFor(key) }] });
     if (ok !== false) setDraft(key, "");
@@ -116,7 +116,7 @@ export function Tasks({ cfg, saveCfg, flash }) {
 
   const commit = async () => {
     if (!editName.trim()) return flash("Tên tác vụ không được để trống.", "err");
-    if (isOtTask({ name: editName })) return flash("Tăng ca không còn là tác vụ — cài khung giờ và hệ số ở Thiết lập → Tăng ca.", "err");   // v6.3
+    if (isOtName(editName)) return flash("Tăng ca không còn là tác vụ — cài khung giờ và hệ số ở Thiết lập → Tăng ca.", "err");   // v6.3
     const desc = editDesc.trim();
     await saveCfg({ ...cfg, tasks: cfg.tasks.map((t) => {
       if (t.id !== editId) return t;
