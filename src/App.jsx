@@ -1,6 +1,16 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.72
+   ARTIUS — Quản lý giờ công theo dự án · v13.73
+   Mới ở v13.73 — Vòng 4, bước 3 (R5): giờ chuẩn một định nghĩa (src/core/stdHours.js).
+     · stdDay(người, ngày) = giờ chuẩn Thiết lập, trừ lễ, trừ trước ngày vào làm / từ ngày nghỉ.
+       stdHours({ ngày…, upToToday, todayRule: "entered" | "never" | "always" }) cộng nhiều ngày.
+     · Bảng công, Dashboard › Nhân sự, So với thực tế (% tải và quy giờ ra người) gọi chung — bỏ 4 vòng cộng tự viết.
+       Luật giữ nguyên: hôm nay chỉ tính khi người đó đã gửi giờ; So với thực tế so tới hết hôm qua;
+       tuần nghỉ trọn (Tết) chia tuần chuẩn Thiết lập.
+     · Sửa: Dashboard chọn khoảng có ngày tương lai không còn cộng giờ chuẩn của ngày chưa tới (trước đây ai cũng thiếu giờ).
+     · So với thực tế, đơn vị Giờ: cộng đúng từng tuần (kế hoạch × giờ chuẩn của chính tuần đó) thay vì bình quân —
+       chỉ khác khi khoảng xem có tuần lễ. Đơn vị Người không đổi.
+     · Sẵn cho lương: stdHours({ upToToday: false }) = giờ chuẩn cả tháng.
    Mới ở v13.72 — Vòng 4, bước 2 (R7): So với thực tế xếp giờ theo vai trò TẠI NGÀY CHẤM.
      · planCalc.comparePlan (màn So với thực tế + sheet Excel) dùng domain.roleOn(e, ngày) thay vì vai trò hiện tại.
        Đổi vai trò cho ai đó thì giờ quá khứ của họ ở lại đúng hàng vai trò cũ, không bị dời sang vai trò mới.

@@ -5,7 +5,8 @@ import {
   Download, ChevronLeft, ChevronRight, CheckCircle2, Loader2, Lock, Pencil, Check, X, Unlock, Search, Bell,
 } from "lucide-react";
 import { sendNudge, fetchNudgeLog, fetchNudgeLogRange } from "../push.js";
-import { DEFAULT_HOURS, DOW, addDays, dLabel, effortHoursFor, fmt, lastOfMonth, makeHolidayIndex, minHoursFor, mondayOf, mondaysDue, mondaysOfMonth, pad, parseD, prevYm, weekDays, ymLabel, ymOf, ymsBetween } from "../core/date.jsx";
+import { DEFAULT_HOURS, DOW, addDays, dLabel, effortHoursFor, fmt, lastOfMonth, makeHolidayIndex, mondayOf, mondaysDue, mondaysOfMonth, pad, parseD, prevYm, weekDays, ymLabel, ymOf, ymsBetween } from "../core/date.jsx";
+import { stdDay, stdHours } from "../core/stdHours.js";
 import { LAST_STORAGE_ERROR, bumpData, commitTs, daySent, dbTs, dbTsSent, ensureMonths, loadXlsx, refreshTs, slot, useDataTick, weekDone } from "../core/db.jsx";
 import { DEFAULT_PHASE, DEPTS, LEAVE_TASKS, NO_PROJECT, NUDGE_GAP_MIN, OT_TASKS, ResignedBadge, empNameTag, fmtH, offOnDay, isIdleTask, isLeaveTask, isOtId, isResigned, norm, PAST_OPEN_FOREVER, pastCut, pastOpenEver, pastOpenUntil, pastWeeks, phaseLabel, roleTitle, supportKind, taskText } from "../core/domain.jsx";
 import { isLight } from "../core/theme.jsx";
@@ -437,17 +438,15 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
     return m;
   }, [cfg.employees, weeks.join(","), dataTick, loadTick, taskById, projById]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* v6.4: hôm nay chỉ tính vào giờ chuẩn khi đã có giờ gửi — trước đây tính luôn nên ai cũng "thiếu 8 h" cả ngày */
-  const stdOf = (d, eid) => {
-    if (d > today) return 0;
-    if (eid && gone(eid, d)) return 0;
-    if (d === today && eid) { const c = cellOf.get(`${eid}|${d}`); if (!c || c.reg + c.leave + c.ot <= 0) return 0; }
-    return minHoursFor(d, hoursCfg, hs) || 0;
-  };
+  /* v6.4: hôm nay chỉ tính vào giờ chuẩn khi đã có giờ gửi — trước đây tính luôn nên ai cũng "thiếu 8 h" cả ngày
+     v13.73 (R5): dùng core/stdHours — cùng định nghĩa với Dashboard và Kế hoạch. Không có người (eid) = tính cả hôm nay. */
+  const stdOf = (d, eid) => stdHours({ emp: eid ? empById8.get(eid) : null, days: [d], hoursCfg, hs, today,
+    todayRule: eid ? "entered" : "always",
+    entered: (x) => { const c = cellOf.get(`${eid}|${x}`); return !!c && c.reg + c.leave + c.ot > 0; } });
   const gone = (eid, d) => offOnDay(empById8.get(eid), d);   // v13.67: cả ngày trước khi vào làm   // v8.5: ngày sau khi nghỉ việc — không tính giờ chuẩn, không nhắc
   const dayInfo = (eid, d) => {
     const c = cellOf.get(`${eid}|${d}`) || { reg: 0, ot: 0, leave: 0, draft: 0, idle: 0, items: [] };
-    const std = gone(eid, d) ? 0 : minHoursFor(d, hoursCfg, hs) || 0, done = c.reg + c.leave;
+    const std = stdDay(empById8.get(eid), d, hoursCfg, hs), done = c.reg + c.leave;   // v13.73: core/stdHours
     let st;
     if (hs.has(d)) st = "hol";
     else if (gone(eid, d)) st = done + c.ot + c.draft > 0 ? (c.draft ? "draft" : "full") : "off";
@@ -1168,7 +1167,7 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
 
       {/* v6.0 (C) — hộp sửa nhanh một ô ngày */}
       {pop && (() => {
-        const e = cfg.employees.find((y) => y.id === pop.eid), std = minHoursFor(pop.d, hoursCfg, hs) || 0;
+        const e = cfg.employees.find((y) => y.id === pop.eid), std = stdDay(e, pop.d, hoursCfg, hs);   // v13.73: trước ngày vào làm / sau ngày nghỉ = 0, như ô của bảng
         const sum = Object.values(pop.vals).reduce((a, v) => a + (Number(v) || 0), 0);
         return (
           <>

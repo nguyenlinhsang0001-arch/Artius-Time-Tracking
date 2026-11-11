@@ -3,8 +3,9 @@
 
    Lưới lưu dạng: plan = { [mã dự án]: { [mã vai trò]: number[52] } }
    Vai trò nào không có số nào khác 0 thì không lưu, để khỏi phình dữ liệu. */
-import { addDays, fmt, makeHolidayIndex, minHoursFor, mondayOf, weekDays, weeklyTarget } from "../../core/date.jsx";
-import { NO_PROJECT, offOnDay, isLeaveTask, isResigned, roleOn } from "../../core/domain.jsx";
+import { addDays, fmt, makeHolidayIndex, mondayOf, weekDays, weeklyTarget } from "../../core/date.jsx";
+import { stdDay, stdHours } from "../../core/stdHours.js";
+import { NO_PROJECT, isLeaveTask, isResigned, roleOn } from "../../core/domain.jsx";
 
 /* ---------- Cột tuần ----------
    Mỗi tháng đúng 4 cột tuần (T<tháng> · 1…4), mỗi năm 48 cột, không có ngoại lệ tuần 5 — giống cách đọc file Excel kế hoạch.
@@ -314,15 +315,18 @@ export function comparePlan({ plan: P, projects, roles, weeks, sent = [], draft 
      đổi vai trò cho ai đó thì giờ quá khứ của họ không bị dời sang hàng vai trò mới. Chưa có lịch sử = vai trò hiện tại. */
   const empOf = new Map(staff.map((e) => [e.id, e]));
   const roleAt = (id, d) => { const e = empOf.get(id); return e ? roleOn(e, d) : ""; };
-  const stdOn = (d) => minHoursFor(d, hoursCfg, hs) || 0;
   const nW = weeks.length || 1;
 
-  /* giờ chuẩn từng tuần + các ngày được tính */
+  /* giờ chuẩn từng tuần + các ngày được tính.
+     v13.73 (R5): core/stdHours. std = cả tuần của một người làm đủ (trừ lễ) — thước quy giờ ra số người;
+     tuần đang chạy chỉ so trọn ngày tới hết HÔM QUA (today "never"). Tuần nghỉ trọn (vd Tết, std = 0) thì
+     giờ ai đi làm tuần đó chia cho tuần chuẩn trong Thiết lập (full) — 1 người làm cả tuần = 1 người. */
   const wk = weeks.map((w) => {
     const days = weekDays(w.monday), run = w.monday === runMon;
-    const std = days.reduce((a, d) => a + stdOn(d), 0);
+    const base = { days, hoursCfg, hs, today };
+    const std = stdHours({ ...base, upToToday: false });
     const upto = run ? days.filter((d) => d < today) : days;
-    const got = upto.reduce((a, d) => a + stdOn(d), 0);
+    const got = run ? stdHours({ ...base, todayRule: "never" }) : std;
     return { w, run, std, D: std > 0 ? std : full, frac: run ? (std > 0 ? got / std : 0) : 1, days: new Set(upto) };
   });
   const kOf = new Map(weeks.map((w, k) => [w.monday, k]));
@@ -342,7 +346,7 @@ export function comparePlan({ plan: P, projects, roles, weeks, sent = [], draft 
   for (const d of draft) put(d, true);
 
   const rows = new Map();
-  const get = (pid) => { if (!rows.has(pid)) rows.set(pid, { pid, kh: {}, tt: {}, ppl: new Map(), rp: {}, dr: 0, drp: new Map(), wk: weeks.map(() => ({ kh: 0, tt: 0 })) }); return rows.get(pid); };
+  const get = (pid) => { if (!rows.has(pid)) rows.set(pid, { pid, kh: {}, tt: {}, khH: {}, ttH: {}, ppl: new Map(), rp: {}, dr: 0, drp: new Map(), wk: weeks.map(() => ({ kh: 0, tt: 0, khH: 0, ttH: 0 })) }); return rows.get(pid); };
   let common = 0, total = 0, drft = 0;
   const per = new Map();
   const add = (e, k, h) => { if (!per.has(e)) per.set(e, new Map()); const m = per.get(e); m.set(k, (m.get(k) || 0) + h); };
@@ -352,6 +356,7 @@ export function comparePlan({ plan: P, projects, roles, weeks, sent = [], draft 
       for (const r of roles) {
         const v = cellOf(P, pid, r.id, w.i) * frac; if (!v) continue;
         const o = get(pid); o.kh[r.id] = (o.kh[r.id] || 0) + v / nW; o.wk[k].kh += v;
+        o.khH[r.id] = (o.khH[r.id] || 0) + v * D; o.wk[k].khH += v * D;   // v13.73: giờ kế hoạch ĐÚNG từng tuần (trừ lễ)
       }
     }
     for (const x of bucket[k]) {
@@ -361,6 +366,7 @@ export function comparePlan({ plan: P, projects, roles, weeks, sent = [], draft 
       const rid = roleAt(x.empId, x.date); if (!rid) continue;
       const o = get(x.pid);
       o.tt[rid] = (o.tt[rid] || 0) + x.h / D / nW; o.wk[k].tt += x.h / D;
+      o.ttH[rid] = (o.ttH[rid] || 0) + x.h; o.wk[k].ttH += x.h;
       o.ppl.set(x.empId, (o.ppl.get(x.empId) || 0) + x.h);
       (o.rp[rid] ||= new Map()).set(x.empId, (o.rp[rid].get(x.empId) || 0) + x.h);   // v13.72: người × vai trò lúc chấm
       if (x.dr) { o.dr += x.h; o.drp.set(x.empId, (o.drp.get(x.empId) || 0) + x.h); }
@@ -375,7 +381,10 @@ export function comparePlan({ plan: P, projects, roles, weeks, sent = [], draft 
     const st = KH < 0.005 && TT > 0 ? "out" : TT < 0.005 && KH > 0 ? "none"
       : Math.abs(d) <= Math.max(0.25, (KH * lim.tol) / 100) ? (mis > Math.max(0.5, (KH * lim.mix) / 100) ? "mix" : "ok") : d > 0 ? "over" : "under";
     const okR = roles.reduce((a, r) => a + Math.min(o.kh[r.id] || 0, o.tt[r.id] || 0), 0);
-    return { ...o, p, KH, TT, d, st, okR };
+    /* v13.73 — cùng các số trên nhưng tính bằng GIỜ, cộng đúng từng tuần (đơn vị "Giờ" của màn So với thực tế) */
+    const KHh = sum(o.khH), TTh = sum(o.ttH);
+    const okRh = roles.reduce((a, r) => a + Math.min(o.khH[r.id] || 0, o.ttH[r.id] || 0), 0);
+    return { ...o, p, KH, TT, d, st, okR, KHh, TTh, okRh };
   }).filter((o) => o.KH > 0.005 || o.TT > 0.005);
   list.sort((a, b) => PA_ORDER[a.st] - PA_ORDER[b.st] || Math.abs(b.d) - Math.abs(a.d));
 
@@ -383,7 +392,7 @@ export function comparePlan({ plan: P, projects, roles, weeks, sent = [], draft 
   const who = staff.filter((e) => e.role);
   const gap = wk.map(({ w, days }, k) => ({
     w,
-    miss: who.filter((e) => [...days].some((d) => d < today && stdOn(d) > 0 && !offOnDay(e, d) && !seen[k].has(`${e.id}|${d}`))),
+    miss: who.filter((e) => [...days].some((d) => d < today && stdDay(e, d, hoursCfg, hs) > 0 && !seen[k].has(`${e.id}|${d}`))),
   })).filter((x) => x.miss.length);
   const gapNames = [...new Set(gap.flatMap((x) => x.miss.map((e) => e.name || e.id)))];
   const lastGap = gap.find((x) => x.w.monday === weeks[weeks.length - 1]?.monday);

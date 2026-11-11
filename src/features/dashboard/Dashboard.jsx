@@ -3,7 +3,8 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import {
   Download, Loader2, RotateCcw, X, Search, ChevronLeft, ChevronRight,
 } from "lucide-react";
-import { DEFAULT_HOURS, DOW, addDays, dFull, dLabel, effortHoursFor, firstOfMonth, lastOfMonth, fmt, makeHolidayIndex, minHoursFor, mondayOf, mondaysDue, parseD, prevYm, ymOf, ymsBetween } from "../../core/date.jsx";
+import { DEFAULT_HOURS, DOW, addDays, dFull, dLabel, effortHoursFor, firstOfMonth, lastOfMonth, fmt, makeHolidayIndex, mondayOf, mondaysDue, parseD, prevYm, ymOf, ymsBetween } from "../../core/date.jsx";
+import { daysBetween, stdHours } from "../../core/stdHours.js";
 import { dbTs, dbTsSent, ensureMonths, loadDB, loadXlsx, useDataTick, weekDone } from "../../core/db.jsx";
 import { DEFAULT_PHASE, DEPTS, LEAVE_TASKS, NO_PROJECT, OT_TASKS, PHASES, budgetTotal, empNameTag, fmtH, isIdleTask, isLeaveTask, isOtId, isResigned, norm, otBandKey, otDayKind, otRateFor, otText, phaseLabel, projBudgets, roleTitle, supportKind, taskText } from "../../core/domain.jsx";
 import { CTRL, DateRangeField, FilterButton, Panel, btnGhost, btnPrimary, inputCls, selectCls } from "../../core/ui.jsx";
@@ -58,15 +59,12 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
   const holidaySet = useMemo(() => makeHolidayIndex(cfg.holidays), [cfg.holidays]);
 
   const setRange = (a, b) => { setFrom(a); setTo(b); };
-  // v4.6 — giờ chuẩn của một người trong kỳ đang chọn (T2–T6 / T7 / CN theo Thiết lập, trừ ngày lễ) — vạch so sánh ở "Phân bổ theo nhân sự"
-  const stdPeriod = useMemo(() => {
-    let t = 0;
-    for (let d = from; d <= to; d = fmt(addDays(parseD(d), 1))) t += minHoursFor(d, hoursCfg, holidaySet) || 0;
-    return t;
-  }, [from, to, hoursCfg, holidaySet]);
-  /* v6.5 — giờ chuẩn của HÔM NAY chỉ tính cho người đã gửi giờ hôm nay (cùng quy tắc với Bảng công v6.4) */
+  /* v4.6 — giờ chuẩn của một người trong kỳ đang chọn (T2–T6 / T7 / CN theo Thiết lập, trừ ngày lễ) — vạch so sánh ở "Phân bổ theo nhân sự".
+     v6.5: hôm nay chỉ tính cho người đã gửi giờ hôm nay (cùng quy tắc với Bảng công v6.4).
+     v8.5 / v13.67: người nghỉ / vào làm trong kỳ chỉ tính những ngày còn làm.
+     v13.73 (R5): tính bằng core/stdHours — cùng định nghĩa với Bảng công. Ngày SAU hôm nay không còn bị cộng
+     (trước đây chọn khoảng thủ công có ngày tương lai thì ai cũng hiện thiếu giờ). */
   const todayK = fmt(new Date());
-  const stdToday = from <= todayK && todayK <= to ? minHoursFor(todayK, hoursCfg, holidaySet) || 0 : 0;
   const sentToday = useMemo(() => {
     const out = new Set();
     for (const e of cfg.employees || []) {
@@ -75,23 +73,13 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
     }
     return out;
   }, [cfg.employees, todayK, dataTick]); // eslint-disable-line react-hooks/exhaustive-deps
-  const stdBase = stdPeriod - stdToday;
-  const stdForEmp = (eid) => {
-    /* v8.5: người đã nghỉ trong kỳ — giờ chuẩn chỉ tính tới trước ngày nghỉ.
-       v13.67 (R6): người vào làm trong kỳ — giờ chuẩn chỉ tính từ ngày vào làm. Hôm nay chưa gửi thì chưa tính,
-       giống stdBase của mọi người khác. */
-    const e = cfg.employees.find((x) => x.id === eid);
-    const start = e?.startedAt && e.startedAt > from ? e.startedAt : "";
-    if ((e?.resignedAt && e.resignedAt <= to) || start) {
-      let t = 0;
-      for (let d = start || from; d <= to && !(e.resignedAt && d >= e.resignedAt); d = fmt(addDays(parseD(d), 1))) {
-        if (d === todayK && !sentToday.has(eid)) continue;
-        t += minHoursFor(d, hoursCfg, holidaySet) || 0;
-      }
-      return t;
-    }
-    return stdToday && !sentToday.has(eid) ? stdBase : stdPeriod;
-  };
+  const periodDays = useMemo(() => daysBetween(from, to), [from, to]);
+  const stdRule = { days: periodDays, hoursCfg, hs: holidaySet, today: todayK };
+  /* giờ chuẩn chung của kỳ cho người làm đủ, chưa tính hôm nay — vạch tham chiếu */
+  const stdBase = useMemo(() => stdHours({ ...stdRule, todayRule: "never" }), [periodDays, hoursCfg, holidaySet, todayK]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stdByEmp = useMemo(() => new Map((cfg.employees || []).map((e) => [e.id,
+    stdHours({ ...stdRule, emp: e, entered: () => sentToday.has(e.id) })])), [cfg.employees, periodDays, hoursCfg, holidaySet, todayK, sentToday]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stdForEmp = (eid) => stdByEmp.get(eid) ?? stdHours({ ...stdRule, entered: () => sentToday.has(eid) });
   const clearFilters = () => { setFDept("all"); setFRole("all"); setQ(""); };
   const hasFilter = fDept !== "all" || fRole !== "all" || q.trim() !== "";
   const today = fmt(now);
