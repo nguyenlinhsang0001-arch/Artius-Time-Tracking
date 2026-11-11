@@ -1,6 +1,11 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.70
+   ARTIUS — Quản lý giờ công theo dự án · v13.71
+   Mới ở v13.71 — Vòng 4, bước 1: hai hàm tổng hợp giờ đọc bảng giờ phẳng (supabase/v13_71_tong_hop_bang_phang.sql).
+     · artius_usage (tab Dự án, Thiết lập › Giai đoạn) và artius_phase_detail (Dashboard › Tiến độ dự án) không còn bung
+       JSON của mọi bảng công mỗi lần gọi — cộng thẳng trên artius_hours. Kết quả trả về y hệt, app không sửa phần gọi.
+     · File SQL tự so cách cũ / cách mới trên dữ liệu thật, lệch thì dừng và không thay gì.
+     · Cách cũ giữ tên artius_usage_json / artius_phase_detail_json để so và để quay lại.
    Mới ở v13.70 — gỡ khung "Xoá dữ liệu chấm công" ở Thiết lập (gõ XOA là xoá hết giờ công của mọi người).
      · Bỏ luôn db.wipeTs và data.deleteAllTs — không còn chỗ nào gọi. Từ giờ app thật sự không có đường nào xoá hết giờ công.
      · Làm sạch để dựng project mới: tools/artius-restore.mjs --wipe trên máy (cần service_role key).
