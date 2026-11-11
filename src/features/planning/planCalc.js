@@ -4,7 +4,7 @@
    Lưới lưu dạng: plan = { [mã dự án]: { [mã vai trò]: number[52] } }
    Vai trò nào không có số nào khác 0 thì không lưu, để khỏi phình dữ liệu. */
 import { addDays, fmt, makeHolidayIndex, minHoursFor, mondayOf, weekDays, weeklyTarget } from "../../core/date.jsx";
-import { NO_PROJECT, goneOnDay, isLeaveTask, isResigned } from "../../core/domain.jsx";
+import { NO_PROJECT, offOnDay, isLeaveTask, isResigned } from "../../core/domain.jsx";
 
 /* ---------- Cột tuần ----------
    Mỗi tháng đúng 4 cột tuần (T<tháng> · 1…4), mỗi năm 48 cột, không có ngoại lệ tuần 5 — giống cách đọc file Excel kế hoạch.
@@ -379,7 +379,7 @@ export function comparePlan({ plan: P, projects, roles, weeks, sent = [], draft 
   const who = staff.filter((e) => e.role);
   const gap = wk.map(({ w, days }, k) => ({
     w,
-    miss: who.filter((e) => [...days].some((d) => d < today && stdOn(d) > 0 && !goneOnDay(e, d) && !seen[k].has(`${e.id}|${d}`))),
+    miss: who.filter((e) => [...days].some((d) => d < today && stdOn(d) > 0 && !offOnDay(e, d) && !seen[k].has(`${e.id}|${d}`))),
   })).filter((x) => x.miss.length);
   const gapNames = [...new Set(gap.flatMap((x) => x.miss.map((e) => e.name || e.id)))];
   const lastGap = gap.find((x) => x.w.monday === weeks[weeks.length - 1]?.monday);

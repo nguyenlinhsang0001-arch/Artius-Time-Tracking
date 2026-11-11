@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { DEFAULT_HOURS, DOW, HOLIDAY_RING_SVG, OT_ALERT, addDays, dLabel, effortHoursFor, fmt, makeHolidayIndex, minHoursFor, mondayOf, parseD, prevYm, stdHoursFor, weekDays, ymOf } from "../core/date.jsx";
 import { LAST_STORAGE_ERROR, RATE_LIMITED, ck, commitTs, dbTs, ensureMonths, refreshTs, slot, useDataTick, useNet } from "../core/db.jsx";
-import { DEFAULT_PHASE, LEAVE_TASKS, NO_PHASE, NO_PROJECT, OT_TASKS, activePhases, empHasProj, fmtH, groupKey, guessPhase, isIdleTask, isLeaveTask, isOtId, isOtTask, leaveInfo, leaveTypeOfTask, norm, otBandKey, otBandTasks, otMaxHours, otText, pastLocked, pastOpenEver, pastOpenUntil, pastWeeks, phaseInfo, phaseLabel, projPhaseIsOpen, roleLabel, rowKey, sortByGroup, supportInRange, supportOn, taskRoles, taskText, tasksForDept, tone } from "../core/domain.jsx";
+import { DEFAULT_PHASE, LEAVE_TASKS, NO_PHASE, NO_PROJECT, OT_TASKS, activePhases, empHasProj, fmtH, groupKey, guessPhase, isIdleTask, isLeaveTask, isOtId, isOtTask, notYetOnDay, leaveInfo, leaveTypeOfTask, norm, otBandKey, otBandTasks, otMaxHours, otText, pastLocked, pastOpenEver, pastOpenUntil, pastWeeks, phaseInfo, phaseLabel, projPhaseIsOpen, roleLabel, rowKey, sortByGroup, supportInRange, supportOn, taskRoles, taskText, tasksForDept, tone } from "../core/domain.jsx";
 import { CTRL, ConfirmDialog, GUT, NoteDialog, WeekPicker, btnBase, btnGhost, btnPrimary, iconBtn, selectCls } from "../core/ui.jsx";
 import { DeadlineBanner } from "../shared/deadline.jsx";
 import { runOtExport } from "../shared/otReport.js";   // v13.31: xuất Excel tăng ca, dùng chung với Dashboard cá nhân
@@ -903,7 +903,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   /* v1.9 — khoá cứng theo ngày: ngày đã gửi thì nhân sự không sửa được và không thêm giờ dự án khác vào ngày đó;
      quản lý luôn sửa được. Ngày chưa gửi vẫn nhập và gửi sau bình thường. */
   const sentDays = days.filter(isSent);
-  const submitted = days.filter((d) => minHoursFor(d, hoursCfg, holidaySet) !== null).every(isSent) || yms.every((ym) => buckets[ym]?.weeks?.[monday]);
+  const submitted = days.filter((d) => minHoursFor(d, hoursCfg, holidaySet) !== null && !notYetOnDay(emp, d)).every(isSent) || yms.every((ym) => buckets[ym]?.weeks?.[monday]);
   const locked = !admin && days.every((d) => isSent(d) || pastLk(d));   // cả 7 ngày đã gửi (v8.6: hoặc đã quá hạn): không còn gì để nhập
   const rowLocked = (r) => !admin && (projClosed(r) || days.some((d) => (isSent(d) || pastLk(d)) && r.days[d] > 0));
   const pastDays = days.filter(pastLk);                                  // v8.6
@@ -940,7 +940,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
      chấm 6h làm việc + 2h OT = 8h vẫn là thiếu 2h giờ chuẩn. */
   const isIncomplete = (d) => {
     const min = minHoursFor(d, hoursCfg, holidaySet);
-    return min !== null && d <= todayStr && dayTotal(d) - otHrs(d) - effortHrs(d) < min;
+    return min !== null && d <= todayStr && !notYetOnDay(emp, d) && dayTotal(d) - otHrs(d) - effortHrs(d) < min;   // v13.67
   };
   const isOverDaily = (d) => dayTotal(d) > (Number(hoursCfg.maxDaily) || 13.5); // vượt ngưỡng cảnh báo/ngày
   // v3.4: OT = chỉ giờ chấm vào hạng mục Tăng ca; Giờ cố gắng = giờ làm việc thường vượt ngưỡng ngày (không tính chi phí dự án)
@@ -953,7 +953,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
   const anyOtHigh = days.some((d) => otHrs(d) > OT_ALERT);
   // Target tuần trừ đi phần được miễn do ngày lễ và ngày nghỉ phép
   const weekTarget = days.reduce((s, d) => {
-    const min = minHoursFor(d, hoursCfg, holidaySet);
+    const min = notYetOnDay(emp, d) ? null : minHoursFor(d, hoursCfg, holidaySet);   // v13.67: chưa vào làm thì không có giờ phải làm
     return s + (min === null ? 0 : min);
   }, 0);
   /* v3.7 — giờ công chuẩn = tổng − OT − Giờ cố gắng; phát sinh = OT + Giờ cố gắng. Tiến độ tuần tính theo giờ chuẩn. */

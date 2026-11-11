@@ -13,7 +13,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Search, SlidersHorizontal, X } from "lucide-react";
 import { addDays, effortHoursFor, fmt, makeHolidayIndex, minHoursFor, mondayOf, weekDays, weeklyTarget } from "../../core/date.jsx";
-import { NO_PROJECT, goneOnDay, isIdleTask, isLeaveTask, isOtId } from "../../core/domain.jsx";
+import { NO_PROJECT, offOnDay, isIdleTask, isLeaveTask, isOtId } from "../../core/domain.jsx";
 import { isLight } from "../../core/theme.jsx";
 import { ALLOC_ST, allocLimits, allocState } from "../../shared/alloc.jsx";
 import { PA_GROUPS, PA_ORDER, PLAN_YEARS, cellOf, comparePlan, foldMerged, joinYears, normalizeYear, planLimits, slotIndexOf } from "./planCalc.js";
@@ -215,7 +215,7 @@ export function PlanActual({ plan, projects, roles, start, realWeeks, detail, dr
     const stdOf = (eid) => {
       let v = 0;
       for (const d of days) {
-        if (d > today || goneOnDay(empOf.get(eid), d)) continue;
+        if (d > today || offOnDay(empOf.get(eid), d)) continue;
         if (d === today) { const c = day.get(`${eid}|${d}`); if (!c || c.any <= 0) continue; }
         v += minHoursFor(d, hoursCfg, hs) || 0;
       }

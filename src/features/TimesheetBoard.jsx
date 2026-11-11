@@ -7,7 +7,7 @@ import {
 import { sendNudge, fetchNudgeLog, fetchNudgeLogRange } from "../push.js";
 import { DEFAULT_HOURS, DOW, addDays, dLabel, effortHoursFor, fmt, lastOfMonth, makeHolidayIndex, minHoursFor, mondayOf, mondaysDue, mondaysOfMonth, pad, parseD, prevYm, weekDays, ymLabel, ymOf, ymsBetween } from "../core/date.jsx";
 import { LAST_STORAGE_ERROR, bumpData, commitTs, daySent, dbTs, dbTsSent, ensureMonths, loadXlsx, refreshTs, slot, useDataTick, weekDone } from "../core/db.jsx";
-import { DEFAULT_PHASE, DEPTS, LEAVE_TASKS, NO_PROJECT, NUDGE_GAP_MIN, OT_TASKS, ResignedBadge, empNameTag, fmtH, goneOnDay, isIdleTask, isLeaveTask, isOtId, isResigned, norm, PAST_OPEN_FOREVER, pastCut, pastOpenEver, pastOpenUntil, pastWeeks, phaseLabel, roleTitle, supportKind, taskText } from "../core/domain.jsx";
+import { DEFAULT_PHASE, DEPTS, LEAVE_TASKS, NO_PROJECT, NUDGE_GAP_MIN, OT_TASKS, ResignedBadge, empNameTag, fmtH, offOnDay, isIdleTask, isLeaveTask, isOtId, isResigned, norm, PAST_OPEN_FOREVER, pastCut, pastOpenEver, pastOpenUntil, pastWeeks, phaseLabel, roleTitle, supportKind, taskText } from "../core/domain.jsx";
 import { isLight } from "../core/theme.jsx";
 import { CTRL, FilterButton, PeriodField, Kpi, Panel, btnDanger, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
 import { ALLOC_ST, allocLimits, allocState } from "../shared/alloc.jsx";
@@ -444,7 +444,7 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
     if (d === today && eid) { const c = cellOf.get(`${eid}|${d}`); if (!c || c.reg + c.leave + c.ot <= 0) return 0; }
     return minHoursFor(d, hoursCfg, hs) || 0;
   };
-  const gone = (eid, d) => goneOnDay(empById8.get(eid), d);   // v8.5: ngày sau khi nghỉ việc — không tính giờ chuẩn, không nhắc
+  const gone = (eid, d) => offOnDay(empById8.get(eid), d);   // v13.67: cả ngày trước khi vào làm   // v8.5: ngày sau khi nghỉ việc — không tính giờ chuẩn, không nhắc
   const dayInfo = (eid, d) => {
     const c = cellOf.get(`${eid}|${d}`) || { reg: 0, ot: 0, leave: 0, draft: 0, idle: 0, items: [] };
     const std = gone(eid, d) ? 0 : minHoursFor(d, hoursCfg, hs) || 0, done = c.reg + c.leave;

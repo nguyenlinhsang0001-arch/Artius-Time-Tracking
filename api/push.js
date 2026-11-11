@@ -203,9 +203,12 @@ const actions = {
         bucketsByEmp.get(r.emp_id)[r.ym] = v;
       }
 
+      /* v13.67 (R6): không nhắc những ngày trước ngày vào làm — người mới vào giữa tuần không bị nhắc nộp cả tuần */
+      const startOf = new Map((Array.isArray(cfg.employees) ? cfg.employees : []).map((e) => [e.id, e.startedAt || ""]));
       let sent = 0;
       for (const emp of todo) {
-        const days = missingDays({ from: job.from, to: job.to, today: now.date, hours: cfg.hours, holidays: cfg.holidays, buckets: bucketsByEmp.get(emp) || {} });
+        const st = startOf.get(emp) || "";
+        const days = missingDays({ from: st > job.from ? st : job.from, to: job.to, today: now.date, hours: cfg.hours, holidays: cfg.holidays, buckets: bucketsByEmp.get(emp) || {} });
         if (!days.length) continue;
         // ghi nhật ký TRƯỚC khi gửi: hai lần chạy chồng nhau thì chỉ một lần ghi được, không gửi trùng
         const { data: ins, error: e6 } = await sb.from("artius_push_log")

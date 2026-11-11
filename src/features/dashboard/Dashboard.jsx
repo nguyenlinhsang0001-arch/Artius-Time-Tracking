@@ -77,11 +77,17 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
   }, [cfg.employees, todayK, dataTick]); // eslint-disable-line react-hooks/exhaustive-deps
   const stdBase = stdPeriod - stdToday;
   const stdForEmp = (eid) => {
-    // v8.5: người đã nghỉ trong kỳ — giờ chuẩn chỉ tính tới trước ngày nghỉ
+    /* v8.5: người đã nghỉ trong kỳ — giờ chuẩn chỉ tính tới trước ngày nghỉ.
+       v13.67 (R6): người vào làm trong kỳ — giờ chuẩn chỉ tính từ ngày vào làm. Hôm nay chưa gửi thì chưa tính,
+       giống stdBase của mọi người khác. */
     const e = cfg.employees.find((x) => x.id === eid);
-    if (e?.resignedAt && e.resignedAt <= to) {
+    const start = e?.startedAt && e.startedAt > from ? e.startedAt : "";
+    if ((e?.resignedAt && e.resignedAt <= to) || start) {
       let t = 0;
-      for (let d = from; d < e.resignedAt && d <= to; d = fmt(addDays(parseD(d), 1))) t += minHoursFor(d, hoursCfg, holidaySet) || 0;
+      for (let d = start || from; d <= to && !(e.resignedAt && d >= e.resignedAt); d = fmt(addDays(parseD(d), 1))) {
+        if (d === todayK && !sentToday.has(eid)) continue;
+        t += minHoursFor(d, hoursCfg, holidaySet) || 0;
+      }
       return t;
     }
     return stdToday && !sentToday.has(eid) ? stdBase : stdPeriod;
@@ -133,7 +139,8 @@ export function Dashboard({ cfg, saveCfg, flash, tabs = ["res", "proj", "ppl", "
     for (const ym of yms) {
       const need0 = mondaysDue(ym);
       for (const e of cfg.employees) {
-        const need = e.resignedAt ? need0.filter((m) => m < e.resignedAt) : need0;   // v8.5: không tính tuần sau ngày nghỉ việc
+        /* v8.5: không tính tuần sau ngày nghỉ việc. v13.67: không tính tuần kết thúc trước ngày vào làm. */
+        const need = need0.filter((m) => (!e.resignedAt || m < e.resignedAt) && (!e.startedAt || fmt(addDays(parseD(m), 6)) >= e.startedAt));
         if (isResigned(e) && !need.length) continue;
         const missing = need.filter((m) => !weekDone(e.id, m));
         status.push({ empId: e.id, ym, done: need.length - missing.length, need: need.length, missing });

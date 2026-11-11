@@ -6,7 +6,7 @@ import {
 import { askPermission, syncPush, pushPermission, sendTestPush } from "../push.js";
 import { DEFAULT_HOURS, addDays, dLabel, effortHoursFor, fmt, lastOfMonth, makeHolidayIndex, minHoursFor, mondayOf, parseD, prevYm, ymOf, ymsBetween } from "../core/date.jsx";
 import { dbTs, ensureMonths, isOn, sdel, sget, sset, useDataTick } from "../core/db.jsx";
-import { DEFAULT_PHASE, fmtH, isIdleTask, isLeaveTask, isOtId, roleTitle } from "../core/domain.jsx";
+import { DEFAULT_PHASE, fmtH, isIdleTask, isLeaveTask, isOtId, notYetOnDay, roleTitle } from "../core/domain.jsx";
 import { useTheme } from "../core/theme.jsx";
 import { APP_VERSION, Panel, btnGhost, btnPrimary } from "../core/ui.jsx";
 import { runOtExport } from "../shared/otReport.js";   // v13.31: xuất Excel tăng ca, dùng chung với màn Chấm công
@@ -131,6 +131,7 @@ export function EmployeeSettings({ cfg, empId, onSignOut = null }) {
    Tuần của quản lý (đủ giờ · thiếu · nháp chưa gửi · bỏ trống · nghỉ phép "P" · ngày lễ "Lễ" · CN / chưa tới, +h tăng ca).
    Bấm một ngày đã qua → mở màn Chấm công đúng tuần chứa ngày đó. */
 export function MonthCalendar({ cfg, empId, ym, setYm, loading, onOpenWeek }) {
+  const meCal = cfg.employees.find((e) => e.id === empId);   // v13.67: ngày vào làm
   const dataTick = useDataTick();
   const today = fmt(new Date());
   const hoursCfg = cfg.hours || DEFAULT_HOURS;
@@ -154,7 +155,7 @@ export function MonthCalendar({ cfg, empId, ym, setYm, loading, onOpenWeek }) {
   // cùng quy tắc với dayInfo() của bảng quản lý
   const info = (d) => {
     const c = cells.get(d) || { reg: 0, ot: 0, leave: 0, draft: 0, idle: 0 };
-    const std = minHoursFor(d, hoursCfg, hs) || 0, done = c.reg + c.leave;
+    const std = notYetOnDay(meCal, d) ? 0 : minHoursFor(d, hoursCfg, hs) || 0, done = c.reg + c.leave;   // v13.67: trước ngày vào làm = ngày nghỉ
     /* v7.1 — tách giờ cố gắng (giống Dashboard / màn chấm công): chuẩn = tổng − OT − cố gắng */
     const ef = effortHoursFor(d, c.reg - c.idle, hoursCfg, hs), tot = done + c.ot, sd = Math.max(0, done - ef - c.idle);   // v7.2: sd không gồm trống việc
     let st;

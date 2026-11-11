@@ -8,7 +8,7 @@ import { accountsApi, normUsername, USERNAME_RE, PASSWORD_MIN } from "../auth.js
 import { fmt, pad } from "../core/date.jsx";
 import { dbTsSent, empHoursAll, loadXlsx, purgeEmpTs, useDataTick } from "../core/db.jsx";
 import { DEPTS, LEAVE_TASKS, NO_PROJECT, OT_TASKS, ROLES, fmtH, isLeaveTask, isResigned, norm, roleInfo, roleLabel, roleTitle, supportList, taskText, uid, useIsMobile } from "../core/domain.jsx";
-import { ConfirmDialog, btnBase, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
+import { ConfirmDialog, DateField, btnBase, btnGhost, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
 import { SupportPanel } from "../shared/support.jsx";
 import { Dashboard } from "./dashboard/Dashboard.jsx";
 
@@ -192,7 +192,7 @@ export function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = n
     // sửa người đã có sẵn: KHÔNG tự gợi ý tên đăng nhập khi đổi họ tên, kẻo đổi tên một người chưa có tài khoản
     // lại vô tình điền tên đăng nhập và bị chặn vì thiếu mật khẩu
     setDlg({ kind: "emp", empId: e.id, accId: a?.id || null, hadAcc: !!a, autoUser: false,
-      f: { code: e.code || "", name: e.name, dept: e.dept, role: e.role || "", projects: Array.isArray(e.projects) ? e.projects : [], allProjects: !!e.allProjects, noPlan: !!e.noPlan, username: a?.username || "", password: a?.password || "", access: a ? accessOfAcc(a) : "emp" } });
+      f: { code: e.code || "", name: e.name, startedAt: e.startedAt || "", dept: e.dept, role: e.role || "", projects: Array.isArray(e.projects) ? e.projects : [], allProjects: !!e.allProjects, noPlan: !!e.noPlan, username: a?.username || "", password: a?.password || "", access: a ? accessOfAcc(a) : "emp" } });
   };
   const openAddAdmin = () => setDlg({ kind: "admin", empId: null, accId: null, hadAcc: false, autoUser: false, f: { username: "", password: genPassword(), access: "admin" } });
   const openEditAdmin = (a) => setDlg({ kind: "admin", empId: a.empId || null, accId: a.id, hadAcc: true, autoUser: false, f: { username: a.username, password: a.password, access: accessOfAcc(a) } });
@@ -217,7 +217,9 @@ export function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = n
       setBusy(true);
       const id = dlg.empId || uid("e");
       const row = { code, name, dept: f.dept, role: f.role || "", projects: (f.projects || []).filter((pid) => cfg.projects.some((p) => p.id === pid)), allProjects: !!f.allProjects, noPlan: !!f.noPlan };   // v6.9 · v8.8 · v12.17
-      const ok = await saveCfg({ ...cfg, employees: dlg.empId ? cfg.employees.map((e) => (e.id === id ? { ...e, ...row } : e)) : [...cfg.employees, { id, ...row }] });
+      /* v13.67 (R6) — ngày vào làm: để trống thì KHÔNG ghi khoá startedAt (và gỡ nếu trước đó có) — như trước v13.67 */
+      const withStart = (e) => { const { startedAt, ...rest } = e; return f.startedAt ? { ...rest, startedAt: f.startedAt } : rest; };   // eslint-disable-line no-unused-vars
+      const ok = await saveCfg({ ...cfg, employees: dlg.empId ? cfg.employees.map((e) => (e.id === id ? withStart({ ...e, ...row }) : e)) : [...cfg.employees, withStart({ id, ...row })] });
       const accOk = ok !== false && (!wantsAcc || (await pushAccount(id, acc, f)));
       setBusy(false);
       if (ok === false) return;
@@ -723,6 +725,21 @@ export function Employees({ cfg, saveCfg, flash, readOnly = false, onSupport = n
                   <option value="">— Không phân vai trò —</option>
                   {ROLES.filter((r) => r.dept === f.dept || r.id === f.role).map((r) => <option key={r.id} value={r.id}>{r.id} · {r.name}</option>)}
                 </select>
+              </div>
+              {/* v13.67 (R6) — ngày vào làm. Trống = như trước: coi như đã làm từ trước mọi kỳ. Có ngày thì những ngày trước đó
+                  không tính giờ chuẩn, không bị coi thiếu giờ, không bị nhắc nộp, không tính quân số Kế hoạch. */}
+              <div className="flex items-center gap-2">
+                <span className="w-[118px] shrink-0 text-xs text-slate-500">Ngày vào làm</span>
+                {f.startedAt ? (
+                  <>
+                    <DateField value={f.startedAt} onChange={(v) => setF({ startedAt: v })} className="w-[180px]" />
+                    <button type="button" onClick={() => setF({ startedAt: "" })} className={iconBtn} title="Bỏ ngày vào làm"><X size={14} /></button>
+                  </>
+                ) : (
+                  <button type="button" onClick={() => setF({ startedAt: fmt(new Date()) })}
+                    className="flex min-h-[36px] items-center rounded-md border border-dashed border-slate-700 px-2.5 text-[13px] text-slate-500 hover:border-slate-500 hover:text-slate-300">
+                    + Chưa nhập — giờ chuẩn tính như đã làm từ trước</button>
+                )}
               </div>
               {/* v12.17 — tính vào Kế hoạch nguồn lực: bỏ tích cho người đang thử việc… (không ảnh hưởng chấm công) */}
               <button type="button" onClick={() => setF({ noPlan: !f.noPlan })}

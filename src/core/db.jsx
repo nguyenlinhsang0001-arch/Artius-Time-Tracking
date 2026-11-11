@@ -4,7 +4,7 @@ import { fetchConfig, saveConfig, fetchTs, fetchTsChanges, fetchTsStamps, saveTs
 import { mergeConfig } from "../merge.js";
 import { supabase } from "../storage.js";
 import { DEFAULT_HOURS, fmt, makeHolidayIndex, minHoursFor, pad, weekDays, ymOf } from "./date.jsx";
-import { DEFAULT_PHASE, NO_PROJECT, emptyConfig, isLeaveTask } from "./domain.jsx";
+import { DEFAULT_PHASE, NO_PROJECT, emptyConfig, isLeaveTask, notYetOnDay } from "./domain.jsx";
 
 /* v2.2 — Thư viện Excel nặng nhất app; chỉ tải khi có người bấm xuất / đọc file Excel. */
 export let XLSX_MOD = null;
@@ -240,7 +240,8 @@ export const weekDone = (empId, monday) => {
   const hc = DB?.config?.hours || DEFAULT_HOURS;
   const wd = weekDays(monday);
   const today = fmt(new Date());   // v2.0: chỉ tính ngày đã tới (kể cả hôm nay), ngày tương lai chưa phải nộp
-  if (wd.filter((d) => d <= today && minHoursFor(d, hc, hs) !== null).every((d) => daySent(empId, d))) return true;
+  const emp = DB?.config?.employees?.find((e) => e.id === empId);   // v13.67: ngày trước khi vào làm không phải nộp
+  if (wd.filter((d) => d <= today && minHoursFor(d, hc, hs) !== null && !notYetOnDay(emp, d)).every((d) => daySent(empId, d))) return true;
   return [...new Set(wd.map(ymOf))].every((ym) => dbTs(empId, ym)?.weeks?.[monday]);
 };
 

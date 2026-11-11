@@ -287,6 +287,11 @@ export const NO_PROJECT = "__none__";
    danh sách giao dự án / nhắc nộp / tab Nhân sự đang làm. Giờ công đã chấm giữ nguyên, báo cáo kỳ có giờ của họ vẫn hiện kèm nhãn (Đã nghỉ). */
 export const isResigned = (e) => !!e?.resignedAt;
 export const goneOnDay = (e, d) => !!e?.resignedAt && d >= e.resignedAt;
+/* v13.67 (R6) — Ngày vào làm: employee.startedAt = "YYYY-MM-DD" (ngày đầu tiên đi làm). Trống = như trước v13.67, coi như đã
+   làm từ trước mọi kỳ. Ngày TRƯỚC startedAt giống hệt ngày từ resignedAt trở đi: không giờ chuẩn, không tính thiếu giờ, không
+   tính vào quân số, không bị nhắc nộp. Trước đây người vào giữa tháng bị coi là thiếu giờ cho mọi ngày từ đầu tháng. */
+export const notYetOnDay = (e, d) => !!e?.startedAt && d < e.startedAt;
+export const offOnDay = (e, d) => goneOnDay(e, d) || notYetOnDay(e, d);
 /* v8.6 — Khoá chấm công quá hạn: nhân viên chỉ sửa được N tuần gần nhất (cfg.pastLock.weeks, mặc định 2 = tuần này + tuần trước,
    tính từ thứ Hai; 0 = tắt). Ngày trước mốc bị khoá, kể cả giờ nháp chưa gửi. Quản lý mở tạm cho một người chấm bù một tuần:
    cfg.pastOpen = { "<empId>": { "<thứ Hai>": "<hạn YYYY-MM-DD>" } }. Database cũng chặn (artius_ts_guard · supabase/v8_6_khoa_qua_han.sql). */

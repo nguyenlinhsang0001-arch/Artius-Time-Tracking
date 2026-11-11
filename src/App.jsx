@@ -1,6 +1,14 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.66
+   ARTIUS — Quản lý giờ công theo dự án · v13.67
+   Mới ở v13.67 — Vòng 3, bước 1/3 (R6): ngày vào làm.
+     · Nhân sự › sửa nhân sự có ô "Ngày vào làm" (employee.startedAt), không bắt buộc. Trống = như trước, coi như
+       đã làm từ trước mọi kỳ — dữ liệu và con số của mọi người hiện có KHÔNG đổi.
+     · Ngày trước ngày vào làm được đối xử y như ngày sau ngày nghỉ việc: domain.offOnDay / notYetOnDay dùng chung.
+       Áp ở: Bảng công (giờ chuẩn, trạng thái ô), Dashboard (giờ chuẩn kỳ, tuần phải nộp), tuần đã nộp (db.weekDone),
+       lịch tháng của nhân viên, màn Chấm công (tuần đã gửi, ngày thiếu giờ, giờ chuẩn tuần), Kế hoạch (quân số
+       tuần), So với thực tế (tải từng người, ai thiếu giờ), và lịch nhắc nộp trên server (api/push.js).
+     · Trước đây người vào giữa tháng bị coi thiếu giờ cho mọi ngày từ đầu tháng và bị nhắc nộp cả những ngày đó.
    Mới ở v13.66 — Vòng 2 của lộ trình (R11): app không còn đường nào xoá mất giờ công.
      · Tác vụ ĐÃ CÓ GIỜ: thùng rác thành NGỪNG DÙNG (cờ task.inactive) — biến khỏi mọi danh sách chọn ở Chấm công
        (dòng mới, gợi ý, "tăng ca cho", điện thoại), giữ tên + giờ trong bảng công, báo cáo, Excel; nút "Dùng lại".

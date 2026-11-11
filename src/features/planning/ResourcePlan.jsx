@@ -3,7 +3,7 @@
    Admin nhập và lưu; BOD và trưởng phòng chỉ xem. Dữ liệu nằm ở bảng riêng (xem planStore.js). */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarRange, Camera, Download, Loader2, Merge, Redo2, RotateCcw, Save, Search, Undo2, X } from "lucide-react";
-import { fmt, mondayOf } from "../../core/date.jsx";
+import { addDays, fmt, mondayOf, parseD } from "../../core/date.jsx";
 import { dbTs, dbTsSent, ensureMonths, useDataTick, weekDone } from "../../core/db.jsx";
 import { ROLES, isResigned } from "../../core/domain.jsx";
 import { CTRL, Panel, btnGhost, btnPrimary } from "../../core/ui.jsx";
@@ -218,7 +218,7 @@ export default function ResourcePlan({ cfg, saveCfg, flash, readOnly = false, ca
       const ok = new Set();
       for (const w of realWeeks) {
         if (w.monday >= today) continue;
-        const need = staff.filter((e) => !e.resignedAt || e.resignedAt > w.monday);
+        const need = staff.filter((e) => (!e.resignedAt || e.resignedAt > w.monday) && (!e.startedAt || e.startedAt <= fmt(addDays(parseD(w.monday), 6))));   // v13.67: vào làm trong tuần thì tính tuần đó
         if (need.length && need.every((e) => weekDone(e.id, w.monday))) ok.add(w.monday);
       }
       if (alive) setTs({ detail, draft, okWeeks: ok });
