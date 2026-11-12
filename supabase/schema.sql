@@ -207,40 +207,7 @@ returns jsonb language sql immutable as $$
   ) as s;
 $$;
 
--- 7c. v2.5 — Giờ của các dòng rơi vào giai đoạn CHƯA CÓ giờ dự kiến (budgets[phase] trống hoặc 0) của dự án,
---     dạng chuẩn để so sánh trước/sau. Bỏ qua dòng vắng mặt (tác vụ LV_…, không thuộc dự án).
---     Dự án không còn trong thiết lập cũng tính là chưa có giờ dự kiến.
-create or replace function public.artius_unbudgeted_hours(bucket jsonb, cfg jsonb)
-returns jsonb language sql immutable as $$
-  select coalesce(jsonb_agg(s.x order by s.x), '[]'::jsonb)
-  from (
-    select jsonb_build_array(
-             coalesce(rw ->> 'projectId', ''),
-             coalesce(nullif(rw ->> 'phaseId', ''), 'P2'),
-             coalesce(rw ->> 'taskId', ''),
-             coalesce(rw ->> 'otFor', ''),   -- v4.9: dòng tăng ca gắn tác vụ
-             d.key,
-             (d.value #>> '{}')::numeric) as x
-    from jsonb_array_elements(case when jsonb_typeof(bucket -> 'rows') = 'array' then bucket -> 'rows' else '[]'::jsonb end) as rw,
-         jsonb_each(case when jsonb_typeof(rw -> 'days') = 'object' then rw -> 'days' else '{}'::jsonb end) as d
-    where coalesce(rw ->> 'taskId', '') not like 'LV\_%'
-      and coalesce(rw ->> 'projectId', '') <> '__none__'      -- v2.9: "Khác" không thuộc dự án nào
-      and case when jsonb_typeof(d.value) = 'number' then (d.value #>> '{}')::numeric > 0 else false end
-      and not exists (
-        select 1
-        from jsonb_array_elements(case when jsonb_typeof(cfg -> 'projects') = 'array' then cfg -> 'projects' else '[]'::jsonb end) as pr
-        where pr ->> 'id' = rw ->> 'projectId'
-          and case
-                -- v3.1: quản lý đã đặt mở/đóng từng giai đoạn
-                when jsonb_typeof(pr -> 'phaseOpen') = 'object'
-                  then coalesce(pr -> 'phaseOpen' -> coalesce(nullif(rw ->> 'phaseId', ''), 'P2') = 'true'::jsonb, false)
-                -- chưa đặt: giai đoạn có giờ dự kiến > 0 coi như đang mở (luật v2.5)
-                when jsonb_typeof(pr -> 'budgets' -> coalesce(nullif(rw ->> 'phaseId', ''), 'P2')) = 'number'
-                  then (pr -> 'budgets' ->> coalesce(nullif(rw ->> 'phaseId', ''), 'P2'))::numeric > 0
-                else false end
-      )
-  ) as s;
-$$;
+-- 7c. artius_unbudgeted_hours — từ v13.76 định nghĩa ở supabase/v13_76_giai_doan_mo.sql (giai đoạn mở chỉ theo công tắc).
 
 -- 7. v1.9 — Khoá cứng NGÀY đã gửi, do database thực thi.
 --    Giờ của một ngày trong một dòng bảng công, đưa về dạng chuẩn để so sánh trước/sau.
@@ -395,8 +362,6 @@ where key = 'artius:db:v1' and jsonb_typeof(value::jsonb -> 'config') = 'object'
 revoke all on function public.artius_day_hours(jsonb, text)     from public, anon;
 revoke all on function public.artius_proj_hours(jsonb, text)    from public, anon;
 revoke all on function public.artius_future_work(jsonb, date)   from public, anon;
-revoke all on function public.artius_unbudgeted_hours(jsonb, jsonb) from public, anon;
-grant execute on function public.artius_unbudgeted_hours(jsonb, jsonb) to authenticated, service_role;
 grant execute on function public.artius_day_hours(jsonb, text)   to authenticated, service_role;
 grant execute on function public.artius_proj_hours(jsonb, text)  to authenticated, service_role;
 grant execute on function public.artius_future_work(jsonb, date) to authenticated, service_role;

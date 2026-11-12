@@ -1,6 +1,12 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.75
+   ARTIUS — Quản lý giờ công theo dự án · v13.76
+   Mới ở v13.76 — Vòng 5, mục 3 (R8): giai đoạn mở chỉ theo công tắc.
+     · domain.projPhaseIsOpen và SQL artius_unbudgeted_hours (chuyển sang supabase/v13_76_giai_doan_mo.sql) chỉ đọc
+       project.phaseOpen. Bỏ luật dự phòng v2.5 "chưa có công tắc thì giai đoạn có giờ dự kiến > 0 là mở".
+       Giờ dự kiến (budgets) chỉ để theo dõi tiến độ.
+     · Tab Dự án không ghi số tổng project.budget nữa (mọi màn tính từ budgets).
+     · Dữ liệu thật: 21/21 dự án có công tắc → quyền chấm và số liệu giữ nguyên.
    Mới ở v13.75 — Vòng 5, mục 2 (R12): một cơ chế khoá.
      · "Đã nộp" chỉ còn một nghĩa: mọi ngày phải chấm đã có dấu theo ngày (sent) — đúng cái database khoá.
        Bỏ dấu tuần kiểu cũ (value.weeks, v1.9) ở db.weekDone, màn Chấm công và server nhắc nộp (api/_reminders.js).

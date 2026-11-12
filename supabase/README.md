@@ -12,6 +12,7 @@ là mất khoá chấm công quá hạn.
   (khi đó bấm "Dựng lại bảng giờ" trong app rồi chạy lại).
 - v13.74: **chạy lại** `v13_71_tong_hop_bang_phang.sql` (đã sửa: tăng ca chỉ nhận theo khung `otBands`). Cổng y như trên;
   trong lúc chạy hai hàm app gọi tạm dùng cách cũ, lệch thì ở lại cách cũ.
+- v13.76: `v13_76_giai_doan_mo.sql` — giai đoạn mở chỉ theo công tắc. Cổng: còn dự án chưa có công tắc thì dừng, không thay gì.
 
 ## Dựng database mới: chạy đúng thứ tự này
 
@@ -29,9 +30,10 @@ Supabase → SQL Editor → New query → dán toàn bộ một file → Run. Xo
 | 8 | `cron.sql` | Lịch nhắc nộp — cần bật `pg_cron` và `pg_net` trước, sửa 2 chỗ in hoa trong file |
 | 9 | `v13_69_bang_gio.sql` | **Bảng giờ phẳng** `artius_hours` + trigger tự bung từ `artius_ts` + `artius_hours_rebuild` |
 | 10 | `v13_71_tong_hop_bang_phang.sql` | **Hàm tổng hợp giờ** (`artius_usage`, `artius_phase_detail`) đọc `artius_hours` |
+| 11 | `v13_76_giai_doan_mo.sql` | Giờ rơi vào giai đoạn đang đóng (`artius_unbudgeted_hours`) — trigger chặn ghi dùng |
 
 `schema.sql` **không tự đủ**: chỉ chạy mình nó thì chưa có trigger chặn ghi và chưa có hàm tổng hợp.
-Phải chạy đủ tới file 10 (bỏ qua file 8 nếu chưa cần nhắc nộp).
+Phải chạy đủ tới file 11 (bỏ qua file 8 nếu chưa cần nhắc nộp).
 
 ## Hàm nào ở file nào
 

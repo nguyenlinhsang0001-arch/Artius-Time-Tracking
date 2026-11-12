@@ -176,10 +176,12 @@ export const DEFAULT_PHASE = "P2";
 export const projBudgets = (p) => Object.fromEntries(PHASES.map((ph) => [ph.id, Math.max(0, Number(p?.budgets?.[ph.id]) || 0)]));
 export const budgetTotal = (p) => PHASES.reduce((a, ph) => a + (Math.max(0, Number(p?.budgets?.[ph.id])) || 0), 0);
 /* v3.1 — Quản lý MỞ / ĐÓNG từng giai đoạn của dự án (project.phaseOpen = { P1: true, … }).
-   Nhân sự chỉ chấm được giai đoạn đang mở. Dự án chưa từng đặt mở/đóng thì coi giai đoạn có giờ dự kiến > 0 là đang mở
-   (đúng như luật v2.5), để dữ liệu cũ không bị đổi. Giờ dự kiến từ v3.1 chỉ dùng để theo dõi. */
+   Nhân sự chỉ chấm được giai đoạn đang mở. Giờ dự kiến (budgets) chỉ để THEO DÕI tiến độ, không quyết định quyền chấm.
+   v13.76 (R8): bỏ luật dự phòng v2.5 ("chưa có công tắc thì giai đoạn có giờ dự kiến > 0 là mở") — 21/21 dự án thật đều đã
+   có công tắc (kiểm 11/11/2026). Dự án không có công tắc = mọi giai đoạn đóng, quản lý bật ở tab Dự án.
+   Cùng luật với SQL artius_unbudgeted_hours (supabase/v13_76_giai_doan_mo.sql). */
 export const hasPhaseOpenMap = (p) => !!p && !!p.phaseOpen && typeof p.phaseOpen === "object";
-export const projPhaseIsOpen = (p, phId) => (hasPhaseOpenMap(p) ? !!p.phaseOpen[phId] : Math.max(0, Number(p?.budgets?.[phId]) || 0) > 0);
+export const projPhaseIsOpen = (p, phId) => hasPhaseOpenMap(p) && !!p.phaseOpen[phId];
 export const cleanBudgets = (d) => Object.fromEntries(PHASES.map((ph) => [ph.id, Math.max(0, Number(d?.[ph.id]) || 0)]));
 export const fmtH = (n) => String(+Number(n || 0).toFixed(1));
 export const phaseInfo = (id) => PHASES.find((p) => p.id === id) || null;

@@ -141,14 +141,14 @@ export function Projects({ cfg, saveCfg, flash, onSupport = null, supportRo = fa
   const add = async () => {
     if (!name.trim()) return flash("Nhập tên dự án.", "err");
     const bg = cleanBudgets(budgets);
-    await saveCfg({ ...cfg, projects: [...cfg.projects, { id: uid("p"), name: name.trim(), code: code.trim(), client: client.trim(), budgets: bg, budget: budgetTotal({ budgets: bg }), phaseOpen: Object.fromEntries(PHASES.map((x) => [x.id, (bg[x.id] || 0) > 0])), active: true }] });
+    await saveCfg({ ...cfg, projects: [...cfg.projects, { id: uid("p"), name: name.trim(), code: code.trim(), client: client.trim(), budgets: bg, phaseOpen: Object.fromEntries(PHASES.map((x) => [x.id, (bg[x.id] || 0) > 0])), active: true }] });
     setName(""); setCode(""); setClient(""); setBudgets({}); flash("Đã thêm dự án.");
   };
   const startEdit = (p) => { setEditId(p.id); setDraft({ code: p.code || "", name: p.name, client: p.client || "", budgets: Object.fromEntries(PHASES.map((ph) => [ph.id, projBudgets(p)[ph.id] || ""])) }); };
   const commit = async () => {
     if (!draft.name.trim()) return flash("Tên dự án không được để trống.", "err");
     const bg = cleanBudgets(draft.budgets);
-    await saveCfg({ ...cfg, projects: cfg.projects.map((p) => (p.id === editId ? { ...p, code: draft.code.trim(), name: draft.name.trim(), client: draft.client.trim(), budgets: bg, budget: budgetTotal({ budgets: bg }) } : p)) });
+    await saveCfg({ ...cfg, projects: cfg.projects.map((p) => (p.id === editId ? { ...p, code: draft.code.trim(), name: draft.name.trim(), client: draft.client.trim(), budgets: bg } : p)) });   // v13.76 (R8): không ghi số tổng project.budget (tính từ budgets)
     setEditId(null); flash("Đã cập nhật dự án.");
   };
   const phInput = (val, onChange, ph, withPlaceholder) => (
