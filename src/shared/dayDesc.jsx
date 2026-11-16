@@ -5,7 +5,8 @@
    Có trường này (kể cả mảng rỗng) = tác vụ BẮT BUỘC chọn mô tả cho mỗi ngày có giờ; dòng "Khác (tự ghi)" luôn có sẵn.
    Lưu: mỗi dòng bảng công có thêm row.dn = { "YYYY-MM-DD": "mô tả" } — chỉ giữ ngày có giờ (Timesheet.save dọn).
    ============================================================ */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export const EVENT_TASK_RE = /^\s*event\s+công\s+ty\s*$/i;
 export const isEventTask = (t) => !!t && EVENT_TASK_RE.test(t.name || "");
@@ -21,6 +22,8 @@ export function DayDesc({ options, value, hours, disabled, warn, onChange, align
   const [other, setOther] = useState("");
   const prevH = useRef(hours);
   const boxRef = useRef(null);
+  const popRef = useRef(null);
+  const [pos, setPos] = useState(null);   // v13.77 sửa: bảng chọn nổi bằng portal + position fixed, không bị khung bảng công cắt
   const has = Number(hours) > 0;
 
   const begin = () => {
@@ -38,12 +41,38 @@ export function DayDesc({ options, value, hours, disabled, warn, onChange, align
   }, [hours]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!open) return undefined;
-    const off = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    const off = (e) => {
+      if (boxRef.current?.contains(e.target) || popRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     const esc = (e) => { if (e.key === "Escape") setOpen(false); };
     document.addEventListener("mousedown", off);
     document.addEventListener("keydown", esc);
     return () => { document.removeEventListener("mousedown", off); document.removeEventListener("keydown", esc); };
   }, [open]);
+
+  /* Đặt bảng chọn ngay dưới nút (hoặc lật lên trên nếu không đủ chỗ), canh theo mép trái / phải ô, kẹp trong màn hình.
+     Tính lại khi cuộn / đổi cỡ cửa sổ. */
+  useLayoutEffect(() => {
+    if (!open) { setPos(null); return undefined; }
+    const place = () => {
+      const a = boxRef.current?.getBoundingClientRect();
+      const p = popRef.current;
+      if (!a) return;
+      const W = 288, H = p ? p.offsetHeight : 320, m = 8, vw = window.innerWidth, vh = window.innerHeight;
+      let left = align === "left" ? a.left : a.right - W;
+      left = Math.max(m, Math.min(vw - W - m, left));
+      let top = a.bottom + 4;
+      if (top + H > vh - m && a.top - 4 - H >= m) top = a.top - 4 - H;   // dưới không đủ chỗ → lật lên trên
+      else if (top + H > vh - m) top = Math.max(m, vh - m - H);           // cả hai phía đều chật → kẹp trong màn hình
+      setPos({ left, top, maxH: vh - 2 * m });
+    };
+    place();
+    const raf = requestAnimationFrame(place);   // lần 2: đã đo được chiều cao thật của bảng chọn
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("scroll", place, true); window.removeEventListener("resize", place); };
+  }, [open, align, options.length]);
 
   if (!has && !open) return null;
   const done = () => {
@@ -67,9 +96,10 @@ export function DayDesc({ options, value, hours, disabled, warn, onChange, align
           Chọn mô tả
         </button>
       )}
-      {open && (
-        <div role="dialog" aria-label="Chọn mô tả"
-          className={`absolute top-full z-40 mt-1 w-72 rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-2xl ${align === "left" ? "left-0" : "right-0"}`}>
+      {open && createPortal(
+        <div ref={popRef} role="dialog" aria-label="Chọn mô tả"
+          style={{ position: "fixed", left: pos?.left ?? -9999, top: pos?.top ?? -9999, maxHeight: pos?.maxH, visibility: pos ? "visible" : "hidden" }}
+          className="z-[200] w-72 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-2xl">
           <div className="mb-2 text-sm font-semibold text-slate-100">Chọn nội dung sự kiện</div>
           <div className="flex flex-col gap-1">
             {options.map((o) => (
@@ -93,7 +123,8 @@ export function DayDesc({ options, value, hours, disabled, warn, onChange, align
             <button type="button" onClick={done} disabled={pick === null || (pick === "__other" && !other.trim())}
               className="h-10 rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white disabled:opacity-40">Xong</button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
