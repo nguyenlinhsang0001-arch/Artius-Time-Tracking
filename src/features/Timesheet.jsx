@@ -8,7 +8,8 @@ import { LAST_STORAGE_ERROR, RATE_LIMITED, ck, commitTs, dbTs, ensureMonths, ref
 import { DEFAULT_PHASE, LEAVE_TASKS, NO_PHASE, NO_PROJECT, OT_TASKS, activePhases, empHasProj, fmtH, groupKey, guessPhase, isIdleTask, isLeaveTask, isOtId, isOtTask, notYetOnDay, leaveInfo, leaveTypeOfTask, norm, otBandKey, otBandTasks, otMaxHours, otText, pastLocked, pastOpenEver, pastOpenUntil, pastWeeks, phaseInfo, phaseLabel, projPhaseIsOpen, roleLabel, rowKey, sortByGroup, supportInRange, supportOn, taskRoles, taskText, tasksForDept, tone } from "../core/domain.jsx";
 import { CTRL, ConfirmDialog, GUT, NoteDialog, WeekPicker, btnBase, btnGhost, btnPrimary, iconBtn, selectCls } from "../core/ui.jsx";
 import { DeadlineBanner } from "../shared/deadline.jsx";
-import { runOtExport } from "../shared/otReport.js";   // v13.31: xuất Excel tăng ca, dùng chung với Dashboard cá nhân
+import { runOtExport } from "../shared/otReport.js";
+import { DayDesc, descOptsOf } from "../shared/dayDesc.jsx";   // v13.77: mô tả theo ngày cho Event công ty   // v13.31: xuất Excel tăng ca, dùng chung với Dashboard cá nhân
 
 /* v13.48 — màn nhân viên gọi thẳng tên khối không-dự-án. "Khác" quá chung chung, nhìn vào không biết
    bên trong là việc chung của công ty hay nghỉ phép. Các màn quản lý vẫn dùng "Khác" cho gọn cột. */
@@ -204,7 +205,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     if (admin) return;
     try {
       const keep = list.filter((r) => rowReady(r) && days.some((d) => !isSent(d) && r.days[d] > 0))
-        .map((r) => ({ projectId: r.projectId, phaseId: r.phaseId, taskId: r.taskId, ...(r.otFor ? { otFor: r.otFor } : {}), note: r.note || "", days: r.days }));
+        .map((r) => ({ projectId: r.projectId, phaseId: r.phaseId, taskId: r.taskId, ...(r.otFor ? { otFor: r.otFor } : {}), note: r.note || "", days: r.days, ...(r.dn ? { dn: r.dn } : {}) }));
       if (keep.length) localStorage.setItem(draftKeyOf(monday), JSON.stringify(keep));
       else localStorage.removeItem(draftKeyOf(monday));
     } catch { /* trình duyệt chặn lưu trữ: vẫn giữ trên màn hình như cũ */ }
@@ -299,6 +300,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
         const cur = map.get(k) || { projectId: r.projectId, phaseId, taskId: r.taskId, ...(r.otFor ? { otFor: r.otFor } : {}), note: "", days: {} };
         if (r.note && !cur.note) cur.note = r.note; // ghi chú lưu theo dòng, tuần nào cũng dùng chung dòng đó
         for (const d of days) if (r.days?.[d] != null) cur.days[d] = r.days[d];
+        for (const d of days) if (r.dn?.[d]) cur.dn = { ...(cur.dn || {}), [d]: r.dn[d] };   // v13.77: mô tả theo ngày
         map.set(k, cur);
       }
       // v3.2: giờ đã tạm lưu (bấm ✓) trên máy này mà chưa gửi thì khôi phục lại, chỉ cho ngày chưa gửi
@@ -313,6 +315,7 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
             for (const d of days) {
               const v = Number(x.days[d]) || 0;
               if (v > 0 && !loaded[ymOf(d)]?.sent?.[d] && !(!admin && pastLocked(cfg, empId, d)) && cur.days[d] !== v) { cur.days[d] = v; restored += 1; }
+              if (v > 0 && x.dn?.[d] && !loaded[ymOf(d)]?.sent?.[d]) cur.dn = { ...(cur.dn || {}), [d]: x.dn[d] };   // v13.77
             }
             if (x.note && !cur.note) cur.note = x.note;
             map.set(k, cur);
@@ -499,6 +502,20 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
     setRows((r) => r.map((x, j) => (j === i ? { ...x, days: { ...x.days, [d]: n } } : x)));
     setDirty(true);
   };
+  /* v13.77 — mô tả theo ngày (tác vụ có descOptions, vd Event công ty) */
+  const [descWarn, setDescWarn] = useState(false);
+  const setDesc = (i, d, v) => {
+    const next = rows.map((x, j) => (j === i ? { ...x, dn: { ...(x.dn || {}), [d]: v } } : x));
+    setRows(next); setDirty(true); writeDraft(next);
+  };
+  const descMissing = () => {
+    const out = [];
+    for (const r of rows) {
+      if (descOptsOf(taskById.get(r.taskId)) === null) continue;
+      for (const d of days) if ((r.days[d] || 0) > 0 && !isSent(d) && !r.dn?.[d]) out.push(d);
+    }
+    return [...new Set(out)].sort();
+  };
   const delRow = (i) => {
     setUndoRow({ rows: [rows[i]], at: i, label: `${projName(rows[i].projectId)} · ${taskName(rows[i].taskId)}` });   // giữ lại để hoàn tác
     setRows((r) => r.filter((_, j) => j !== i));
@@ -607,6 +624,15 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       seen.add(k);
     }
     { const msg = otProblem(); if (msg) { flash(msg, "err"); return false; } }
+    if (submitMode === "submit") {   // v13.77: ô Event công ty có giờ phải có mô tả mới gửi được
+      const miss = descMissing();
+      if (miss.length) {
+        setDescWarn(true);
+        flash(`Chưa gửi được — Event công ty còn ngày chưa chọn mô tả: ${miss.map((d) => dLabel(d)).join(", ")}.`, "err");
+        return false;
+      }
+      setDescWarn(false);
+    }
     /* v13.50 (C11 + C12) — không báo nữa: nút "Gửi giờ công" đã bị khoá khi chưa có giờ mới nào để gửi. */
     if (submitMode === "submit" && !days.some((d) => !isSent(d) && !pastLk(d) && sendTotal(d) > 0)) return false;
 
@@ -632,7 +658,8 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
       const keep = bucket.rows.map((r) => {
         if (projClosed(r)) return r;                       // giờ của dự án đã đóng giữ nguyên bản trên server
         const dd = { ...r.days }; for (const d of writable) if (!supBlocked(r, d)) delete dd[d];   // v8.7: ngày ngoài thời gian hỗ trợ giữ nguyên
-        return { ...r, days: dd };
+        const dn = { ...(r.dn || {}) }; for (const d of writable) if (!supBlocked(r, d)) delete dn[d];   // v13.77
+        return { ...r, days: dd, dn };
       });
       const map = new Map(keep.map((r) => [rowKey(r), r]));
       for (const r of rows) {
@@ -645,9 +672,15 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
         if (admin || !had || !Object.keys(had.days).some((d) => sent[d] || pastLocked(cfg, empId, d))) cur.phaseId = r.phaseId || DEFAULT_PHASE;
         cur.note = (r.note || "").trim();
         for (const d of writable) if (r.days[d] > 0 && !futureBlocked(r, d)) cur.days[d] = r.days[d];
+        for (const d of writable) if (r.days[d] > 0 && !futureBlocked(r, d) && r.dn?.[d]) cur.dn = { ...(cur.dn || {}), [d]: String(r.dn[d]).trim().slice(0, 120) };   // v13.77
         map.set(k, cur);
       }
-      const cleaned = [...map.values()].filter((r) => Object.values(r.days).some((v) => v > 0));
+      const cleaned = [...map.values()].filter((r) => Object.values(r.days).some((v) => v > 0)).map((r) => {
+        /* v13.77: chỉ giữ mô tả của ngày còn giờ; không còn ngày nào thì bỏ hẳn trường dn */
+        const { dn, ...rest } = r;
+        const keepDn = Object.fromEntries(Object.entries(dn || {}).filter(([d, v]) => v && (r.days[d] || 0) > 0));
+        return Object.keys(keepDn).length ? { ...rest, dn: keepDn } : rest;
+      });
       const tot = (d) => cleaned.reduce((a, r) => a + (r.days[d] || 0), 0);
       if (submitMode === "submit") for (const d of writable) if (!sent[d] && tot(d) > 0) { sent[d] = stamp; newly.push(d); }
       if (submitMode === "unsubmit") for (const d of daysInYm) delete sent[d];
@@ -1404,9 +1437,9 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                                 </div>
                               </td>
                               {days.map((d, k) => (
-                                <td key={d} className={`px-1 ${open ? "pt-1" : "pt-0.5"} ${pb} ${dayCol(d)}`}>
+                                <td key={d} className={`relative px-1 ${open ? "pt-1" : "pt-0.5"} ${pb} ${dayCol(d)}`}>
                                   {open ? (
-                                    <input ref={(el) => { gridInputs.current[`${i}:${k}`] = el; }}
+                                    <><input ref={(el) => { gridInputs.current[`${i}:${k}`] = el; }}
                                       type="number" min="0" max="24" step="0.5" value={r.days[d] ?? ""} placeholder="" disabled={dayLocked(d) || projClosed(r) || futureBlocked(r, d) || !rowReady(r)}
                                       onChange={(e) => setHour(i, d, e.target.value)}
                                       onFocus={(e) => { e.target.select(); markDay(k); }}
@@ -1416,6 +1449,11 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                                       onKeyDown={(e) => gridKey(e, i, k)}
                                       title={ot ? `Tối đa ${fmtH(otMaxHours(taskById.get(r.taskId)))} giờ` : undefined}
                                       className={`${CTRL} w-full rounded-md border bg-slate-950 px-1 text-center font-mono text-base font-medium focus:border-teal-500 focus:outline-none disabled:opacity-60 ${ot && r.days[d] > otMaxHours(taskById.get(r.taskId)) ? "border-rose-600 text-rose-300" : ot ? "border-teal-900 text-slate-100" : isIncomplete(d) ? "border-amber-700/60 text-slate-100" : k === 6 ? "border-slate-800 text-slate-100" : "border-slate-700 text-slate-100"}`} />
+                                    {/* v13.77: Event công ty — mô tả theo ngày, bắt buộc khi có giờ */}
+                                    {(() => { const opts = descOptsOf(taskById.get(r.taskId)); return opts === null ? null : (
+                                      <DayDesc options={opts} value={r.dn?.[d] || ""} hours={r.days[d]} warn={descWarn} align={k >= days.length - 2 ? "right" : "left"}
+                                        disabled={(isSent(d) && !admin) || dayLocked(d) || projClosed(r)} onChange={(v) => setDesc(i, d, v)} />
+                                    ); })()}</>
                                   ) : (
                                     (() => {
                                       /* v12.37 N1 — bấm thẳng vào ô giờ của khối đang đóng: mở khối và đặt con trỏ ở đúng ô đó */
@@ -1620,6 +1658,12 @@ export function EmployeeArea({ cfg, empId, flash, admin = false, onDirtyChange, 
                                     className={`${iconBtn} shrink-0 disabled:opacity-40`}><Trash2 size={15} /></button>
                                 )}
                               </div>
+                              {(() => { const opts = descOptsOf(taskById.get(r.taskId)); return opts === null || !((r.days[activeDay] || 0) > 0) ? null : (
+                                <div className="mt-1 pl-0 pr-0">   {/* v13.77: mô tả theo ngày (điện thoại) */}
+                                  <DayDesc options={opts} value={r.dn?.[activeDay] || ""} hours={r.days[activeDay]} warn={descWarn} compact
+                                    disabled={(isSent(activeDay) && !admin) || dayLocked(activeDay) || projClosed(r)} onChange={(v) => setDesc(i, activeDay, v)} />
+                                </div>
+                              ); })()}
                             </div>
                           );
                         })}

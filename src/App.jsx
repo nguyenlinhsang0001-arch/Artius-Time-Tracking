@@ -1,6 +1,13 @@
 
 /* ============================================================
-   ARTIUS — Quản lý giờ công theo dự án · v13.76
+   ARTIUS — Quản lý giờ công theo dự án · v13.77
+   Mới ở v13.77 — Event công ty: chọn mô tả cho từng ngày khi chấm giờ (src/shared/dayDesc.jsx).
+     · Tab Tác vụ: sửa "Event công ty" có khung "Danh sách mô tả cho nhân viên chọn" → cfg.tasks[].descOptions.
+       Có descOptions = bắt buộc mô tả; dòng "Khác (tự ghi)" luôn có sẵn.
+     · Chấm công: gõ giờ vào ô của tác vụ đó → bảng chọn hiện dưới ô; nhãn mô tả dưới số giờ (bấm để đổi).
+       Lưu ở row.dn = { "YYYY-MM-DD": "mô tả" }, chỉ giữ ngày có giờ. Gửi khi còn ô có giờ chưa mô tả → chặn, báo ngày.
+     · Bảng công (quản lý): rê chuột / bấm ô thấy mô tả cạnh tác vụ; Excel chi tiết cũng có.
+     · Database không đổi (trigger chặn ghi không xét dn). Không cần chạy SQL.
    Mới ở v13.76 — Vòng 5, mục 3 (R8): giai đoạn mở chỉ theo công tắc.
      · domain.projPhaseIsOpen và SQL artius_unbudgeted_hours (chuyển sang supabase/v13_76_giai_doan_mo.sql) chỉ đọc
        project.phaseOpen. Bỏ luật dự phòng v2.5 "chưa có công tắc thì giai đoạn có giờ dự kiến > 0 là mở".

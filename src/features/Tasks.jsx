@@ -1,10 +1,11 @@
 /* ARTIUS TIME v11 — tách từ App.jsx, nội dung giữ nguyên. */
 import React, { useState, useRef } from "react";
 import {
-  Plus, Trash2, Lock, Pencil, Check, X, GripVertical, Loader2, RotateCcw,
+  Plus, Trash2, Lock, Pencil, Check, X, GripVertical, Loader2, RotateCcw, ChevronUp,
 } from "lucide-react";
 import { serverHours } from "../data.js";
 import { DEFAULT_DEPTS, DEPTS, DEPTS_SEE_ALL, LEAVE_PALETTE, fmtH, isIdleTask, isOtName, leaveShort, norm, renameRoleOf, changeRole, roleInfo, roleLabel, taskRoles, uid } from "../core/domain.jsx";
+import { isEventTask } from "../shared/dayDesc.jsx";   // v13.77: danh sách mô tả cho Event công ty
 import { fmt } from "../core/date.jsx";
 import { ConfirmDialog, btnPrimary, iconBtn, inputCls, selectCls } from "../core/ui.jsx";
 
@@ -28,6 +29,8 @@ export function Tasks({ cfg, saveCfg, flash }) {
   const [editName, setEditName] = useState("");
   const [editOwner, setEditOwner] = useState("");
   const [editDesc, setEditDesc] = useState("");          // v4.4: mô tả ngắn của tác vụ
+  const [editOpts, setEditOpts] = useState(null);        // v13.77: danh sách mô tả cho nhân viên chọn (null = tác vụ không dùng)
+  const [optDraft, setOptDraft] = useState("");
   const [dragTask, setDragTask] = useState(null);        // v4.4: id tác vụ đang kéo để đổi thứ tự (chỉ máy tính)
   const [dropAt, setDropAt] = useState(null);            // { id, after } — chỗ sẽ thả: trước/sau tác vụ id
   const [pendingDel, setPendingDel] = useState(null);   // { t, h } — h = giờ đã chấm trên server, mọi tháng
@@ -121,11 +124,23 @@ export function Tasks({ cfg, saveCfg, flash }) {
     await saveCfg({ ...cfg, tasks: cfg.tasks.map((t) => {
       if (t.id !== editId) return t;
       const { desc: _old, ...rest } = t;                  // mô tả rỗng thì bỏ hẳn trường, không lưu chuỗi trống
-      return { ...rest, name: editName.trim(), ...(isIdleTask(t.id) ? {} : patchFor(editOwner)), ...(desc ? { desc } : {}) };   // v7.2: Trống việc luôn dùng chung
+      const { descOptions: _oldOpts, ...rest2 } = rest;
+      return { ...rest2, name: editName.trim(), ...(isIdleTask(t.id) ? {} : patchFor(editOwner)), ...(desc ? { desc } : {}),
+        ...(editOpts ? { descOptions: editOpts } : {}) };   // v7.2: Trống việc luôn dùng chung · v13.77: descOptions
     }) });
     setEditId(null);
   };
-  const startEdit = (t) => { setEditId(t.id); setEditName(t.name); setEditOwner(ownerOf(t)); setEditDesc(t.desc || ""); };
+  const startEdit = (t) => {
+    setEditId(t.id); setEditName(t.name); setEditOwner(ownerOf(t)); setEditDesc(t.desc || "");
+    setEditOpts(Array.isArray(t.descOptions) ? [...t.descOptions] : isEventTask(t) ? [] : null); setOptDraft("");
+  };
+  const addOpt = () => {
+    const v = optDraft.trim();
+    if (!v) return;
+    if ((editOpts || []).some((x) => x.toLowerCase() === v.toLowerCase())) return flash("Mô tả này đã có trong danh sách.", "err");
+    setEditOpts([...(editOpts || []), v.slice(0, 80)]); setOptDraft("");
+  };
+  const moveOpt = (i) => { if (!i) return; const l = [...editOpts]; [l[i - 1], l[i]] = [l[i], l[i - 1]]; setEditOpts(l); };
 
   /* Bấm thùng rác: đếm giờ trên server trước, rồi mới mở hộp xác nhận đúng loại (xoá / ngừng dùng).
      Đếm lỗi thì KHÔNG mở hộp nào — không đoán là "chưa có giờ". */
@@ -462,6 +477,31 @@ export function Tasks({ cfg, saveCfg, flash }) {
                       <input value={editDesc} onChange={(e) => setEditDesc(e.target.value)} maxLength={200}
                         onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditId(null); }}
                         placeholder="Mô tả" className={inputCls} />
+                      {editOpts && (
+                        <div className="flex flex-col gap-2 rounded-lg border border-slate-800 bg-slate-950/60 p-3">   {/* v13.77 */}
+                          <div>
+                            <div className="text-sm font-semibold text-slate-100">Danh sách mô tả cho nhân viên chọn</div>
+                            <div className="text-xs text-slate-400">Chấm giờ vào tác vụ này thì phải chọn một dòng cho từng ngày. Dòng “Khác (tự ghi)” luôn có sẵn ở cuối.</div>
+                          </div>
+                          {editOpts.map((o, i) => (
+                            <div key={o} className="flex min-h-[40px] items-center gap-2 rounded-md border border-slate-800 bg-slate-950 pl-3 pr-1">
+                              <span className="w-5 text-xs text-slate-500">{i + 1}</span>
+                              <span className="min-w-0 flex-1 truncate text-sm text-slate-200">{o}</span>
+                              <button type="button" onClick={() => moveOpt(i)} disabled={!i} aria-label={`Đưa ${o} lên`} className={`${miniDel} disabled:opacity-30`}><ChevronUp size={15} /></button>
+                              <button type="button" onClick={() => setEditOpts(editOpts.filter((x) => x !== o))} aria-label={`Bỏ ${o}`} className={miniDel}><X size={15} /></button>
+                            </div>
+                          ))}
+                          <div className="flex min-h-[40px] items-center gap-2 rounded-md border border-dashed border-slate-700 px-3 text-sm text-slate-500">
+                            <span className="w-5" />Khác (tự ghi) — nhân viên gõ mô tả riêng
+                          </div>
+                          <div className="flex gap-2">
+                            <input value={optDraft} onChange={(e) => setOptDraft(e.target.value)} maxLength={80} placeholder="Thêm mô tả, vd: Du lịch công ty"
+                              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addOpt(); } }} className={`min-w-0 flex-1 ${inputCls}`} />
+                            <button type="button" onClick={addOpt} className={`${sqBtn} w-auto px-3 text-sm text-teal-400`}><Plus size={15} /></button>
+                          </div>
+                          <div className="text-[11px] text-slate-500">Bỏ một mô tả khỏi danh sách: các ô đã chấm vẫn giữ mô tả đó. Bấm ✓ ở trên để lưu.</div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="flex items-center justify-between gap-2">
@@ -478,6 +518,7 @@ export function Tasks({ cfg, saveCfg, flash }) {
                           {t.inactive && <span className="shrink-0 rounded border border-amber-800 px-1.5 text-[10px] text-amber-400" title="Không chọn được khi chấm công. Giờ đã chấm vẫn giữ trong bảng công và báo cáo.">ngừng dùng</span>}
                         </div>
                         {t.desc && <div className="mt-0.5 text-xs text-slate-500">{t.desc}</div>}
+                        {Array.isArray(t.descOptions) && <div className="mt-0.5 text-[11px] text-teal-500">Bắt buộc chọn mô tả · {t.descOptions.length} dòng có sẵn + Khác</div>}
                       </div>
                       {isIdleTask(t.id) ? (
                         /* v7.2: tác vụ hệ thống — đổi được tên / mô tả, không xoá, không kéo đổi chỗ */

@@ -431,7 +431,8 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
           // v13.24: giữ thêm dự án / tác vụ rời để dựng bảng chi tiết "..." giống tab Nhân sự
           pid: r.projectId, idleTask: isIdleTask(r.taskId), leaveTask: isLeaveTask(r.taskId), phase: r.phaseId || DEFAULT_PHASE,
           task: isOtId(r.taskId) ? `Tăng ca · ${r.otFor ? tName(r.otFor) : "chưa rõ tác vụ"}` : tName(r.taskId),
-          label: isOtId(r.taskId) ? `Tăng ca · ${r.otFor ? tName(r.otFor) : "chưa rõ tác vụ"}` : isLeaveTask(r.taskId) ? tName(r.taskId) : `${pName(r.projectId)} · ${tName(r.taskId)}` });
+          label: (isOtId(r.taskId) ? `Tăng ca · ${r.otFor ? tName(r.otFor) : "chưa rõ tác vụ"}` : isLeaveTask(r.taskId) ? tName(r.taskId) : `${pName(r.projectId)} · ${tName(r.taskId)}`)
+            + (r.dn?.[d] ? ` — ${r.dn[d]}` : "") });   // v13.77: mô tả theo ngày (Event công ty)
         m.set(k, c);
       }
     }
@@ -687,7 +688,8 @@ export function TimesheetBoard({ cfg, flash, onDirtyChange, readOnly = false, on
     const items = (b?.rows || []).filter((r) => wd.some((x) => Number(r.days?.[x]) > 0)).map((r) => ({
       key: tsRowKey(r), ot: isOtId(r.taskId),
       label: isOtId(r.taskId) ? `Tăng ca · ${r.otFor ? tName(r.otFor) : "chưa rõ tác vụ"}` : isLeaveTask(r.taskId) ? tName(r.taskId) : tName(r.taskId),
-      sub: isLeaveTask(r.taskId) ? "Vắng mặt" : `${pName(r.projectId)}${r.projectId && r.projectId !== NO_PROJECT ? ` · ${r.phaseId || DEFAULT_PHASE}` : ""}`,
+      sub: (isLeaveTask(r.taskId) ? "Vắng mặt" : `${pName(r.projectId)}${r.projectId && r.projectId !== NO_PROJECT ? ` · ${r.phaseId || DEFAULT_PHASE}` : ""}`)
+        + (r.dn?.[d] ? ` · ${r.dn[d]}` : ""),   // v13.77
       h: Number(r.days?.[d]) || 0,
     })).sort((a, b2) => (a.ot - b2.ot) || b2.h - a.h);
     const rect = ev.currentTarget.getBoundingClientRect();
