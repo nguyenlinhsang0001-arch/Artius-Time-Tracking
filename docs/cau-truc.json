@@ -204,5 +204,200 @@
     ["Một định nghĩa giờ chuẩn và tăng ca","Giờ chuẩn xong ở v13.73 (core/stdHours, R5). Tăng ca một định nghĩa (khung) từ v13.74 (R10)."],
     ["Ngày vào làm + vai trò theo thời gian","Ngày vào làm xong ở v13.67 (R6). Lịch sử vai trò từ v13.68 (R7), bảng giờ phẳng ghi vai trò theo ngày từ v13.69."],
     ["Ngừng dùng thay vì xoá","Xong ở v13.66 (R11): tác vụ và dự án đã có giờ không xoá được nữa."]
-  ]
+  ],
+  "upgrades": {
+   "title": "Đề xuất nâng cấp đợt 12/2026",
+   "asked": "24/11/2026 · theo yêu cầu của BOD",
+   "intro": "Năm đề xuất mới, đặt cạnh hiện trạng của app (v13.77). Mỗi mục ghi: đang có gì, làm gì, đụng tới dữ liệu nào, màn hình nào thay đổi, điều cần BOD chốt trước khi làm và rủi ro. Độ lớn là ước lượng tương đối (S = 1 bản, M = 2–3 bản, L = 4+ bản), chưa phải cam kết thời gian.",
+   "order_note": "Thứ tự đề xuất: (1) bắt đầu GHI LỊCH SỬ kế hoạch càng sớm càng tốt — lịch sử không tạo lại được cho quá khứ, trừ 30 bản chốt đang có. (2) đường kế hoạch trên biểu đồ — nhỏ, chỉ đọc. (5) cấp bậc vai trò làm trước (3) vì định mức % và chi phí sau này đều dựa trên vai trò / cấp bậc. (4) đã xong ở v13.77.",
+   "items": [
+    {
+     "n": 1,
+     "t": "Lịch sử thay đổi kế hoạch (revision)",
+     "size": "M",
+     "status": "Đề xuất",
+     "area": "Kế hoạch › Nhập liệu",
+     "goal": "Thấy dự án nào bị đổi kế hoạch nhiều nhất, xem lại kế hoạch ở từng lần đổi và thấy trực quan tiến độ bị dời ra sao.",
+     "now": [
+      "Lưới Nhập liệu tự lưu sau 2 giây ngừng gõ; mỗi lần lưu ghi đè cả năm (artius_plan_set xoá rồi nạp lại). Không còn dấu vết giá trị cũ.",
+      "Có 'Chốt bản' (30 bản): ảnh chụp toàn bộ kế hoạch tại một thời điểm, chọn được ở So với thực tế. Chưa so được bản này với bản kia theo từng dự án."
+     ],
+     "do": [
+      "Bảng mới artius_plan_rev: mỗi dòng = một lần một dự án bị đổi (dự án, người sửa, thời điểm, số ô đổi, tổng người-tuần trước / sau, kế hoạch cũ và mới của dự án đó).",
+      "Gom theo phiên: các lần tự lưu liên tiếp của cùng một người trên cùng dự án trong vòng 30 phút tính là MỘT revision — tránh mỗi lần gõ một số lại thêm một revision.",
+      "Ghi ngay trong hàm lưu (so dòng cũ với dòng mới trước khi ghi đè) — không dùng trigger vì hàm lưu xoá / nạp lại cả năm.",
+      "Nạp sẵn lịch sử từ 30 bản chốt đang có (mỗi bản chốt khác bản trước = một revision), để không bắt đầu từ số 0."
+     ],
+     "screens": [
+      "Cạnh tên dự án trong lưới: số nhỏ (3) = số revision; dự án đổi nhiều nhất có màu nhấn. Thêm bộ lọc / sắp xếp 'đổi nhiều nhất'.",
+      "Bấm (3) mở khung lịch sử: danh sách revision (ngày, người sửa, +/− người-tuần, tuần đầu / tuần cuối dời bao nhiêu). Chọn một revision → lưới của dự án đó hiện so sánh: ô tăng / giảm / mới / bỏ tô màu, và một dải 'trước → sau' cho thấy mốc bắt đầu, kết thúc bị dời.",
+      "Nút 'Xuất lịch sử' ra Excel: mỗi revision một khối, mỗi dòng vai trò × tuần, cột trước / sau / chênh — để lưu trên máy hoặc gửi đi."
+     ],
+     "decide": [
+      "Revision gom theo phiên 30 phút hay theo mỗi lần bấm 'Lưu' (bỏ tự lưu cho lần ghi lịch sử)?",
+      "Ai xem được lịch sử: Admin + BOD, hay cả Trưởng phòng?",
+      "Có cần ghi LÝ DO đổi (chọn từ danh sách như khi dời mốc giai đoạn) không? Có lý do thì báo cáo 'vì sao dời' mới làm được."
+     ],
+     "risk": [
+      "Dung lượng: mỗi revision lưu kế hoạch của một dự án (vài KB). 20 dự án × vài revision / tuần vẫn nhỏ so với gói Supabase Free.",
+      "Lịch sử trước ngày bắt đầu ghi chỉ có ở mức 30 bản chốt, không đầy đủ từng lần sửa."
+     ],
+     "touch": [
+      "artius_plan_set (sửa)",
+      "artius_plan_rev (mới)",
+      "artius_plan_snapshot (đọc để nạp lịch sử)",
+      "ResourcePlan.jsx",
+      "planExport.js"
+     ]
+    },
+    {
+     "n": 2,
+     "t": "Biểu đồ dự án: đường kế hoạch thay cho đường trung bình 4 tuần",
+     "size": "S",
+     "status": "Đề xuất",
+     "area": "Dashboard › Dự án",
+     "goal": "Trên biểu đồ 'Giờ theo tuần' của từng dự án, so giờ thực tế từng tuần với giờ đã lên kế hoạch ở Nhập liệu, thay vì so với trung bình 4 tuần gần nhất.",
+     "now": [
+      "Đường vàng nét đứt = trung bình giờ 4 tuần gần nhất của giai đoạn đang xem; câu dự báo 'nếu giữ tốc độ này, 2 tuần tới vượt thêm ~X h' dùng cùng con số.",
+      "Kế hoạch ở Nhập liệu lưu theo dự án × vai trò × tuần (số người), KHÔNG chia theo giai đoạn P1–P4."
+     ],
+     "do": [
+      "Giờ kế hoạch của tuần = Σ (số người kế hoạch của mọi vai trò trong dự án × giờ chuẩn của chính tuần đó, đã trừ lễ) — dùng đúng phép quy đổi của So với thực tế (core/stdHours).",
+      "Vẽ thành đường bậc thang theo từng tuần (mỗi tuần một mức), không còn là một đường ngang.",
+      "Câu dự báo đổi thành so với kế hoạch: 'Tuần này thực tế 107 h / kế hoạch 88 h (+19 h). Lũy kế từ đầu: +45 h so với kế hoạch.'",
+      "Kế hoạch theo tuần dùng bản đang chạy; có thể chọn so với một bản chốt."
+     ],
+     "screens": [
+      "Dashboard › Dự án › mở một dự án: biểu đồ cột giờ thực tế + đường kế hoạch; chú thích dưới biểu đồ đổi theo.",
+      "Tuần không có kế hoạch: đường về 0 và cột hiện viền cảnh báo 'làm ngoài kế hoạch'."
+     ],
+     "decide": [
+      "Biểu đồ đang xem theo GIAI ĐOẠN (vd P2), kế hoạch thì theo CẢ DỰ ÁN. Chọn: (a) biểu đồ đổi sang xem cả dự án khi so kế hoạch; (b) giữ theo giai đoạn, đường kế hoạch chỉ tính những tuần nằm trong mốc thời gian của giai đoạn đó; (c) thêm cột giai đoạn vào lưới Nhập liệu (việc lớn hơn nhiều).",
+      "Bỏ hẳn đường trung bình 4 tuần, hay giữ cả hai (bật / tắt)?"
+     ],
+     "risk": [
+      "Tuần kế hoạch của lưới là 'tuần trong tháng' (4 tuần / tháng), tuần thực tế là tuần lịch T2–CN: cần quy đổi như So với thực tế đang làm — đã có sẵn hàm, rủi ro thấp."
+     ],
+     "touch": [
+      "ProjectProgress.jsx",
+      "dashboard/calc.jsx",
+      "planCalc.js (đọc)",
+      "core/stdHours.js (đọc)"
+     ]
+    },
+    {
+     "n": 3,
+     "t": "Định mức % thời gian theo vai trò trong dự án + cảnh báo vượt",
+     "size": "M",
+     "status": "Đề xuất",
+     "area": "Dự án · Bảng công · Dashboard",
+     "goal": "Quản trị đặt trước mỗi vai trò được dành bao nhiêu % thời gian cho một dự án. Ai thuộc vai trò đó chấm vượt định mức thì app cảnh báo để quản trị nắm.",
+     "now": [
+      "Đã có % thực tế từng người theo từng dự án (thẻ rê chuột ở So với thực tế, v13.60) và cảnh báo quá tải chung theo người (Phân bổ theo nhân sự).",
+      "Lưới Nhập liệu có số NGƯỜI kế hoạch cho vai trò × tuần, nhưng chưa có định mức % cho từng người trong vai trò."
+     ],
+     "do": [
+      "Thiết lập mới trong dự án: bảng định mức vai trò × % (vd dự án VIAS Vũng Tàu: TK 50%, 3D 100%, 2D 50%). Chỉ theo vai trò, không theo tên người — đúng yêu cầu.",
+      "Mỗi tuần, với mỗi người: % = giờ người đó chấm vào dự án / giờ chuẩn tuần của người đó. Vai trò lấy theo VAI TRÒ TẠI NGÀY CHẤM (lịch sử vai trò, đã có từ v13.68).",
+      "Vượt định mức → cảnh báo; có ngưỡng nhắc nhẹ (vd ≥ 90%) và vượt (> 100% định mức).",
+      "Tính trên bảng giờ phẳng (artius_hours, v13.69) — đã có cột vai trò theo ngày, chỉ cần cộng."
+     ],
+     "screens": [
+      "Tab Dự án › sửa dự án: khung 'Định mức thời gian theo vai trò'.",
+      "Dashboard › Dự án: cột / huy hiệu 'Vượt định mức (n người)'; mở dự án thấy danh sách người, vai trò, % thực tế / định mức theo tuần.",
+      "Bảng công (quản lý): ô của người vượt định mức có dấu cảnh báo; tuỳ chọn gửi nhắc cho quản trị (như nhắc nộp)."
+     ],
+     "decide": [
+      "Định mức đặt CỐ ĐỊNH cho cả dự án, hay theo giai đoạn / theo khoảng thời gian?",
+      "Có lấy luôn từ lưới Nhập liệu không? Vd kế hoạch 3D = 1,5 người, đội 3D có 3 người → mỗi người 50%. Lấy từ lưới thì không phải nhập 2 lần, nhưng % sẽ đổi mỗi khi kế hoạch hoặc quân số đổi.",
+      "Tính % theo tuần hay theo tháng? Cảnh báo chỉ để XEM hay CHẶN chấm vượt?",
+      "Tăng ca có tính vào % không?"
+     ],
+     "risk": [
+      "Hai nguồn kế hoạch (lưới số người và định mức %) dễ mâu thuẫn nếu nhập riêng — nên chốt câu hỏi 'lấy từ lưới' trước.",
+      "Người làm chéo vai trò (vd Thiết kế vẽ 3D) là chuyện thường ở ARTIUS: % tính theo vai trò của NGƯỜI, không theo vai trò của tác vụ — cần BOD xác nhận đó là ý muốn."
+     ],
+     "touch": [
+      "projects (cfg, thêm roleQuota)",
+      "artius_hours (đọc)",
+      "Projects.jsx",
+      "ProjectProgress.jsx",
+      "TimesheetBoard.jsx",
+      "api/_reminders.js (nếu gửi nhắc)"
+     ]
+    },
+    {
+     "n": 4,
+     "t": "Event công ty: chọn nội dung có sẵn hoặc tự ghi",
+     "size": "S",
+     "status": "Đã xong · v13.77",
+     "area": "Chấm công · Tác vụ",
+     "goal": "Thay tác vụ 'Công việc khác thuộc công ty' bằng 'Event công ty'; khi chấm phải chọn nội dung có sẵn hoặc tự ghi.",
+     "now": [
+      "v13.77 (16/11/2026): tab Tác vụ › sửa 'Event công ty' có danh sách mô tả cho nhân viên chọn; dòng 'Khác (tự ghi)' luôn có sẵn.",
+      "Chấm công: gõ giờ vào Event công ty → bảng chọn hiện ngay; mỗi ngày một mô tả; còn ô có giờ chưa mô tả thì không gửi được.",
+      "Bảng công của quản lý và Excel chi tiết hiện mô tả của từng ô."
+     ],
+     "do": [
+      "Nếu tác vụ cũ còn mang tên 'Công việc khác thuộc công ty': đổi tên thành 'Event công ty' ở tab Tác vụ (giữ nguyên mã nên giờ cũ không mất), rồi nhập danh sách mô tả.",
+      "Báo cáo thêm (tuỳ chọn): tổng giờ Event theo từng nội dung theo tháng."
+     ],
+     "screens": [
+      "Đã có — xem tab Tác vụ và màn Chấm công."
+     ],
+     "decide": [
+      "Có cần báo cáo 'giờ Event theo nội dung' không?"
+     ],
+     "risk": [
+      "Giờ Event đã gửi trước v13.77 không có mô tả."
+     ],
+     "touch": [
+      "shared/dayDesc.jsx",
+      "Timesheet.jsx",
+      "Tasks.jsx",
+      "TimesheetBoard.jsx"
+     ]
+    },
+    {
+     "n": 5,
+     "t": "Cấp bậc năng lực cho vai trò (PM1, PM2, PM3…)",
+     "size": "M–L",
+     "status": "Đề xuất",
+     "area": "Tác vụ › Vai trò · Nhân sự",
+     "goal": "Mỗi vai trò có nhiều cấp (PM1, PM2, PM3…); mỗi người mang một cấp. Sau này gắn chi phí / đơn giá theo cấp, tương đương chức danh.",
+     "now": [
+      "Vai trò là một danh sách phẳng (TK, 3D, 2D, MEP, BIM…) thuộc phòng ban; mỗi người một vai trò, có lịch sử vai trò theo ngày (v13.68).",
+      "Chưa có cấp bậc, chưa có đơn giá. Thiết lập (artius_config) mọi tài khoản đều đọc được — không được để lương / đơn giá trong đó (rủi ro R1)."
+     ],
+     "do": [
+      "Cấp bậc gắn vào vai trò: vai trò PM có cấp PM1, PM2, PM3 (tên, thứ tự). Kế hoạch và báo cáo vẫn theo VAI TRÒ; cấp bậc là lớp chi tiết bên dưới.",
+      "Mỗi người có cấp hiện tại + lịch sử cấp theo ngày (giống lịch sử vai trò) — lên cấp từ ngày nào thì giờ trước ngày đó vẫn tính theo cấp cũ.",
+      "Bảng giờ phẳng thêm cột cap_bac (cấp tại ngày chấm), để chi phí sau này = giờ × đơn giá của cấp tại ngày đó.",
+      "Đơn giá: KHÔNG nằm trong thiết lập chung. Bảng riêng (vd artius_rate) chỉ Admin / BOD đọc được, có hiệu lực theo ngày. Phần này làm ở giai đoạn chi phí, nhưng cấu trúc cấp bậc phải sẵn từ bây giờ."
+     ],
+     "screens": [
+      "Tác vụ › Phòng ban & vai trò: mỗi vai trò mở ra danh sách cấp (thêm / đổi tên / sắp xếp).",
+      "Nhân sự: cột Cấp bậc cạnh Vai trò; sửa nhân sự chọn cấp + ngày hiệu lực (như đổi vai trò).",
+      "Kế hoạch: tuỳ chọn xem quân số theo cấp (vd 3D · có 2: 3D1 ×1, 3D2 ×1)."
+     ],
+     "decide": [
+      "Danh sách cấp cho từng vai trò (bao nhiêu cấp, tên gọi) — BOD / nhân sự cung cấp.",
+      "Cấp gắn với vai trò (PM1 chỉ có trong PM) hay dùng chung một thang (Cấp 1–5 cho mọi vai trò)?",
+      "Lập kế hoạch có cần đi xuống tới cấp (cần 1 PM2 thay vì 1 PM) không? Nếu có, lưới Nhập liệu đổi khá nhiều — đề xuất chưa làm ở đợt này."
+     ],
+     "risk": [
+      "Đơn giá / lương là dữ liệu nhạy cảm: phải làm sau khi tách quyền đọc (R1), không lưu vào thiết lập chung.",
+      "Đổi mã vai trò hiện chưa kéo theo kế hoạch và bản chốt (R13) — nên xử lý R13 trước khi thêm cấp bậc, kẻo lỗi nhân đôi."
+     ],
+     "touch": [
+      "roles (cfg, thêm levels)",
+      "employees (cfg, thêm level + levelHistory)",
+      "artius_hours (thêm cột cap_bac)",
+      "Tasks.jsx",
+      "Employees.jsx",
+      "domain.jsx (levelOn)"
+     ]
+    }
+   ]
+  }
 }

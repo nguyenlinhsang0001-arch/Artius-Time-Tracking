@@ -93,6 +93,41 @@ svg.drag{cursor:grabbing}
 .tabs{display:flex;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--line);padding:0 max(16px, env(safe-area-inset-right,0px)) 0 16px}
 .tab{font:inherit;font-size:13px;font-weight:600;background:none;border:0;border-bottom:2px solid transparent;color:var(--mut);padding:12px 8px 10px;cursor:pointer;white-space:nowrap}
 .tab.on{color:var(--ink);border-bottom-color:var(--accent)}
+/* ---- tab Nâng cấp mới: mở rộng khung bên phải thành cả màn hình ---- */
+.app.wide{grid-template-columns:minmax(0,1fr)}
+.app.wide .pane>*{max-width:1180px;margin-left:auto;margin-right:auto}
+.app.wide .stage{display:none}
+.app.wide .pane{padding:20px max(24px, env(safe-area-inset-right,0px)) 48px 24px}
+.upg{max-width:1100px;margin:0 auto}
+.upg .lead{color:var(--mut);max-width:80ch}
+.upg table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0}
+.upg th{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);text-align:left;border-bottom:1px solid var(--line);padding:8px 10px}
+.upg td{border-bottom:1px solid var(--line);padding:9px 10px;vertical-align:top}
+.upg td.n{font:700 15px var(--f-mono);color:var(--accent);width:34px}
+.upg .sz{font:700 11px var(--f-mono);border:1px solid var(--line);border-radius:4px;padding:1px 6px;white-space:nowrap}
+.upg .st{font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap;background:color-mix(in srgb, var(--c-plan) 14%, transparent);color:var(--c-plan)}
+.upg .st.done{background:color-mix(in srgb, var(--accent) 16%, transparent);color:var(--accent)}
+.upg .order{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;padding:10px 14px;margin:12px 0 4px;max-width:none}
+.upg details{border:1px solid var(--line);border-radius:10px;margin:12px 0;background:var(--panel)}
+.upg summary{cursor:pointer;list-style:none;padding:14px 16px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:baseline}
+.upg summary::-webkit-details-marker{display:none}
+.upg summary b{font-size:15.5px}
+.upg summary .n{font:700 16px var(--f-mono);color:var(--accent)}
+.upg summary .ar{margin-left:auto;font-size:12px;color:var(--mut)}
+.upg .body{padding:0 16px 14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 24px}
+@media (max-width:900px){ .upg .body{grid-template-columns:1fr} }
+.upg .body .full{grid-column:1 / -1}
+.upg .body h4{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin:12px 0 4px}
+.upg .body ul{margin:0;padding-left:18px}
+.upg .body li{margin:3px 0;max-width:75ch}
+.upg .body .ask li::marker{content:"? ";color:var(--md);font-weight:700}
+.upg .body .rk li::marker{color:var(--hi)}
+.upg .touch{display:flex;flex-wrap:wrap;gap:6px}
+.upg .touch span{font:12px var(--f-mono);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:var(--mut)}
+.upg .tools{display:flex;gap:8px;margin:6px 0 0}
+.upg .tools button{font:inherit;font-size:12.5px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:5px 11px;cursor:pointer}
+@media print{ .app{display:block;height:auto} .stage,.tabs,.upg .tools{display:none!important} .side,.pane{height:auto;overflow:visible} .upg details{break-inside:avoid} }
+
 .pane{overflow:auto;padding:16px max(16px, env(safe-area-inset-right,0px)) 32px 16px;flex:1;min-height:0}
 .pane h2{font-size:18px;margin:0 0 2px;line-height:1.25;text-wrap:balance}
 .kind{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
@@ -157,6 +192,7 @@ code,.mono{font-family:var(--f-mono);font-size:12px}
       <button class="tab" data-t="risk" role="tab">Kiểm tra</button>
       <button class="tab" data-t="diff" role="tab">Thay đổi</button>
       <button class="tab" data-t="leg" role="tab">Chú giải</button>
+      <button class="tab" data-t="upg" role="tab" id="tabUpg">Nâng cấp mới</button>
     </div>
     <div class="pane" id="pane"></div>
   </aside>
@@ -326,7 +362,45 @@ const pane = document.getElementById("pane");
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
 let tab = "over";
 document.querySelectorAll(".tab").forEach((b) => b.onclick = () => setTab(b.dataset.t));
-function setTab(t) { tab = t; document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.t === t)); render(); }
+function setTab(t) {
+  tab = t; document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.t === t));
+  document.querySelector(".app").classList.toggle("wide", t === "upg");   // tab Nâng cấp mới chiếm cả màn hình
+  render();
+  if (t !== "upg") requestAnimationFrame(() => { try { fit(); } catch (e) { /* sơ đồ chưa vẽ */ } });
+}
+if (!DATA.UPG) { const b = document.getElementById("tabUpg"); if (b) b.remove(); }
+const upgList = (a, cls) => (a && a.length ? `<ul${cls ? ` class="${cls}"` : ""}>${a.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p class="empty">—</p>`);
+function renderUpg() {
+  const U = DATA.UPG;
+  const done = (it) => /xong/i.test(it.status);
+  pane.innerHTML = `<div class="upg">
+    <div class="kind" style="color:var(--accent)">${esc(META.version)} · ${esc(U.asked || "")}</div>
+    <h2>${esc(U.title)}</h2>
+    <p class="lead">${esc(U.intro)}</p>
+    <div class="tools"><button type="button" id="uOpen">Mở hết chi tiết</button><button type="button" id="uClose">Thu gọn</button><button type="button" id="uPrint">In / lưu PDF</button></div>
+    <div class="sec"><h3>Tổng quát</h3>
+      <table><thead><tr><th>#</th><th>Nâng cấp</th><th>Mục tiêu</th><th>Ở đâu</th><th>Độ lớn</th><th>Trạng thái</th></tr></thead><tbody>
+      ${U.items.map((it) => `<tr><td class="n">${it.n}</td><td><b>${esc(it.t)}</b></td><td>${esc(it.goal)}</td><td>${esc(it.area)}</td><td><span class="sz">${esc(it.size)}</span></td><td><span class="st${done(it) ? " done" : ""}">${esc(it.status)}</span></td></tr>`).join("")}
+      </tbody></table>
+      <p class="order"><b>Thứ tự đề xuất.</b> ${esc(U.order_note)}</p>
+    </div>
+    <div class="sec"><h3>Chi tiết từng mục</h3>
+      ${U.items.map((it) => `<details${done(it) ? "" : " open"}>
+        <summary><span class="n">${it.n}</span><b>${esc(it.t)}</b><span class="st${done(it) ? " done" : ""}">${esc(it.status)}</span><span class="sz">${esc(it.size)}</span><span class="ar">${esc(it.area)}</span></summary>
+        <div class="body">
+          <div class="full"><h4>Mục tiêu</h4><p>${esc(it.goal)}</p></div>
+          <div><h4>Hiện trạng trong app</h4>${upgList(it.now)}</div>
+          <div><h4>Đề xuất làm</h4>${upgList(it.do)}</div>
+          <div><h4>Màn hình thay đổi</h4>${upgList(it.screens)}</div>
+          <div><h4>Cần BOD chốt trước khi làm</h4>${upgList(it.decide, "ask")}</div>
+          <div><h4>Rủi ro / lưu ý</h4>${upgList(it.risk, "rk")}</div>
+          <div><h4>Khối dữ liệu / file đụng tới</h4><div class="touch">${(it.touch || []).map((x) => `<span>${esc(x)}</span>`).join("")}</div></div>
+        </div></details>`).join("")}
+    </div></div>`;
+  pane.querySelector("#uOpen").onclick = () => pane.querySelectorAll("details").forEach((d) => (d.open = true));
+  pane.querySelector("#uClose").onclick = () => pane.querySelectorAll("details").forEach((d) => (d.open = false));
+  pane.querySelector("#uPrint").onclick = () => { pane.querySelectorAll("details").forEach((d) => (d.open = true)); window.print(); };
+}
 let detailId = null;
 function showDetail(id) { detailId = id; setTab("detail"); }
 const sevTxt = { hi: "Cao", md: "Trung bình", lo: "Thấp" };
@@ -338,6 +412,7 @@ function bindRisks() {
 function render() {
   const nSev = (s) => FIND.filter((f) => f.sev === s).length;
   const diffNew = DIFF.items.filter((x) => x.kind === "risk").length;
+  if (tab === "upg" && DATA.UPG) { renderUpg(); return; }
   if (tab === "over") {
     const cnt = (l) => N.filter((n) => n.layer === l).length;
     pane.innerHTML = `
@@ -353,6 +428,7 @@ function render() {
         ${DIFF.from && diffNew ? `<p><b style="color:var(--hi)">${diffNew} rủi ro mới</b> so với ${esc(DIFF.from)} — xem tab Thay đổi.</p>` : ""}
         ${FIND.filter((f) => f.sev === "hi").map(riskCard).join("")}
       </div>
+      ${DATA.UPG ? `<div class="sec"><h3>${esc(DATA.UPG.title)}</h3><p>${DATA.UPG.items.length} đề xuất (${DATA.UPG.items.filter((x) => /xong/i.test(x.status)).length} đã xong) — <a href="#" id="goUpg">xem tab Nâng cấp mới</a>.</p></div>` : ""}
       <div class="sec"><h3>Điều cần nắm</h3>${(DATA.KEY || []).map((p) => `<p>${p}</p>`).join("")}</div>
       <div class="sec"><h3>Cần chuẩn bị trước giai đoạn lương &amp; AI</h3><ol class="prep">${PREP.map(([a, b]) => `<li><b>${esc(a)}.</b> ${esc(b)}</li>`).join("")}</ol></div>
       <div class="sec"><h3>Rủi ro rà tay mức cao</h3>${RISKS.filter((r) => r.sev === "hi").map(riskCard).join("")}</div>
@@ -404,6 +480,7 @@ function render() {
       ${rk.length ? `<div class="sec"><h3>Rủi ro liên quan (${rk.length})</h3>${rk.map(riskCard).join("")}</div>` : ""}`;
   }
   bindRisks();
+  const g = pane.querySelector("#goUpg"); if (g) g.onclick = (e) => { e.preventDefault(); setTab("upg"); };
 }
 
 drawAll(); fit(); render();

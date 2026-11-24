@@ -710,7 +710,7 @@ function main() {
   const META = { version, commit, date: `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`, sqlFiles: db.files.length, jsFiles: jsFiles.length, tables: db.tables.size, fns: db.fns.size, cfgKeys: known.size };
   const outN = N.map(({ bind, ...n }) => ({ ...n, auto: n.auto.length ? n.auto : undefined }));   // eslint-disable-line no-unused-vars
   const outE = [...E.values()].map((e) => [e.a, e.b, e.t, [...e.lbl].join(" · "), e.manual && !e.auto ? 1 : 0, e.ev.slice(0, 3).map(loc)]);
-  const DATA = { META, LAYERS: man.layers, SECTORS: man.sectors, ETYPES: man.etypes, N: outN, E: outE, RISKS: man.risks.map((r) => ({ ...r, auto: false })), PREP: man.prep, KEY: man.key_points || [], FIND, DIFF };
+  const DATA = { META, LAYERS: man.layers, SECTORS: man.sectors, ETYPES: man.etypes, N: outN, E: outE, RISKS: man.risks.map((r) => ({ ...r, auto: false })), PREP: man.prep, KEY: man.key_points || [], UPG: man.upgrades || null, FIND, DIFF };
   const tpl = read("scripts/datamap/template.html");
   const html = tpl.replace("/*__DATA__*/", `const DATA = ${JSON.stringify(DATA).replace(/</g, "\\u003c")};\nconst { META, LAYERS, SECTORS, ETYPES, N, E, RISKS, PREP, FIND, DIFF } = DATA;`);
   fs.mkdirSync(path.dirname(path.resolve(ROOT, OUT)), { recursive: true });
